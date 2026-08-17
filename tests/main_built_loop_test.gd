@@ -51,15 +51,20 @@ func _run_test() -> void:
 	_expect("VENTER" in main.units["sales_terminal"].status_label.text, "terminal returns to waiting after inventory is sold")
 	main._on_unit_interacted("sales_terminal")
 	_expect(main.process_model.money == 3200, "repeated terminal interaction cannot duplicate built-sale revenue")
+	main._on_unit_interacted(source.unit_id)
+	_expect(main.process_model.money == 2900, "second Main-integrated crude batch deducts exactly 300 kr")
+	_expect(is_equal_approx(main.built_refinery_model.equipment[source.unit_id]["volume_l"], 1000.0), "paid Main-integrated batch loads exactly 1 000 L")
 
 	main.process_model.crude_volume_l = 123.0
 	main._on_reset_requested()
 	_expect(is_equal_approx(main.process_model.crude_volume_l, 123.0), "post-unlock R cannot create another free pilot batch")
+	_expect(is_equal_approx(main.built_refinery_model.equipment[source.unit_id]["volume_l"], 1000.0), "product disposal does not erase or duplicate source crude")
 
+	var removable_tank = _unit(main, "built_tank_5")
 	var money_before_removal: int = main.process_model.money
-	main._on_build_removal_requested(source)
-	main._on_build_removal_requested(source)
-	_expect(main.process_model.money == money_before_removal + source.purchase_cost, "same equipment can only be refunded once")
+	main._on_build_removal_requested(removable_tank)
+	main._on_build_removal_requested(removable_tank)
+	_expect(main.process_model.money == money_before_removal + removable_tank.purchase_cost, "same equipment can only be refunded once")
 
 	if failures == 0:
 		print("PASS: full Main-integrated CrudeWorks built loop passed")

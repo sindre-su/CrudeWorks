@@ -322,13 +322,22 @@ func _connection_exists(from_port, to_port) -> bool:
 
 func _try_disconnect_focused_port() -> void:
 	var port = _raycast_connection_port()
-	if port == null:
-		notification_requested.emit("Se på en koblet port for å fjerne røret.")
+	if port != null and _disconnect_port(port):
+		notification_requested.emit("Prosessrøret er koblet fra.")
 		return
-	if not _disconnect_port(port):
-		notification_requested.emit("Denne porten har ingen rørkobling.")
-		return
-	notification_requested.emit("Prosessrøret er koblet fra.")
+	var unit = _raycast_buildable()
+	if unit != null:
+		var connected_ports := []
+		for candidate in unit.ports.values():
+			if candidate.connected:
+				connected_ports.append(candidate)
+		if connected_ports.size() == 1 and _disconnect_port(connected_ports[0]):
+			notification_requested.emit("Prosessrøret er koblet fra.")
+			return
+		if connected_ports.size() > 1:
+			notification_requested.emit("Maskinen har flere rør. Se direkte på porten som skal kobles fra.")
+			return
+	notification_requested.emit("Se på en koblet port eller maskin for å fjerne røret.")
 
 
 func _disconnect_port(port) -> bool:

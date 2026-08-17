@@ -40,7 +40,9 @@ func configure(port_data: Dictionary, unit_id := "", preview := false) -> void:
 	if not preview:
 		var collision := CollisionShape3D.new()
 		var shape := SphereShape3D.new()
-		shape.radius = 0.28
+		# Slightly larger than the visible marker so precise column outlets remain
+		# comfortable to select without making neighbouring ports overlap.
+		shape.radius = 0.34
 		collision.shape = shape
 		add_child(collision)
 

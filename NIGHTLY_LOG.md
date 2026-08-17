@@ -65,6 +65,9 @@
   and the LAB / SALG ready light now reflects built diesel after unlock.
 - Connected ports retain their own check-mark state. Port labels are visible in
   build mode and hidden during operation to reduce label clutter.
+- Process-port hit targets are larger than their visible markers, and G can
+  disconnect the only pipe on a looked-at machine without requiring a precise
+  hit on its incoming sphere. Multi-pipe units still require an explicit port.
 - Build UI moved to the upper-left with wrapping while the pilot/operation HUD
   is hidden during construction, avoiding the previous 720p notification
   overlap.
@@ -105,6 +108,9 @@
   scene launch. New checks cover minimum construction funding, off-spec
   recovery, topology-stop behavior, spare pumps, product dispatch, contextual
   guidance, terminal readiness and per-port state.
+- Main integration was extended through purchase/loading of a second 1 000 L
+  batch: exactly 300 kr is deducted, product disposal leaves source crude
+  untouched, and a fresh headless main launch still succeeds.
 
 ## Bugs Found and Fixed
 
