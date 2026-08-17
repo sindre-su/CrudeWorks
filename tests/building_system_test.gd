@@ -71,6 +71,9 @@ func _test_placement_and_connections(world: Node3D, controller) -> void:
 	tank.position = Vector3(0.0, 1.96, 20.0)
 	world.add_child(tank)
 	controller.register_unit(tank)
+	_expect(is_instance_valid(tank.liquid_level), "built tank has a visible-fill component")
+	tank.set_tank_fill(0.5, "crude")
+	_expect(tank.liquid_level.visible, "non-empty built tank displays its liquid level")
 
 	_expect(
 		not controller._position_is_valid(Vector3(0.5, 1.0, 20.0), Vector2(2.0, 2.0)),
@@ -96,6 +99,9 @@ func _test_placement_and_connections(world: Node3D, controller) -> void:
 	_expect(controller._connection_exists(tank.output_port, pump.input_port), "created connection can be detected")
 	var duplicate: Dictionary = controller._connect_ports(tank.output_port, pump.input_port)
 	_expect(not duplicate["ok"], "controller surfaces logical duplicate-connection rejection")
+	_expect(controller._disconnect_port(tank.output_port), "a focused port can disconnect a mistaken pipe")
+	_expect(controller.connections.is_empty(), "disconnect removes the visual pipe record")
+	_expect(controller.process_network.connection_count() == 0, "disconnect also removes the authoritative graph edge")
 
 
 func _expect(condition: bool, description: String) -> void:

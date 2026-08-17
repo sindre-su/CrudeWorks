@@ -8,6 +8,7 @@ signal notification_requested(message: String)
 const Catalog = preload("res://scripts/equipment_catalog.gd")
 const ProcessPortScript = preload("res://scripts/process_port.gd")
 const ProcessNetworkScript = preload("res://scripts/process_network.gd")
+const FlowVisualScript = preload("res://scripts/flow_visual.gd")
 
 const GRID_SIZE := 1.0
 const BUILD_BOUNDS := Rect2(-14.0, 10.5, 28.0, 20.0)
@@ -74,8 +75,16 @@ func register_unit(unit) -> void:
 		"footprint": unit.rotated_footprint(),
 		"cost": unit.purchase_cost,
 	})
-	process_network.register_unit(unit.unit_id, unit.equipment_type, unit.display_name)
+	if not process_network.has_unit(unit.unit_id):
+		process_network.register_unit(unit.unit_id, unit.equipment_type, unit.display_name)
 	_update_network_feedback()
+
+
+func has_registered_unit(unit) -> bool:
+	for entry in registered_units:
+		if entry["node"] == unit:
+			return true
+	return false
 
 
 func remove_registered_unit(unit) -> void:
@@ -85,6 +94,7 @@ func remove_registered_unit(unit) -> void:
 		var connection: Dictionary = connections[index]
 		if connection["from_unit_id"] == unit.unit_id or connection["to_unit_id"] == unit.unit_id:
 			connection["pipe"].queue_free()
+			connection["flow_visual"].queue_free()
 			connections.remove_at(index)
 	for index in range(registered_units.size() - 1, -1, -1):
 		if registered_units[index]["node"] == unit:
@@ -136,6 +146,9 @@ func _input(event: InputEvent) -> void:
 				var validation: Dictionary = process_network.validate_configuration()
 				network_feedback = validation["message"]
 				notification_requested.emit(network_feedback)
+			KEY_G:
+				_clear_connection_source()
+				_try_disconnect_focused_port()
 			KEY_ESCAPE:
 				if mode != "place" or is_instance_valid(connection_source):
 					mode = "place"
@@ -234,13 +247,26 @@ func _create_connection_visual(from_port, to_port) -> void:
 	material.emission = Color("28555b")
 	material.emission_energy_multiplier = 0.35
 	pipe.material_override = material
+	var flow_visual = FlowVisualScript.new()
+	add_child(flow_visual)
+	flow_visual.configure(to_local(from_position), to_local(to_position), Color("7ce7e0"))
 	connections.append({
 		"from_unit_id": from_port.owner_unit_id,
 		"from_port_id": from_port.port_id,
 		"to_unit_id": to_port.owner_unit_id,
 		"to_port_id": to_port.port_id,
 		"pipe": pipe,
+		"flow_visual": flow_visual,
 	})
+
+
+func set_process_flow(flow_lps: float, maximum_flow_lps: float) -> void:
+	var enabled := flow_lps > 0.01
+	var normalized := clampf(flow_lps / maximum_flow_lps, 0.0, 1.0) if maximum_flow_lps > 0.0 else 0.0
+	for connection in connections:
+		var flow_visual = connection["flow_visual"]
+		if is_instance_valid(flow_visual):
+			flow_visual.set_flow(enabled, normalized)
 
 
 func _connection_exists(from_port, to_port) -> bool:
@@ -252,6 +278,44 @@ func _connection_exists(from_port, to_port) -> bool:
 			and connection["to_port_id"] == to_port.port_id
 		):
 			return true
+	return false
+
+
+func _try_disconnect_focused_port() -> void:
+	var port = _raycast_connection_port()
+	if port == null:
+		notification_requested.emit("Se på en koblet port for å fjerne røret.")
+		return
+	if not _disconnect_port(port):
+		notification_requested.emit("Denne porten har ingen rørkobling.")
+		return
+	notification_requested.emit("Prosessrøret er koblet fra.")
+
+
+func _disconnect_port(port) -> bool:
+	for index in connections.size():
+		var connection: Dictionary = connections[index]
+		var is_from: bool = (
+			connection["from_unit_id"] == port.owner_unit_id
+			and connection["from_port_id"] == port.port_id
+		)
+		var is_to: bool = (
+			connection["to_unit_id"] == port.owner_unit_id
+			and connection["to_port_id"] == port.port_id
+		)
+		if not is_from and not is_to:
+			continue
+		process_network.disconnect_ports(
+			connection["from_unit_id"],
+			connection["from_port_id"],
+			connection["to_unit_id"],
+			connection["to_port_id"]
+		)
+		connection["pipe"].queue_free()
+		connection["flow_visual"].queue_free()
+		connections.remove_at(index)
+		_update_network_feedback()
+		return true
 	return false
 
 
@@ -504,5 +568,5 @@ func _update_build_text() -> void:
 		+ "Retning: %d°  |  IN blå  |  OUT oransje\n\n" % (rotation_quadrants * 90)
 		+ "Nettverk: %s\n\n" % network_feedback
 		+ "1–4 Velg  |  Q/E Roter  |  Klikk Plasser\n"
-		+ "X Fjern  |  F Koble OUT → IN  |  V Valider  |  B Avslutt"
+		+ "X Fjern  |  F Koble  |  G Koble fra  |  V Valider  |  B Avslutt"
 	)

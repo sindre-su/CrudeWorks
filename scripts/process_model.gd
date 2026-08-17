@@ -196,6 +196,11 @@ func refund(amount: int) -> void:
 		money += amount
 
 
+func credit(amount: int) -> void:
+	if amount > 0:
+		money += amount
+
+
 func active_alarms() -> Array[String]:
 	var alarms: Array[String] = []
 	if pump_running and not feed_valve_open:

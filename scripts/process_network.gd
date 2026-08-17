@@ -27,6 +27,10 @@ func unregister_unit(unit_id: String) -> void:
 			connections.remove_at(index)
 
 
+func has_unit(unit_id: String) -> bool:
+	return units.has(unit_id)
+
+
 func try_connect(
 	from_unit_id: String,
 	from_port_id: String,

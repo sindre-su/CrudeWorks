@@ -29,6 +29,27 @@
 - Visual pipe creation now asks the logical network for permission first.
   Build mode exposes the first actionable network fault and a manual V
   validation command without overwriting equipment operating status.
+- Added an independent Area 02 refinery model with explicit tank contents,
+  volume, capacity and temperature; pump state/actual flow; heater setpoint and
+  temperature; and column throughput.
+- A complete built line can now load one clearly labelled free commissioning
+  batch, warm to a chosen setpoint, process crude at a bounded flow rate,
+  separate light/diesel/heavy fractions, and store each fraction in its routed
+  tank.
+- Built transfer is capacity-limited and mass-conserving. A limiting product
+  tank scales the whole transfer, and a full tank stops all outputs without
+  consuming crude.
+- Built diesel quality is volume-weighted. Approved diesel can be sold at the
+  existing terminal; sale consumes the inventory before awarding revenue.
+- Later crude batches cost 300 kr. The current pilot-reset shortcut is disabled
+  after progression unlock, closing the repeatable free-crude/money exploit.
+- Added visible built-tank liquid levels and moving markers in built pipes while
+  process flow is active. Built equipment labels now show operating state.
+- Players can remove a mistaken pipe with G. Non-empty tanks and running/process
+  equipment cannot be removed for a refund, and registration ownership guards
+  against repeated same-frame refunds.
+- After the pilot sale, the obsolete completion overlay and pilot objective are
+  replaced by the Area 02 refinery objective and status HUD.
 
 ## Validation Performed
 
@@ -47,6 +68,15 @@
 - Updated building-system suite passes 27 checks after graph integration.
 - All three suites and the main scene were run after integration; no parser,
   scene-loading, or runtime errors were reported.
+- New built-refinery suite passes 28 focused checks for disconnected startup,
+  commissioning/paid batches, heating, mass balance, fraction yields, weighted
+  quality, capacity backpressure, consuming sale, and repeated-sale rejection.
+- Building suite now passes 31 checks including visible tank fill and logical +
+  visual pipe disconnection.
+- After full gameplay integration, the main scene, built-refinery suite,
+  process-network suite, building suite, and unchanged 22-check pilot suite all
+  ran successfully. A transient typed-inference parser error in the disconnect
+  helper was fixed before this stable state.
 
 ## Bugs Found and Fixed
 
@@ -58,22 +88,26 @@
   cyclic process connections.
 - Fixed stale connection state ownership: connection labels no longer replace
   an equipment unit's operational status, and graph edges are cleared by ID.
+- Fixed the free post-sale pilot reset exploit by reserving new batches for the
+  controlled Area 02 loader after unlock.
+- Fixed repeated built-diesel sale by atomically emptying sold inventory.
+- Fixed potential repeated removal refunds by checking controller registration
+  ownership before refunding.
 
 ## Current Stable State
 
 - The 0.3 pilot loop remains unchanged and its model tests pass.
 - Visual building still works, now with readable direction before placement.
 - A player can construct and validate the complete logical topology
-  tank → pump → heater → column → three product tanks. It does not process
-  material yet.
+  tank → pump → heater → column → three product tanks, run a complete batch,
+  inspect live state, and sell approved diesel.
 
 ## Known Issues
 
 ### Confirmed bugs
 
-- Interacting with player-built equipment advertises an inspection action but
-  produces no useful response.
-- Repeated pilot reset grants free crude while preserving money.
+- Port selection depends on aiming at small labelled ports when a unit has more
+  than one outlet; this needs hands-on usability testing in the editor.
 
 ### Untested behavior
 
@@ -99,8 +133,18 @@
 - `scripts/process_port.gd`: stable port ID/material metadata and selectable
   port collision.
 - `tests/process_network_test.gd`: focused graph rule and route tests.
+- `scripts/built_refinery_model.gd`: operational state, commissioning/paid
+  batches, heating, mass-conserving separation, quality and consuming sales.
+- `scripts/main.gd`: isolated Area 02 model integration, contextual HUD,
+  interactions, economy credit and reset-exploit prevention.
+- `scripts/buildable_unit.gd`: live operating labels and tank liquid visuals.
+- `scripts/build_controller.gd`: disconnect action and moving built-flow
+  markers.
+- `tests/built_refinery_model_test.gd`: operational/mass/economy regression
+  coverage.
 
 ## Next Best Work
 
-- Add an independent built-refinery state model on top of the validated graph,
-  starting with explicit tank/pump/heater state and mass-conserving transfer.
+- Add an integration test that constructs the full route through Main's
+  placement hooks, then perform a focused hands-on/UX hardening pass on port
+  selection, status feedback and the end-to-end unlock-to-sale path.

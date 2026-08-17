@@ -7,8 +7,10 @@ const FlowVisualScript = preload("res://scripts/flow_visual.gd")
 const BuildControllerScript = preload("res://scripts/build_controller.gd")
 const BuildableUnitScript = preload("res://scripts/buildable_unit.gd")
 const EquipmentCatalogScript = preload("res://scripts/equipment_catalog.gd")
+const BuiltRefineryModelScript = preload("res://scripts/built_refinery_model.gd")
 
 var process_model
+var built_refinery_model
 var player
 var units := {}
 var flow_visuals := {}
@@ -31,6 +33,7 @@ var notification_time_left := 0.0
 
 func _ready() -> void:
 	process_model = ProcessModelScript.new()
+	built_refinery_model = BuiltRefineryModelScript.new()
 	_build_environment()
 	_build_process_area()
 	_build_player()
@@ -41,8 +44,13 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	process_model.tick(delta)
+	built_refinery_model.tick(delta)
 	notification_time_left = maxf(notification_time_left - delta, 0.0)
 	build_controller.set_available_money(process_model.money)
+	build_controller.set_process_flow(
+		built_refinery_model.actual_flow_lps,
+		BuiltRefineryModelScript.PUMP_CAPACITY_LPS
+	)
 	if process_model.objective_complete and not build_mode_unlocked:
 		build_mode_unlocked = true
 		build_controller.set_unlocked(true)
@@ -192,7 +200,7 @@ func _build_player() -> void:
 func _build_build_system() -> void:
 	build_controller = BuildControllerScript.new()
 	add_child(build_controller)
-	build_controller.setup(player)
+	build_controller.setup(player, built_refinery_model.network)
 	build_controller.placement_requested.connect(_on_build_placement_requested)
 	build_controller.removal_requested.connect(_on_build_removal_requested)
 	build_controller.notification_requested.connect(_show_notification)
@@ -325,27 +333,35 @@ func _update_user_interface() -> void:
 	if process_model.diesel_volume_l > 0.0:
 		quality_status = "GODKJENT" if process_model.diesel_is_approved() else "OFF-SPEC"
 
-	hud_label.text = (
-		"CRUDEWORKS — PILOTANLEGG\n\n"
-		+ "Råolje       %6.0f / 1000 L\n" % process_model.crude_volume_l
-		+ "Pumpe         %s\n" % ("PÅ" if process_model.pump_running else "AV")
-		+ "Mateventil    %s\n" % ("ÅPEN" if process_model.feed_valve_open else "STENGT")
-		+ "Flow          %6.1f L/s\n" % process_model.flow_lps
-		+ "Varme         %s\n" % heater_state
-		+ "Temperatur    %6.1f °C\n\n" % process_model.heater_temperature_c
-		+ "Diesel        %6.0f L\n" % process_model.diesel_volume_l
-		+ "Kvalitet      %6.1f %% — %s\n" % [process_model.diesel_quality_percent, quality_status]
-		+ "Penger        %d kr" % process_model.money
-	)
-
-	objective_label.text = "MÅL: Produser og selg minst 200 L diesel med ≥ 90 % kvalitet"
-	var alarms: Array[String] = process_model.active_alarms()
-	alarm_label.text = "\n".join(alarms)
+	if build_mode_unlocked:
+		hud_label.text = built_refinery_model.summary_text() + "\nPenger        %d kr" % process_model.money
+		objective_label.text = "MÅL: Bygg, valider og drift ditt eget raffineri — selg ≥ 200 L godkjent diesel"
+		alarm_label.text = ""
+	else:
+		hud_label.text = (
+			"CRUDEWORKS — PILOTANLEGG\n\n"
+			+ "Råolje       %6.0f / 1000 L\n" % process_model.crude_volume_l
+			+ "Pumpe         %s\n" % ("PÅ" if process_model.pump_running else "AV")
+			+ "Mateventil    %s\n" % ("ÅPEN" if process_model.feed_valve_open else "STENGT")
+			+ "Flow          %6.1f L/s\n" % process_model.flow_lps
+			+ "Varme         %s\n" % heater_state
+			+ "Temperatur    %6.1f °C\n\n" % process_model.heater_temperature_c
+			+ "Diesel        %6.0f L\n" % process_model.diesel_volume_l
+			+ "Kvalitet      %6.1f %% — %s\n" % [process_model.diesel_quality_percent, quality_status]
+			+ "Penger        %d kr" % process_model.money
+		)
+		objective_label.text = "MÅL: Produser og selg minst 200 L diesel med ≥ 90 % kvalitet"
+		var alarms: Array[String] = process_model.active_alarms()
+		alarm_label.text = "\n".join(alarms)
 
 	var focused = player.focused_unit()
-	prompt_label.text = focused.interaction_prompt() if focused != null else ""
+	prompt_label.text = (
+		focused.interaction_prompt()
+		if focused != null and not build_controller.active
+		else ""
+	)
 	notification_label.visible = notification_time_left > 0.0
-	completion_panel.visible = process_model.objective_complete
+	completion_panel.visible = process_model.objective_complete and not build_mode_unlocked
 
 
 func _update_unit_statuses() -> void:
@@ -370,6 +386,27 @@ func _update_unit_statuses() -> void:
 	units["heavy_tank"].set_status("%.0f L" % process_model.heavy_product_l)
 	units["sales_terminal"].set_status("KLAR" if process_model.diesel_is_approved() else "VENTER")
 	units["sales_terminal"].set_active(process_model.diesel_is_approved(), Color("78e08f"))
+	for entry in build_controller.registered_units:
+		var built_unit = entry["node"]
+		if not is_instance_valid(built_unit):
+			continue
+		built_unit.set_status(built_refinery_model.unit_status(built_unit.unit_id))
+		var state: Dictionary = built_refinery_model.equipment.get(built_unit.unit_id, {})
+		if state.get("type", "") == "tank":
+			built_unit.set_tank_fill(
+				state["volume_l"] / state["capacity_l"],
+				state["contents"]
+			)
+			built_unit.set_active(
+				state["contents"] == "diesel" and state["quality_percent"] >= BuiltRefineryModelScript.APPROVED_QUALITY_PERCENT,
+				Color("78e08f")
+			)
+		elif state.get("type", "") == "pump":
+			built_unit.set_active(state["running"])
+		elif state.get("type", "") == "heater":
+			built_unit.set_active(state["setpoint_c"] > 0.0, Color("ff5a35"))
+		elif state.get("type", "") == "column":
+			built_unit.set_active(built_refinery_model.actual_flow_lps > 0.01, Color("75ddff"))
 
 
 func _update_process_visuals(delta: float) -> void:
@@ -431,7 +468,13 @@ func _on_unit_interacted(unit_id: String) -> void:
 		"heater":
 			message = process_model.cycle_heater()
 		"sales_terminal":
-			message = process_model.sell_diesel()
+			if process_model.objective_complete:
+				var sale: Dictionary = built_refinery_model.sell_diesel()
+				if sale["ok"]:
+					process_model.credit(sale["revenue"])
+				message = sale["message"]
+			else:
+				message = process_model.sell_diesel()
 		"raw_tank":
 			message = "Råolje: %.0f liter, %.1f °C." % [
 				process_model.crude_volume_l,
@@ -448,10 +491,22 @@ func _on_unit_interacted(unit_id: String) -> void:
 			]
 		"heavy_tank":
 			message = "Tungolje: %.0f liter." % process_model.heavy_product_l
+		_:
+			if unit_id.begins_with("built_"):
+				var result: Dictionary = built_refinery_model.interact(
+					unit_id,
+					process_model.can_afford(BuiltRefineryModelScript.CRUDE_BATCH_COST)
+				)
+				if result["ok"] and result["charge"] > 0:
+					process_model.purchase(result["charge"])
+				message = result["message"]
 	_show_notification(message)
 
 
 func _on_reset_requested() -> void:
+	if process_model.objective_complete or build_mode_unlocked:
+		_show_notification("Pilotbatchen er avsluttet. Last råolje i det bygde anleggets kildetank.", 5.0)
+		return
 	process_model.reset_batch()
 	_show_notification("Ny batch lastet: 1 000 liter råolje.", 5.0)
 
@@ -473,15 +528,30 @@ func _on_build_placement_requested(
 	unit.rotation_quadrants = rotation_quadrants
 	unit.rotation.y = deg_to_rad(float(rotation_quadrants * 90))
 	add_child(unit)
+	var register_result: Dictionary = built_refinery_model.register_unit(
+		unit.unit_id,
+		unit.equipment_type,
+		unit.display_name
+	)
+	if not register_result["ok"]:
+		unit.queue_free()
+		process_model.refund(cost)
+		_show_notification(register_result["message"])
+		return
 	build_controller.register_unit(unit)
 	_show_notification("%s plassert for %d kr." % [definition["name"], cost])
 
 
 func _on_build_removal_requested(unit) -> void:
-	if not is_instance_valid(unit):
+	if not is_instance_valid(unit) or not build_controller.has_registered_unit(unit):
+		return
+	var removal_check: Dictionary = built_refinery_model.can_remove(unit.unit_id)
+	if not removal_check["ok"]:
+		_show_notification(removal_check["message"])
 		return
 	var refund_amount: int = unit.purchase_cost
 	var equipment_name: String = EquipmentCatalogScript.definition(unit.equipment_type)["name"]
+	built_refinery_model.unregister_unit(unit.unit_id)
 	build_controller.remove_registered_unit(unit)
 	process_model.refund(refund_amount)
 	_show_notification("%s fjernet. %d kr refundert." % [equipment_name, refund_amount])
