@@ -1,0 +1,94 @@
+extends SceneTree
+
+const Catalog = preload("res://scripts/equipment_catalog.gd")
+const BuildableUnitScript = preload("res://scripts/buildable_unit.gd")
+const BuildControllerScript = preload("res://scripts/build_controller.gd")
+
+var failures := 0
+
+
+func _init() -> void:
+	call_deferred("_run_tests")
+
+
+func _run_tests() -> void:
+	var world := Node3D.new()
+	root.add_child(world)
+	var controller = BuildControllerScript.new()
+	world.add_child(controller)
+	controller.setup(null)
+	controller.set_unlocked(true)
+	controller.set_build_mode(true)
+	controller._update_build_text()
+	_expect("BYGGEMODUS" in controller.build_label.text, "build-mode interface renders catalog and controls")
+	controller.set_build_mode(false)
+
+	_test_catalog()
+	_test_units_and_footprints(world)
+	_test_placement_and_connections(world, controller)
+
+	if failures == 0:
+		print("PASS: all CrudeWorks building-system tests passed")
+		quit(0)
+	else:
+		printerr("FAIL: %d CrudeWorks building-system test(s) failed" % failures)
+		quit(1)
+
+
+func _test_catalog() -> void:
+	_expect(Catalog.ORDER.size() == 4, "catalog exposes four starter machine types")
+	for equipment_type in Catalog.ORDER:
+		var definition: Dictionary = Catalog.definition(equipment_type)
+		_expect(not definition.is_empty(), "%s has a catalog definition" % equipment_type)
+		_expect(definition["cost"] > 0, "%s has a positive price" % equipment_type)
+
+
+func _test_units_and_footprints(world: Node3D) -> void:
+	var heater = BuildableUnitScript.new()
+	heater.configure_buildable("heater", 1)
+	heater.position = Vector3(-8.0, 1.66, 20.0)
+	world.add_child(heater)
+	_expect(is_instance_valid(heater.input_port), "buildable unit creates an input port")
+	_expect(is_instance_valid(heater.output_port), "buildable unit creates an output port")
+	var original := heater.rotated_footprint()
+	heater.rotation_quadrants = 1
+	var rotated := heater.rotated_footprint()
+	_expect(original.x == rotated.y and original.y == rotated.x, "90-degree rotation swaps footprint axes")
+
+
+func _test_placement_and_connections(world: Node3D, controller) -> void:
+	var tank = BuildableUnitScript.new()
+	tank.configure_buildable("tank", 2)
+	tank.position = Vector3(0.0, 1.96, 20.0)
+	world.add_child(tank)
+	controller.register_unit(tank)
+
+	_expect(
+		not controller._position_is_valid(Vector3(0.5, 1.0, 20.0), Vector2(2.0, 2.0)),
+		"overlapping equipment placement is rejected"
+	)
+	_expect(
+		controller._position_is_valid(Vector3(6.0, 1.0, 20.0), Vector2(2.0, 2.0)),
+		"separated equipment placement is accepted"
+	)
+	_expect(
+		not controller._position_is_valid(Vector3(15.0, 1.0, 20.0), Vector2(2.0, 2.0)),
+		"placement outside build bounds is rejected"
+	)
+
+	var pump = BuildableUnitScript.new()
+	pump.configure_buildable("pump", 3)
+	pump.position = Vector3(0.0, 0.86, 26.0)
+	world.add_child(pump)
+	controller.register_unit(pump)
+	controller._create_connection(tank, pump)
+	_expect(controller.connections.size() == 1, "OUT-to-IN connection creates one pipe record")
+	_expect(controller._connection_exists(tank, pump), "created connection can be detected")
+
+
+func _expect(condition: bool, description: String) -> void:
+	if condition:
+		print("  OK  %s" % description)
+	else:
+		failures += 1
+		printerr("  ERR %s" % description)
