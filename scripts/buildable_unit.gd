@@ -10,6 +10,7 @@ var footprint_size := Vector2.ZERO
 var rotation_quadrants := 0
 var input_port
 var output_port
+var ports: Dictionary = {}
 
 
 func configure_buildable(type: String, serial_number: int) -> void:
@@ -54,16 +55,29 @@ func configure_buildable(type: String, serial_number: int) -> void:
 
 
 func _create_ports(data: Dictionary) -> void:
-	if data["has_input"]:
-		input_port = ProcessPortScript.new()
-		input_port.configure("input")
-		input_port.position = Catalog.port_position(equipment_type, "input")
-		add_child(input_port)
-	if data["has_output"]:
-		output_port = ProcessPortScript.new()
-		output_port.configure("output")
-		output_port.position = Catalog.port_position(equipment_type, "output")
-		add_child(output_port)
+	for port_data in Catalog.port_definitions(equipment_type):
+		var port = ProcessPortScript.new()
+		port.configure(port_data, unit_id)
+		port.position = port_data["position"]
+		port.name = "%sPort" % String(port_data["id"]).capitalize()
+		add_child(port)
+		ports[port_data["id"]] = port
+		if port_data["kind"] == "input" and input_port == null:
+			input_port = port
+		elif port_data["kind"] == "output" and output_port == null:
+			output_port = port
+
+
+func get_port(port_id: String):
+	return ports.get(port_id)
+
+
+func ports_of_kind(port_kind: String) -> Array:
+	var matching := []
+	for port in ports.values():
+		if port.port_kind == port_kind:
+			matching.append(port)
+	return matching
 
 
 func rotated_footprint() -> Vector2:
@@ -72,9 +86,10 @@ func rotated_footprint() -> Vector2:
 	return Vector2(footprint_size.y, footprint_size.x)
 
 
-func set_as_connection_source(enabled: bool) -> void:
-	if is_instance_valid(output_port):
-		output_port.set_highlight(enabled)
+func set_as_connection_source(enabled: bool, port_id := "output") -> void:
+	var port = get_port(port_id)
+	if is_instance_valid(port):
+		port.set_highlight(enabled)
 	set_active(enabled, Color("ff9b42"))
 
 

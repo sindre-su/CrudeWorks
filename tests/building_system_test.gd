@@ -54,6 +54,11 @@ func _test_units_and_footprints(world: Node3D) -> void:
 	world.add_child(heater)
 	_expect(is_instance_valid(heater.input_port), "buildable unit creates an input port")
 	_expect(is_instance_valid(heater.output_port), "buildable unit creates an output port")
+	var column = BuildableUnitScript.new()
+	column.configure_buildable("column", 9)
+	world.add_child(column)
+	_expect(column.ports_of_kind("output").size() == 3, "distillation column exposes three labelled product outlets")
+	_expect(column.get_port("diesel") != null, "column exposes a dedicated diesel outlet")
 	var original := heater.rotated_footprint()
 	heater.rotation_quadrants = 1
 	var rotated := heater.rotated_footprint()
@@ -85,9 +90,12 @@ func _test_placement_and_connections(world: Node3D, controller) -> void:
 	pump.position = Vector3(0.0, 0.86, 26.0)
 	world.add_child(pump)
 	controller.register_unit(pump)
-	controller._create_connection(tank, pump)
+	var result: Dictionary = controller._connect_ports(tank.output_port, pump.input_port)
+	_expect(result["ok"], "controller accepts a valid tank-to-pump connection")
 	_expect(controller.connections.size() == 1, "OUT-to-IN connection creates one pipe record")
-	_expect(controller._connection_exists(tank, pump), "created connection can be detected")
+	_expect(controller._connection_exists(tank.output_port, pump.input_port), "created connection can be detected")
+	var duplicate: Dictionary = controller._connect_ports(tank.output_port, pump.input_port)
+	_expect(not duplicate["ok"], "controller surfaces logical duplicate-connection rejection")
 
 
 func _expect(condition: bool, description: String) -> void:

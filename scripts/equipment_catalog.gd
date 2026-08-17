@@ -57,16 +57,79 @@ static func is_valid(equipment_type: String) -> bool:
 	return not definition(equipment_type).is_empty()
 
 
-static func port_position(equipment_type: String, port_kind: String) -> Vector3:
+static func port_definitions(equipment_type: String) -> Array[Dictionary]:
 	var data := definition(equipment_type)
 	if data.is_empty():
-		return Vector3.ZERO
+		return []
 	var size: Vector3 = data["size"]
 	var port_height := clampf(size.y * 0.25, 0.45, 1.25)
-	var local_z := size.z * 0.5 + 0.18
-	if port_kind == "output":
-		local_z = -local_z
-	return Vector3(0.0, -size.y * 0.5 + port_height, local_z)
+	var y := -size.y * 0.5 + port_height
+	var z := size.z * 0.5 + 0.18
+	if equipment_type == "column":
+		return [
+			_port("input", "input", "crude", "IN", Vector3(0.0, y, z)),
+			_port("light", "output", "light", "LETT", Vector3(-0.82, y, -z)),
+			_port("diesel", "output", "diesel", "DIESEL", Vector3(0.0, y, -z)),
+			_port("heavy", "output", "heavy", "TUNG", Vector3(0.82, y, -z)),
+		]
+
+	var material_type := "any" if equipment_type == "tank" else "crude"
+	return [
+		_port("input", "input", material_type, "IN", Vector3(0.0, y, z)),
+		_port("output", "output", material_type, "OUT", Vector3(0.0, y, -z)),
+	]
+
+
+static func port_definition(equipment_type: String, port_id: String) -> Dictionary:
+	for port in port_definitions(equipment_type):
+		if port["id"] == port_id:
+			return port
+	return {}
+
+
+static func ports_of_kind(equipment_type: String, port_kind: String) -> Array[Dictionary]:
+	var matching: Array[Dictionary] = []
+	for port in port_definitions(equipment_type):
+		if port["kind"] == port_kind:
+			matching.append(port)
+	return matching
+
+
+static func port_position(
+	equipment_type: String,
+	port_kind: String,
+	port_id := ""
+) -> Vector3:
+	if not port_id.is_empty():
+		var exact := port_definition(equipment_type, port_id)
+		return exact.get("position", Vector3.ZERO)
+	var ports := ports_of_kind(equipment_type, port_kind)
+	return ports[0]["position"] if not ports.is_empty() else Vector3.ZERO
+
+
+static func process_order_allows(from_type: String, to_type: String) -> bool:
+	return (
+		(from_type == "tank" and to_type == "pump")
+		or (from_type == "pump" and to_type == "heater")
+		or (from_type == "heater" and to_type == "column")
+		or (from_type == "column" and to_type == "tank")
+	)
+
+
+static func _port(
+	port_id: String,
+	port_kind: String,
+	material_type: String,
+	label: String,
+	position: Vector3
+) -> Dictionary:
+	return {
+		"id": port_id,
+		"kind": port_kind,
+		"material": material_type,
+		"label": label,
+		"position": position,
+	}
 
 
 static func menu_text() -> String:

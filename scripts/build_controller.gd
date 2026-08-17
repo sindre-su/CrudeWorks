@@ -7,6 +7,7 @@ signal notification_requested(message: String)
 
 const Catalog = preload("res://scripts/equipment_catalog.gd")
 const ProcessPortScript = preload("res://scripts/process_port.gd")
+const ProcessNetworkScript = preload("res://scripts/process_network.gd")
 
 const GRID_SIZE := 1.0
 const BUILD_BOUNDS := Rect2(-14.0, 10.5, 28.0, 20.0)
@@ -25,6 +26,8 @@ var ghost_valid := false
 var registered_units: Array[Dictionary] = []
 var connections: Array[Dictionary] = []
 var connection_source
+var process_network
+var network_feedback := "Koble en råoljetank OUT til pumpens IN."
 
 var canvas: CanvasLayer
 var build_panel: PanelContainer
@@ -32,8 +35,9 @@ var build_label: Label
 var build_hint: Label
 
 
-func setup(p_player) -> void:
+func setup(p_player, p_process_network = null) -> void:
 	player = p_player
+	process_network = p_process_network if p_process_network != null else ProcessNetworkScript.new()
 	_build_interface()
 	_rebuild_ghost()
 
@@ -70,13 +74,16 @@ func register_unit(unit) -> void:
 		"footprint": unit.rotated_footprint(),
 		"cost": unit.purchase_cost,
 	})
+	process_network.register_unit(unit.unit_id, unit.equipment_type, unit.display_name)
+	_update_network_feedback()
 
 
 func remove_registered_unit(unit) -> void:
 	_clear_connection_if_source(unit)
+	process_network.unregister_unit(unit.unit_id)
 	for index in range(connections.size() - 1, -1, -1):
 		var connection: Dictionary = connections[index]
-		if connection["from"] == unit or connection["to"] == unit:
+		if connection["from_unit_id"] == unit.unit_id or connection["to_unit_id"] == unit.unit_id:
 			connection["pipe"].queue_free()
 			connections.remove_at(index)
 	for index in range(registered_units.size() - 1, -1, -1):
@@ -84,6 +91,7 @@ func remove_registered_unit(unit) -> void:
 			registered_units.remove_at(index)
 			break
 	unit.queue_free()
+	_update_network_feedback()
 
 
 func _process(_delta: float) -> void:
@@ -124,6 +132,10 @@ func _input(event: InputEvent) -> void:
 			KEY_F:
 				mode = "connect"
 				_handle_connection_selection()
+			KEY_V:
+				var validation: Dictionary = process_network.validate_configuration()
+				network_feedback = validation["message"]
+				notification_requested.emit(network_feedback)
 			KEY_ESCAPE:
 				if mode != "place" or is_instance_valid(connection_source):
 					mode = "place"
@@ -166,30 +178,46 @@ func _try_remove() -> void:
 
 
 func _handle_connection_selection() -> void:
-	var unit = _raycast_buildable()
-	if unit == null:
-		notification_requested.emit("Se på en bygd maskin og trykk F eller venstreklikk.")
+	var port = _raycast_connection_port()
+	if port == null:
+		notification_requested.emit("Se på en merket prosessport og trykk F eller venstreklikk.")
 		return
 	if not is_instance_valid(connection_source):
-		connection_source = unit
-		connection_source.set_as_connection_source(true)
-		notification_requested.emit("Utløp valgt. Se på neste maskin og trykk F.")
+		if port.port_kind != "output":
+			notification_requested.emit("Start koblingen på en oransje OUT-port.")
+			return
+		connection_source = port
+		connection_source.set_highlight(true)
+		notification_requested.emit("%s valgt. Koble til en blå IN-port." % _port_display_name(port))
 		return
-	if unit == connection_source:
-		notification_requested.emit("En maskin kan ikke kobles til seg selv.")
+	if port.port_kind != "input":
+		notification_requested.emit("Koblingen må ende på en blå IN-port.")
 		return
-	if _connection_exists(connection_source, unit):
-		notification_requested.emit("Disse maskinene er allerede koblet sammen.")
-		return
-	_create_connection(connection_source, unit)
-	connection_source.set_as_connection_source(false)
-	connection_source = null
-	notification_requested.emit("Prosessrør koblet mellom OUT og IN.")
+	var result: Dictionary = _connect_ports(connection_source, port)
+	if result["ok"]:
+		_clear_connection_source()
+		network_feedback = process_network.validate_configuration()["message"]
+	else:
+		network_feedback = result["message"]
+	notification_requested.emit(result["message"])
 
 
-func _create_connection(from_unit, to_unit) -> void:
-	var from_position: Vector3 = from_unit.output_port.global_position
-	var to_position: Vector3 = to_unit.input_port.global_position
+func _connect_ports(from_port, to_port) -> Dictionary:
+	var result: Dictionary = process_network.try_connect(
+		from_port.owner_unit_id,
+		from_port.port_id,
+		to_port.owner_unit_id,
+		to_port.port_id
+	)
+	if not result["ok"]:
+		return result
+	_create_connection_visual(from_port, to_port)
+	return result
+
+
+func _create_connection_visual(from_port, to_port) -> void:
+	var from_position: Vector3 = from_port.global_position
+	var to_position: Vector3 = to_port.global_position
 	var direction := to_position - from_position
 	var pipe := MeshInstance3D.new()
 	var mesh := BoxMesh.new()
@@ -206,26 +234,35 @@ func _create_connection(from_unit, to_unit) -> void:
 	material.emission = Color("28555b")
 	material.emission_energy_multiplier = 0.35
 	pipe.material_override = material
-	connections.append({"from": from_unit, "to": to_unit, "pipe": pipe})
-	from_unit.set_status("OUT KOBLET")
-	to_unit.set_status("IN KOBLET")
+	connections.append({
+		"from_unit_id": from_port.owner_unit_id,
+		"from_port_id": from_port.port_id,
+		"to_unit_id": to_port.owner_unit_id,
+		"to_port_id": to_port.port_id,
+		"pipe": pipe,
+	})
 
 
-func _connection_exists(from_unit, to_unit) -> bool:
+func _connection_exists(from_port, to_port) -> bool:
 	for connection in connections:
-		if connection["from"] == from_unit and connection["to"] == to_unit:
+		if (
+			connection["from_unit_id"] == from_port.owner_unit_id
+			and connection["from_port_id"] == from_port.port_id
+			and connection["to_unit_id"] == to_port.owner_unit_id
+			and connection["to_port_id"] == to_port.port_id
+		):
 			return true
 	return false
 
 
 func _clear_connection_source() -> void:
 	if is_instance_valid(connection_source):
-		connection_source.set_as_connection_source(false)
+		connection_source.set_highlight(false)
 	connection_source = null
 
 
 func _clear_connection_if_source(unit) -> void:
-	if connection_source == unit:
+	if is_instance_valid(connection_source) and connection_source.owner_unit_id == unit.unit_id:
 		_clear_connection_source()
 
 
@@ -243,6 +280,46 @@ func _raycast_buildable():
 	if collider != null and collider.is_in_group("player_built"):
 		return collider
 	return null
+
+
+func _raycast_connection_port():
+	if not is_instance_valid(player) or not is_instance_valid(player.camera):
+		return null
+	var from: Vector3 = player.camera.global_position
+	var to: Vector3 = from - player.camera.global_transform.basis.z * 12.0
+	var query := PhysicsRayQueryParameters3D.create(from, to)
+	query.exclude = [player.get_rid()]
+	query.collide_with_areas = true
+	query.collide_with_bodies = true
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		return null
+	var collider = hit["collider"]
+	if collider is ProcessPort:
+		return collider
+	if collider is BuildableUnit:
+		var desired_kind := "output" if not is_instance_valid(connection_source) else "input"
+		var matching: Array = collider.ports_of_kind(desired_kind)
+		if matching.size() == 1:
+			return matching[0]
+		if matching.size() > 1:
+			notification_requested.emit("Se direkte på ønsket merket utløp.")
+	return null
+
+
+func _port_display_name(port) -> String:
+	for entry in registered_units:
+		var unit = entry["node"]
+		if is_instance_valid(unit) and unit.unit_id == port.owner_unit_id:
+			var port_data := Catalog.port_definition(unit.equipment_type, port.port_id)
+			return "%s %s" % [unit.display_name, port_data.get("label", port.port_id)]
+	return "%s %s" % [port.owner_unit_id, port.port_id]
+
+
+func _update_network_feedback() -> void:
+	if process_network == null:
+		return
+	network_feedback = process_network.validate_configuration()["message"]
 
 
 func _update_ghost() -> void:
@@ -330,20 +407,18 @@ func _rebuild_ghost() -> void:
 	ghost_material.emission_enabled = true
 	ghost_body.material_override = ghost_material
 	ghost.add_child(ghost_body)
-	_add_ghost_port("input", data["has_input"])
-	_add_ghost_port("output", data["has_output"])
+	for port_data in Catalog.port_definitions(selected_type):
+		_add_ghost_port(port_data)
 	_add_flow_direction_marker(size)
 	ghost.visible = active and mode == "place"
 	add_child(ghost)
 
 
-func _add_ghost_port(port_kind: String, enabled: bool) -> void:
-	if not enabled:
-		return
+func _add_ghost_port(port_data: Dictionary) -> void:
 	var preview_port = ProcessPortScript.new()
-	preview_port.configure(port_kind)
-	preview_port.position = Catalog.port_position(selected_type, port_kind)
-	preview_port.name = "Preview%sPort" % port_kind.capitalize()
+	preview_port.configure(port_data, "", true)
+	preview_port.position = port_data["position"]
+	preview_port.name = "Preview%sPort" % String(port_data["id"]).capitalize()
 	ghost.add_child(preview_port)
 
 
@@ -384,7 +459,7 @@ func _build_interface() -> void:
 	add_child(canvas)
 	build_panel = PanelContainer.new()
 	build_panel.position = Vector2(20.0, 330.0)
-	build_panel.custom_minimum_size = Vector2(385.0, 310.0)
+	build_panel.custom_minimum_size = Vector2(430.0, 350.0)
 	build_panel.visible = false
 	build_label = Label.new()
 	build_label.add_theme_font_size_override("font_size", 17)
@@ -421,12 +496,13 @@ func _update_build_text() -> void:
 	}[mode]
 	var connection_text := ""
 	if is_instance_valid(connection_source):
-		connection_text = "\nValgt utløp: %s" % connection_source.display_name
+		connection_text = "\nValgt utløp: %s" % _port_display_name(connection_source)
 	build_label.text = (
 		"BYGGEMODUS — %s\nPenger: %d kr\n\n%s\n\n"
 		% [mode_name, available_money, Catalog.menu_text()]
 		+ "Valgt: %s (%d kr)%s\n" % [data["name"], data["cost"], connection_text]
 		+ "Retning: %d°  |  IN blå  |  OUT oransje\n\n" % (rotation_quadrants * 90)
+		+ "Nettverk: %s\n\n" % network_feedback
 		+ "1–4 Velg  |  Q/E Roter  |  Klikk Plasser\n"
-		+ "X Fjern  |  F Koble OUT → IN  |  Høyreklikk Avbryt  |  B Avslutt"
+		+ "X Fjern  |  F Koble OUT → IN  |  V Valider  |  B Avslutt"
 	)
