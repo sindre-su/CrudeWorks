@@ -49,21 +49,20 @@ func configure_buildable(type: String, serial_number: int) -> void:
 		size.y * 0.5 + 0.72
 	)
 	add_to_group("player_built")
-	_create_ports(data, size)
+	_create_ports(data)
 	set_status(data["name"].to_upper())
 
 
-func _create_ports(data: Dictionary, size: Vector3) -> void:
-	var port_height := clampf(size.y * 0.25, 0.45, 1.25)
+func _create_ports(data: Dictionary) -> void:
 	if data["has_input"]:
 		input_port = ProcessPortScript.new()
 		input_port.configure("input")
-		input_port.position = Vector3(0.0, -size.y * 0.5 + port_height, size.z * 0.5 + 0.18)
+		input_port.position = Catalog.port_position(equipment_type, "input")
 		add_child(input_port)
 	if data["has_output"]:
 		output_port = ProcessPortScript.new()
 		output_port.configure("output")
-		output_port.position = Vector3(0.0, -size.y * 0.5 + port_height, -size.z * 0.5 - 0.18)
+		output_port.position = Catalog.port_position(equipment_type, "output")
 		add_child(output_port)
 
 
@@ -81,4 +80,3 @@ func set_as_connection_source(enabled: bool) -> void:
 
 func interaction_prompt() -> String:
 	return "E — inspiser bygd %s" % equipment_type
-

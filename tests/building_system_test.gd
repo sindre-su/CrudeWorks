@@ -21,6 +21,10 @@ func _run_tests() -> void:
 	controller.set_build_mode(true)
 	controller._update_build_text()
 	_expect("BYGGEMODUS" in controller.build_label.text, "build-mode interface renders catalog and controls")
+	_expect("Retning: 0°" in controller.build_label.text, "build UI reports selected orientation")
+	_expect(controller.ghost.has_node("PreviewInputPort"), "placement preview shows the input port")
+	_expect(controller.ghost.has_node("PreviewOutputPort"), "placement preview shows the output port")
+	_expect(controller.ghost.has_node("FlowDirection"), "placement preview shows a flow-direction arrow")
 	controller.set_build_mode(false)
 
 	_test_catalog()

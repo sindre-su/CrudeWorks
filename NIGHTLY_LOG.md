@@ -16,29 +16,39 @@
 
 ## Development Progress
 
-- Baseline inspection completed. No gameplay changes made yet.
+- Baseline inspection completed before gameplay changes.
+- Placement previews now reuse the final equipment port positions and show
+  labelled blue IN and orange OUT ports.
+- Placement previews now include a top-mounted flow-direction arrow, while the
+  build HUD reports the exact 0/90/180/270-degree orientation.
 
 ## Validation Performed
 
 - Full project scene started headlessly in Godot 4.7.1 without parser or
   runtime errors.
 - Existing process/economy suite: 22 checks passed.
-- Existing building-system suite: 18 checks passed.
+- Existing building-system baseline: 18 checks passed.
+- Updated building-system suite: 23 checks passed, including preview ports,
+  direction marker, and orientation feedback.
+- Full project scene was started again after the orientation change without
+  parser, scene-loading, or runtime errors.
+- The process/economy suite was rerun after the change: all 22 checks passed.
 
 ## Bugs Found and Fixed
 
-- No fixes yet. Confirmed that preview ports are absent because the ghost only
-  creates the equipment body; ProcessPort nodes are created after placement.
+- Fixed unreadable placement orientation. The ghost previously created only an
+  equipment body; it now uses the same catalog-backed port offsets as placed
+  equipment so preview and final orientation cannot drift apart.
 
 ## Current Stable State
 
-- Confirmed stable 0.3 baseline. Pilot plant and visual building system work.
+- The 0.3 pilot loop remains unchanged and its model tests pass.
+- Visual building still works, now with readable direction before placement.
 
 ## Known Issues
 
 ### Confirmed bugs
 
-- IN/OUT orientation cannot be read from the placement preview.
 - Interacting with player-built equipment advertises an inspection action but
   produces no useful response.
 - Repeated pilot reset grants free crude while preserving money.
@@ -56,9 +66,14 @@
 ## Significant Files Changed
 
 - `NIGHTLY_LOG.md`: created for this autonomous development run.
+- `scripts/equipment_catalog.gd`: central port-position helper shared by
+  previews and final equipment.
+- `scripts/build_controller.gd`: labelled preview ports, flow arrow, and
+  orientation HUD.
+- `scripts/buildable_unit.gd`: uses shared port positions.
+- `tests/building_system_test.gd`: protects preview direction feedback.
 
 ## Next Best Work
 
-- Add readable IN/OUT orientation to the placement preview, then establish a
-  tested lightweight process network without changing the pilot model.
-
+- Establish a tested lightweight process network and player-readable
+  connection validation without changing the pilot model.

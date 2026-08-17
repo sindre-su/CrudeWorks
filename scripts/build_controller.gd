@@ -6,6 +6,7 @@ signal removal_requested(unit)
 signal notification_requested(message: String)
 
 const Catalog = preload("res://scripts/equipment_catalog.gd")
+const ProcessPortScript = preload("res://scripts/process_port.gd")
 
 const GRID_SIZE := 1.0
 const BUILD_BOUNDS := Rect2(-14.0, 10.5, 28.0, 20.0)
@@ -17,7 +18,8 @@ var available_money := 0
 var selected_type := "tank"
 var rotation_quadrants := 0
 var mode := "place"
-var ghost: MeshInstance3D
+var ghost: Node3D
+var ghost_body: MeshInstance3D
 var ghost_material: StandardMaterial3D
 var ghost_valid := false
 var registered_units: Array[Dictionary] = []
@@ -309,25 +311,72 @@ func _rebuild_ghost() -> void:
 		ghost.queue_free()
 	var data: Dictionary = Catalog.definition(selected_type)
 	var size: Vector3 = data["size"]
-	ghost = MeshInstance3D.new()
+	ghost = Node3D.new()
+	ghost_body = MeshInstance3D.new()
 	if data["shape"] == "cylinder":
 		var cylinder := CylinderMesh.new()
 		cylinder.top_radius = size.x * 0.5
 		cylinder.bottom_radius = size.x * 0.5
 		cylinder.height = size.y
 		cylinder.radial_segments = 24
-		ghost.mesh = cylinder
+		ghost_body.mesh = cylinder
 	else:
 		var box := BoxMesh.new()
 		box.size = size
-		ghost.mesh = box
+		ghost_body.mesh = box
 	ghost_material = StandardMaterial3D.new()
 	ghost_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	ghost_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	ghost_material.emission_enabled = true
-	ghost.material_override = ghost_material
+	ghost_body.material_override = ghost_material
+	ghost.add_child(ghost_body)
+	_add_ghost_port("input", data["has_input"])
+	_add_ghost_port("output", data["has_output"])
+	_add_flow_direction_marker(size)
 	ghost.visible = active and mode == "place"
 	add_child(ghost)
+
+
+func _add_ghost_port(port_kind: String, enabled: bool) -> void:
+	if not enabled:
+		return
+	var preview_port = ProcessPortScript.new()
+	preview_port.configure(port_kind)
+	preview_port.position = Catalog.port_position(selected_type, port_kind)
+	preview_port.name = "Preview%sPort" % port_kind.capitalize()
+	ghost.add_child(preview_port)
+
+
+func _add_flow_direction_marker(size: Vector3) -> void:
+	var arrow_root := Node3D.new()
+	arrow_root.name = "FlowDirection"
+	arrow_root.position = Vector3(0.0, size.y * 0.5 + 0.08, -0.12)
+	ghost.add_child(arrow_root)
+
+	var arrow_material := StandardMaterial3D.new()
+	arrow_material.albedo_color = Color("ff9b42")
+	arrow_material.emission_enabled = true
+	arrow_material.emission = Color("ff9b42")
+	arrow_material.emission_energy_multiplier = 1.8
+	arrow_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+
+	var stem := MeshInstance3D.new()
+	var stem_mesh := BoxMesh.new()
+	stem_mesh.size = Vector3(0.16, 0.06, minf(size.z * 0.45, 1.15))
+	stem.mesh = stem_mesh
+	stem.position.z = -0.18
+	stem.material_override = arrow_material
+	arrow_root.add_child(stem)
+
+	for side in [-1.0, 1.0]:
+		var tip := MeshInstance3D.new()
+		var tip_mesh := BoxMesh.new()
+		tip_mesh.size = Vector3(0.48, 0.06, 0.13)
+		tip.mesh = tip_mesh
+		tip.position = Vector3(side * 0.17, 0.0, -0.70)
+		tip.rotation.y = deg_to_rad(side * 42.0)
+		tip.material_override = arrow_material
+		arrow_root.add_child(tip)
 
 
 func _build_interface() -> void:
@@ -376,7 +425,8 @@ func _update_build_text() -> void:
 	build_label.text = (
 		"BYGGEMODUS — %s\nPenger: %d kr\n\n%s\n\n"
 		% [mode_name, available_money, Catalog.menu_text()]
-		+ "Valgt: %s (%d kr)%s\n\n" % [data["name"], data["cost"], connection_text]
+		+ "Valgt: %s (%d kr)%s\n" % [data["name"], data["cost"], connection_text]
+		+ "Retning: %d°  |  IN blå  |  OUT oransje\n\n" % (rotation_quadrants * 90)
 		+ "1–4 Velg  |  Q/E Roter  |  Klikk Plasser\n"
 		+ "X Fjern  |  F Koble OUT → IN  |  Høyreklikk Avbryt  |  B Avslutt"
 	)

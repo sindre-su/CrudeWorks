@@ -57,10 +57,21 @@ static func is_valid(equipment_type: String) -> bool:
 	return not definition(equipment_type).is_empty()
 
 
+static func port_position(equipment_type: String, port_kind: String) -> Vector3:
+	var data := definition(equipment_type)
+	if data.is_empty():
+		return Vector3.ZERO
+	var size: Vector3 = data["size"]
+	var port_height := clampf(size.y * 0.25, 0.45, 1.25)
+	var local_z := size.z * 0.5 + 0.18
+	if port_kind == "output":
+		local_z = -local_z
+	return Vector3(0.0, -size.y * 0.5 + port_height, local_z)
+
+
 static func menu_text() -> String:
 	var lines: Array[String] = []
 	for index in ORDER.size():
 		var data := definition(ORDER[index])
 		lines.append("%d  %-22s %4d kr" % [index + 1, data["name"], data["cost"]])
 	return "\n".join(lines)
-
