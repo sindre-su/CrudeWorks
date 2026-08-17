@@ -27,6 +27,7 @@ var objective_label: Label
 var alarm_label: Label
 var prompt_label: Label
 var notification_label: Label
+var help_label: Label
 var completion_panel: PanelContainer
 var notification_time_left := 0.0
 
@@ -49,7 +50,8 @@ func _process(delta: float) -> void:
 	build_controller.set_available_money(process_model.money)
 	build_controller.set_process_flow(
 		built_refinery_model.actual_flow_lps,
-		BuiltRefineryModelScript.PUMP_CAPACITY_LPS
+		BuiltRefineryModelScript.PUMP_CAPACITY_LPS,
+		built_refinery_model.active_connection_keys()
 	)
 	if process_model.objective_complete and not build_mode_unlocked:
 		build_mode_unlocked = true
@@ -246,7 +248,7 @@ func _build_user_interface() -> void:
 	alarm_label.add_theme_constant_override("outline_size", 8)
 	canvas.add_child(alarm_label)
 
-	var help_label := Label.new()
+	help_label = Label.new()
 	help_label.anchor_left = 1.0
 	help_label.anchor_right = 1.0
 	help_label.offset_left = -275.0
@@ -335,8 +337,9 @@ func _update_user_interface() -> void:
 
 	if build_mode_unlocked:
 		hud_label.text = built_refinery_model.summary_text() + "\nPenger        %d kr" % process_model.money
-		objective_label.text = "MÅL: Bygg, valider og drift ditt eget raffineri — selg ≥ 200 L godkjent diesel"
+		objective_label.text = "MÅL: Bygg og drift område 02 — selg ≥ 200 L godkjent diesel"
 		alarm_label.text = ""
+		help_label.text = "WASD  Gå\nMus  Se\nShift  Løp\nSpace  Hopp\nCtrl / C  Huk\nE  Bruk utstyr\nB  Byggemodus\nR  Tøm produkter\nEsc  Frigjør mus"
 	else:
 		hud_label.text = (
 			"CRUDEWORKS — PILOTANLEGG\n\n"
@@ -353,15 +356,22 @@ func _update_user_interface() -> void:
 		objective_label.text = "MÅL: Produser og selg minst 200 L diesel med ≥ 90 % kvalitet"
 		var alarms: Array[String] = process_model.active_alarms()
 		alarm_label.text = "\n".join(alarms)
+		help_label.text = "WASD  Gå\nMus  Se\nShift  Løp\nSpace  Hopp\nCtrl / C  Huk\nE  Bruk utstyr\nR  Start batch på nytt\nEsc  Frigjør mus"
 
 	var focused = player.focused_unit()
-	prompt_label.text = (
-		focused.interaction_prompt()
-		if focused != null and not build_controller.active
-		else ""
-	)
+	prompt_label.text = ""
+	if focused != null and not build_controller.active:
+		if focused.unit_id.begins_with("built_"):
+			prompt_label.text = built_refinery_model.interaction_prompt(focused.unit_id)
+		else:
+			prompt_label.text = focused.interaction_prompt()
 	notification_label.visible = notification_time_left > 0.0
 	completion_panel.visible = process_model.objective_complete and not build_mode_unlocked
+	var operation_ui_visible: bool = not build_controller.active
+	hud_label.visible = operation_ui_visible
+	objective_label.visible = operation_ui_visible
+	alarm_label.visible = operation_ui_visible
+	help_label.visible = operation_ui_visible
 
 
 func _update_unit_statuses() -> void:
@@ -384,8 +394,13 @@ func _update_unit_statuses() -> void:
 	])
 	units["diesel_tank"].set_active(process_model.diesel_is_approved(), Color("78e08f"))
 	units["heavy_tank"].set_status("%.0f L" % process_model.heavy_product_l)
-	units["sales_terminal"].set_status("KLAR" if process_model.diesel_is_approved() else "VENTER")
-	units["sales_terminal"].set_active(process_model.diesel_is_approved(), Color("78e08f"))
+	var sales_ready: bool = (
+		built_refinery_model.diesel_is_approved()
+		if build_mode_unlocked
+		else process_model.diesel_is_approved()
+	)
+	units["sales_terminal"].set_status("KLAR" if sales_ready else "VENTER")
+	units["sales_terminal"].set_active(sales_ready, Color("78e08f"))
 	for entry in build_controller.registered_units:
 		var built_unit = entry["node"]
 		if not is_instance_valid(built_unit):
@@ -505,7 +520,8 @@ func _on_unit_interacted(unit_id: String) -> void:
 
 func _on_reset_requested() -> void:
 	if process_model.objective_complete or build_mode_unlocked:
-		_show_notification("Pilotbatchen er avsluttet. Last råolje i det bygde anleggets kildetank.", 5.0)
+		var discard_result: Dictionary = built_refinery_model.discard_products()
+		_show_notification(discard_result["message"], 6.0)
 		return
 	process_model.reset_batch()
 	_show_notification("Ny batch lastet: 1 000 liter råolje.", 5.0)

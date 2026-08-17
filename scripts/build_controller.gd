@@ -67,6 +67,7 @@ func set_build_mode(value: bool) -> void:
 		build_hint.visible = unlocked and not active
 	if is_instance_valid(ghost):
 		ghost.visible = active
+	_set_unit_ports_visible(active)
 
 
 func register_unit(unit) -> void:
@@ -77,6 +78,8 @@ func register_unit(unit) -> void:
 	})
 	if not process_network.has_unit(unit.unit_id):
 		process_network.register_unit(unit.unit_id, unit.equipment_type, unit.display_name)
+	for port in unit.ports.values():
+		port.visible = active
 	_update_network_feedback()
 
 
@@ -87,12 +90,25 @@ func has_registered_unit(unit) -> bool:
 	return false
 
 
+func _set_unit_ports_visible(value: bool) -> void:
+	for entry in registered_units:
+		var unit = entry["node"]
+		if not is_instance_valid(unit):
+			continue
+		for port in unit.ports.values():
+			port.visible = value
+
+
 func remove_registered_unit(unit) -> void:
 	_clear_connection_if_source(unit)
 	process_network.unregister_unit(unit.unit_id)
 	for index in range(connections.size() - 1, -1, -1):
 		var connection: Dictionary = connections[index]
 		if connection["from_unit_id"] == unit.unit_id or connection["to_unit_id"] == unit.unit_id:
+			if is_instance_valid(connection["from_port"]):
+				connection["from_port"].set_connected(false)
+			if is_instance_valid(connection["to_port"]):
+				connection["to_port"].set_connected(false)
 			connection["pipe"].queue_free()
 			connection["flow_visual"].queue_free()
 			connections.remove_at(index)
@@ -250,23 +266,46 @@ func _create_connection_visual(from_port, to_port) -> void:
 	var flow_visual = FlowVisualScript.new()
 	add_child(flow_visual)
 	flow_visual.configure(to_local(from_position), to_local(to_position), Color("7ce7e0"))
+	from_port.set_connected(true)
+	to_port.set_connected(true)
 	connections.append({
 		"from_unit_id": from_port.owner_unit_id,
 		"from_port_id": from_port.port_id,
 		"to_unit_id": to_port.owner_unit_id,
 		"to_port_id": to_port.port_id,
+		"from_port": from_port,
+		"to_port": to_port,
+		"key": _connection_key(
+			from_port.owner_unit_id,
+			from_port.port_id,
+			to_port.owner_unit_id,
+			to_port.port_id
+		),
 		"pipe": pipe,
 		"flow_visual": flow_visual,
 	})
 
 
-func set_process_flow(flow_lps: float, maximum_flow_lps: float) -> void:
+func set_process_flow(
+	flow_lps: float,
+	maximum_flow_lps: float,
+	active_connection_keys := {}
+) -> void:
 	var enabled := flow_lps > 0.01
 	var normalized := clampf(flow_lps / maximum_flow_lps, 0.0, 1.0) if maximum_flow_lps > 0.0 else 0.0
 	for connection in connections:
 		var flow_visual = connection["flow_visual"]
 		if is_instance_valid(flow_visual):
-			flow_visual.set_flow(enabled, normalized)
+			flow_visual.set_flow(enabled and active_connection_keys.has(connection["key"]), normalized)
+
+
+static func _connection_key(
+	from_unit_id: String,
+	from_port_id: String,
+	to_unit_id: String,
+	to_port_id: String
+) -> String:
+	return "%s:%s>%s:%s" % [from_unit_id, from_port_id, to_unit_id, to_port_id]
 
 
 func _connection_exists(from_port, to_port) -> bool:
@@ -311,6 +350,10 @@ func _disconnect_port(port) -> bool:
 			connection["to_unit_id"],
 			connection["to_port_id"]
 		)
+		if is_instance_valid(connection["from_port"]):
+			connection["from_port"].set_connected(false)
+		if is_instance_valid(connection["to_port"]):
+			connection["to_port"].set_connected(false)
 		connection["pipe"].queue_free()
 		connection["flow_visual"].queue_free()
 		connections.remove_at(index)
@@ -522,13 +565,14 @@ func _build_interface() -> void:
 	canvas = CanvasLayer.new()
 	add_child(canvas)
 	build_panel = PanelContainer.new()
-	build_panel.position = Vector2(20.0, 330.0)
-	build_panel.custom_minimum_size = Vector2(430.0, 350.0)
+	build_panel.position = Vector2(20.0, 20.0)
+	build_panel.custom_minimum_size = Vector2(450.0, 390.0)
 	build_panel.visible = false
 	build_label = Label.new()
 	build_label.add_theme_font_size_override("font_size", 17)
 	build_label.add_theme_constant_override("outline_size", 5)
 	build_label.add_theme_color_override("font_outline_color", Color.BLACK)
+	build_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	build_panel.add_child(build_label)
 	canvas.add_child(build_panel)
 

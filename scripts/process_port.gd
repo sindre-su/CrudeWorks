@@ -7,6 +7,10 @@ var material_type := "any"
 var owner_unit_id := ""
 var marker_material: StandardMaterial3D
 var base_color := Color.WHITE
+var port_label: Label3D
+var base_label := ""
+var connected := false
+var highlighted := false
 
 
 func configure(port_data: Dictionary, unit_id := "", preview := false) -> void:
@@ -14,6 +18,7 @@ func configure(port_data: Dictionary, unit_id := "", preview := false) -> void:
 	port_kind = port_data["kind"]
 	material_type = port_data["material"]
 	owner_unit_id = unit_id
+	base_label = port_data["label"]
 	base_color = Color("4da6ff") if port_kind == "input" else Color("ff9b42")
 	collision_layer = 0 if preview else 2
 	collision_mask = 0
@@ -39,8 +44,8 @@ func configure(port_data: Dictionary, unit_id := "", preview := false) -> void:
 		collision.shape = shape
 		add_child(collision)
 
-	var port_label := Label3D.new()
-	port_label.text = port_data["label"]
+	port_label = Label3D.new()
+	port_label.text = base_label
 	port_label.position = Vector3(0.0, 0.34, 0.0)
 	port_label.font_size = 28
 	port_label.outline_size = 8
@@ -50,7 +55,16 @@ func configure(port_data: Dictionary, unit_id := "", preview := false) -> void:
 
 
 func set_highlight(enabled: bool) -> void:
+	highlighted = enabled
 	if not is_instance_valid(marker_material):
 		return
-	marker_material.emission_energy_multiplier = 2.4 if enabled else 0.75
+	marker_material.emission_energy_multiplier = 2.4 if enabled else (1.35 if connected else 0.75)
 	marker_material.albedo_color = Color.WHITE if enabled else base_color
+
+
+func set_connected(enabled: bool) -> void:
+	connected = enabled
+	if is_instance_valid(port_label):
+		port_label.text = "%s ✓" % base_label if connected else base_label
+	if not highlighted and is_instance_valid(marker_material):
+		marker_material.emission_energy_multiplier = 1.35 if connected else 0.75

@@ -97,11 +97,16 @@ func _test_placement_and_connections(world: Node3D, controller) -> void:
 	_expect(result["ok"], "controller accepts a valid tank-to-pump connection")
 	_expect(controller.connections.size() == 1, "OUT-to-IN connection creates one pipe record")
 	_expect(controller._connection_exists(tank.output_port, pump.input_port), "created connection can be detected")
+	_expect(tank.output_port.connected and pump.input_port.connected, "connected ports retain per-port connection feedback")
+	var active_keys := {controller.connections[0]["key"]: true}
+	controller.set_process_flow(10.0, 10.0, active_keys)
+	_expect(controller.connections[0]["flow_visual"].visible, "active-route pipe displays moving flow markers")
 	var duplicate: Dictionary = controller._connect_ports(tank.output_port, pump.input_port)
 	_expect(not duplicate["ok"], "controller surfaces logical duplicate-connection rejection")
 	_expect(controller._disconnect_port(tank.output_port), "a focused port can disconnect a mistaken pipe")
 	_expect(controller.connections.is_empty(), "disconnect removes the visual pipe record")
 	_expect(controller.process_network.connection_count() == 0, "disconnect also removes the authoritative graph edge")
+	_expect(not tank.output_port.connected and not pump.input_port.connected, "disconnect clears both port connection indicators")
 
 
 func _expect(condition: bool, description: String) -> void:

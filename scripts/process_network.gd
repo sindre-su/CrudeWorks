@@ -3,6 +3,8 @@ extends RefCounted
 
 const Catalog = preload("res://scripts/equipment_catalog.gd")
 
+signal topology_changed
+
 var units: Dictionary = {}
 var connections: Array[Dictionary] = []
 
@@ -16,15 +18,20 @@ func register_unit(unit_id: String, equipment_type: String, display_name := "") 
 		"type": equipment_type,
 		"name": display_name if not display_name.is_empty() else unit_id,
 	}
+	topology_changed.emit()
 	return _result(true, "%s er registrert." % _unit_name(unit_id))
 
 
 func unregister_unit(unit_id: String) -> void:
+	var changed := units.has(unit_id)
 	units.erase(unit_id)
 	for index in range(connections.size() - 1, -1, -1):
 		var edge := connections[index]
 		if edge["from_unit"] == unit_id or edge["to_unit"] == unit_id:
 			connections.remove_at(index)
+			changed = true
+	if changed:
+		topology_changed.emit()
 
 
 func has_unit(unit_id: String) -> bool:
@@ -80,6 +87,7 @@ func try_connect(
 		"to_unit": to_unit_id,
 		"to_port": to_port_id,
 	})
+	topology_changed.emit()
 	return _result(true, "%s %s er koblet til %s IN." % [
 		_unit_name(from_unit_id),
 		from_port["label"],
@@ -97,6 +105,7 @@ func disconnect_ports(
 	if index < 0:
 		return false
 	connections.remove_at(index)
+	topology_changed.emit()
 	return true
 
 
@@ -109,7 +118,7 @@ func validate_configuration() -> Dictionary:
 	if not route.is_empty():
 		return {
 			"valid": true,
-			"message": "Prosesslinjen er komplett og klar for klargjøring.",
+			"message": "Linjen er gyldig — trykk B for å avslutte bygging, så E på kildetanken.",
 			"route": route,
 		}
 	if units.is_empty():

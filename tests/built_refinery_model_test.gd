@@ -20,6 +20,8 @@ func _run_tests() -> void:
 	_test_mass_conserving_ideal_batch_and_sale()
 	_test_full_tank_backpressure()
 	_test_commissioning_and_paid_batches()
+	_test_topology_change_stops_flow_and_spare_pump()
+	_test_offspec_recovery()
 
 
 func _test_invalid_network_cannot_start() -> void:
@@ -33,9 +35,16 @@ func _test_invalid_network_cannot_start() -> void:
 
 func _test_mass_conserving_ideal_batch_and_sale() -> void:
 	var model = _complete_model()
+	model.tick(0.0)
+	_expect("kildetanken" in model.last_status, "empty valid route tells the player to load crude first")
+	_expect("commissioning" in model.interaction_prompt("source"), "empty source prompt identifies the commissioning action")
 	var load_result: Dictionary = model.load_crude_batch("source")
 	_expect(load_result["ok"] and load_result["charge"] == 0, "first built batch is an explicit free commissioning batch")
 	_expect(not model.can_remove("source")["ok"], "non-empty built tanks cannot be removed for a refund")
+	model.tick(0.0)
+	_expect("Varm" in model.last_status, "loaded cold route tells the player to heat before pumping")
+	_expect("råoljetank" in model.interaction_prompt("source"), "loaded source prompt switches to inspection")
+	_expect("LETT" in model.interaction_prompt("light_tank"), "product-tank prompt identifies its routed fraction")
 	model.interact("heater")
 	model.interact("heater")
 	model.tick(10.0)
@@ -57,6 +66,8 @@ func _test_mass_conserving_ideal_batch_and_sale() -> void:
 	var sale: Dictionary = model.sell_diesel()
 	_expect(sale["ok"] and sale["revenue"] == 2800, "approved built diesel sells for the expected revenue")
 	_expect(is_equal_approx(model.equipment["diesel_tank"]["volume_l"], 0.0), "sale consumes the diesel inventory")
+	_expect(is_equal_approx(model.equipment["light_tank"]["volume_l"], 0.0), "successful product dispatch clears light fraction storage")
+	_expect(is_equal_approx(model.equipment["heavy_tank"]["volume_l"], 0.0), "successful product dispatch clears heavy fraction storage")
 	var repeated_sale: Dictionary = model.sell_diesel()
 	_expect(not repeated_sale["ok"] and repeated_sale["revenue"] == 0, "diesel cannot be sold repeatedly without new product")
 
@@ -94,6 +105,35 @@ func _test_commissioning_and_paid_batches() -> void:
 	_expect(not unpaid["ok"], "second batch is not created for free")
 	var paid: Dictionary = model.load_crude_batch("source", true)
 	_expect(paid["ok"] and paid["charge"] == BuiltRefineryModelScript.CRUDE_BATCH_COST, "subsequent crude batch reports its exact purchase cost")
+
+
+func _test_topology_change_stops_flow_and_spare_pump() -> void:
+	var model = _complete_model()
+	model.load_crude_batch("source")
+	model.interact("heater")
+	model.interact("heater")
+	model.tick(10.0)
+	model.interact("pump")
+	model.tick(1.0)
+	model.network.disconnect_ports("pump", "output", "heater", "input")
+	_expect(not model.equipment["pump"]["running"], "disconnecting a live route stops its pump immediately")
+	_expect(is_equal_approx(model.actual_flow_lps, 0.0), "topology change clears actual flow immediately")
+	model.register_unit("spare_pump", "pump", "P-299")
+	model.network.try_connect("pump", "output", "heater", "input")
+	var spare_start: Dictionary = model.interact("spare_pump")
+	_expect(not spare_start["ok"], "disconnected spare pump cannot start because another route is valid")
+
+
+func _test_offspec_recovery() -> void:
+	var model = _complete_model()
+	model.load_crude_batch("source")
+	model.interact("pump")
+	model.tick(100.0)
+	_expect(not model.sell_diesel()["ok"], "cold commissioning products are rejected as off-spec")
+	var discard: Dictionary = model.discard_products()
+	_expect(discard["ok"], "off-spec products have an explicit safe disposal path")
+	_expect(is_equal_approx(_total_tank_volume(model), 0.0), "disposal clears product inventory without creating money")
+	_expect(model.load_crude_batch("source", true)["ok"], "player can load a paid recovery batch after disposal")
 
 
 func _complete_model():

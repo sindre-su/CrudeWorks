@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.3 – første byggesystem**
+**Prototypeversjon: 0.4 – spillerdrevet raffineri**
 
 En liten 3D-prototype der spilleren driver et forenklet pilotraffineri. Første mål
 er å behandle 1 000 liter råolje og selge minst 200 liter diesel med 90 % eller
@@ -8,19 +8,23 @@ bedre kvalitet.
 
 ## Status
 
-Første spillbare «vertical slice» er under bygging. Prototypen inneholder:
+Den første komplette «vertical slice»-en inneholder:
 
 - førstepersons bevegelse og interaksjon
 - råoljetank, pumpe, ventil og varmeenhet
 - forenklet temperaturbasert destillasjon
 - tre produkttanker
 - dieselkvalitet, alarmer, laboratorium og salg
-- omstart av batch uten å starte spillet på nytt
+- kontrollert råoljelasting og sikker tømming av off-spec produkt
 - hopping og huking
 - synlige væskenivåer, flowmarkører og maskinbevegelse
 - byggeområde som låses opp etter første godkjente salg
-- plassering, rotasjon, fjerning og full refusjon av utstyr
-- manuelle OUT-til-IN-rør mellom bygde maskiner
+- lesbar plassering, rotasjon, fjerning og trygg refusjon av tomt utstyr
+- retningsbestemte OUT-til-IN-rør med validering og frakobling
+- en logisk prosesslinje: tank → pumpe → varme → kolonne → tre tanker
+- operasjonelle bygde tanker, pumper, varmeenheter og kolonner
+- massebalanse, tankkapasitet, backpressure og dieselkvalitet
+- commissioning batch, betalte råoljebatcher og salg som tømmer produktet
 
 Alle objekter er foreløpig bygget av Godots primitive 3D-former. Det gjør at vi
 kan teste gameplay før vi bruker tid på modeller og grafikk.
@@ -36,11 +40,14 @@ Prosjektet bruker Compatibility-rendereren og krever ingen eksterne pakker.
 
 ### Automatisert test
 
-Prosessmodellen kan testes uten å åpne spillvinduet:
+Alle kjernesystemene kan testes uten å åpne spillvinduet:
 
 ```sh
 godot --headless --path . --script res://tests/process_model_test.gd
+godot --headless --path . --script res://tests/process_network_test.gd
 godot --headless --path . --script res://tests/building_system_test.gd
+godot --headless --path . --script res://tests/built_refinery_model_test.gd
+godot --headless --path . --script res://tests/main_built_loop_test.gd
 ```
 
 ## Styring
@@ -53,7 +60,7 @@ godot --headless --path . --script res://tests/building_system_test.gd
 | Space | Hopp |
 | Ctrl eller C | Hold inne for å huke |
 | E | Bruk eller inspiser utstyr |
-| R | Nullstill og last en ny batch |
+| R | Pilot: ny batch. Område 02: tøm bygde produkter uten betaling |
 | Esc | Frigjør musepekeren |
 
 ### Byggemodus
@@ -68,6 +75,8 @@ Byggemodus låses opp når den første dieselbatchen er solgt.
 | Venstreklikk | Plasser eller bekreft valgt handling |
 | X | Bytt til fjerningsmodus; fjerning gir full refusjon |
 | F | Velg utløp og deretter innløp for å lage prosessrør |
+| G | Fjern røret på porten du ser på |
+| V | Valider prosesslinjen og vis første feil |
 | Høyreklikk | Avbryt gjeldende byggehandling |
 
 ## Første produksjonsrunde
@@ -87,6 +96,25 @@ utbytte og kvalitet gjennom handling.
 Væskenivåene i tankene og de lysende markørene i rørene viser nå prosessen
 direkte i 3D. Pumpens rotor og ventilhåndtak beveger seg når utstyret brukes.
 
+## Første selvbygde raffineri
+
+1. Selg godkjent pilotdiesel. Treningskontrakten garanterer minst 2 800 kr, slik
+   at spilleren alltid kan finansiere startanlegget.
+2. Trykk `B` og plasser fire tanker, én pumpe, én varmeenhet og én kolonne.
+3. Koble `tank OUT → pumpe IN`, `pumpe OUT → varme IN` og
+   `varme OUT → kolonne IN`.
+4. Koble kolonnens `LETT`, `DIESEL` og `TUNG` til hver sin tank. Trykk `V` for
+   en konkret valideringsmelding. Feil rør kan fjernes med `G`.
+5. Trykk `B` for å avslutte bygging, og `E` på kildetanken for å laste den ene
+   gratis commissioning batchen.
+6. Sett varmeenheten til 200 °C, vent til den er varm, og start pumpen.
+7. Følg væskenivå, flow og kvalitet. Godkjent diesel selges ved `LAB / SALG`;
+   salget sender hele produktbatchen ut og tømmer produkttankene.
+
+Senere råoljebatcher koster 300 kr. Hvis en batch blir off-spec, forklarer
+terminalen at `R` sender bygde produkter til sikker avfallshåndtering uten
+betaling. Dette gir en gjenopprettingsvei uten gratis råolje eller penger.
+
 ## Prosjektstruktur
 
 ```text
@@ -94,12 +122,21 @@ CrudeWorks/
 ├── project.godot
 ├── scenes/
 │   └── main.tscn
-└── scripts/
+├── scripts/
+    ├── built_refinery_model.gd
+    ├── build_controller.gd
+    ├── buildable_unit.gd
+    ├── equipment_catalog.gd
     ├── interactive_unit.gd
     ├── main.gd
     ├── player.gd
-    └── process_model.gd
+    ├── process_model.gd
+    ├── process_network.gd
+    └── process_port.gd
 └── tests/
+    ├── built_refinery_model_test.gd
     ├── building_system_test.gd
-    └── process_model_test.gd
+    ├── main_built_loop_test.gd
+    ├── process_model_test.gd
+    └── process_network_test.gd
 ```

@@ -1,6 +1,7 @@
 extends SceneTree
 
 const ProcessModelScript = preload("res://scripts/process_model.gd")
+const EquipmentCatalog = preload("res://scripts/equipment_catalog.gd")
 
 var failures := 0
 
@@ -11,6 +12,7 @@ func _init() -> void:
 	_test_cold_batch_is_rejected()
 	_test_high_temperature_alarm()
 	_test_building_economy()
+	_test_minimum_pilot_contract_funds_area_two()
 
 	if failures == 0:
 		print("PASS: all CrudeWorks process-model tests passed")
@@ -82,6 +84,20 @@ func _test_building_economy() -> void:
 	_expect(model.money == 600, "rejected purchase does not change money")
 	model.refund(400)
 	_expect(model.money == 1000, "removed equipment can be fully refunded")
+
+
+func _test_minimum_pilot_contract_funds_area_two() -> void:
+	var model = ProcessModelScript.new()
+	model.diesel_volume_l = ProcessModelScript.DIESEL_TARGET_L
+	model.diesel_quality_percent = 100.0
+	model.sell_diesel()
+	var minimum_refinery_cost: int = (
+		EquipmentCatalog.definition("tank")["cost"] * 4
+		+ EquipmentCatalog.definition("pump")["cost"]
+		+ EquipmentCatalog.definition("heater")["cost"]
+		+ EquipmentCatalog.definition("column")["cost"]
+	)
+	_expect(model.money >= minimum_refinery_cost, "minimum valid pilot sale funds a complete Area 02 refinery")
 
 
 func _simulate(model, duration_seconds: float) -> void:
