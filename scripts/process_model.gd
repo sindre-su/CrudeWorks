@@ -25,6 +25,39 @@ var batch_sold := false
 var objective_complete := false
 
 
+func save_state() -> Dictionary:
+	return {
+		"crude_volume_l": crude_volume_l,
+		"light_product_l": light_product_l,
+		"diesel_volume_l": diesel_volume_l,
+		"heavy_product_l": heavy_product_l,
+		"diesel_quality_percent": diesel_quality_percent,
+		"feed_valve_open": feed_valve_open,
+		"heater_setpoint_c": heater_setpoint_c,
+		"heater_temperature_c": heater_temperature_c,
+		"money": money,
+		"batch_sold": batch_sold,
+		"objective_complete": objective_complete,
+	}
+
+
+func apply_saved_state(state: Dictionary) -> void:
+	crude_volume_l = float(state["crude_volume_l"])
+	light_product_l = float(state["light_product_l"])
+	diesel_volume_l = float(state["diesel_volume_l"])
+	heavy_product_l = float(state["heavy_product_l"])
+	diesel_quality_percent = float(state["diesel_quality_percent"])
+	feed_valve_open = bool(state["feed_valve_open"])
+	heater_setpoint_c = float(state["heater_setpoint_c"])
+	heater_temperature_c = float(state["heater_temperature_c"])
+	money = int(state["money"])
+	batch_sold = bool(state["batch_sold"])
+	objective_complete = bool(state["objective_complete"])
+	# Loading never resumes moving equipment without a deliberate player action.
+	pump_running = false
+	flow_lps = 0.0
+
+
 func reset_batch() -> void:
 	crude_volume_l = BATCH_VOLUME_L
 	light_product_l = 0.0

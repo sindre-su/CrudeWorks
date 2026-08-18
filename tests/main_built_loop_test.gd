@@ -11,6 +11,7 @@ func _init() -> void:
 
 func _run_test() -> void:
 	var main = MainScene.instantiate()
+	main.persistence_enabled = false
 	root.add_child(main)
 	await process_frame
 

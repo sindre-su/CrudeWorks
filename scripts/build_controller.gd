@@ -95,6 +95,26 @@ func has_registered_unit(unit) -> bool:
 	return false
 
 
+func registered_unit_by_id(unit_id: String):
+	for entry in registered_units:
+		var unit = entry["node"]
+		if is_instance_valid(unit) and unit.unit_id == unit_id:
+			return unit
+	return null
+
+
+func restore_connection(edge: Dictionary) -> Dictionary:
+	var from_unit = registered_unit_by_id(edge.get("from_unit", ""))
+	var to_unit = registered_unit_by_id(edge.get("to_unit", ""))
+	if from_unit == null or to_unit == null:
+		return {"ok": false, "message": "Lagret rør peker på ukjent utstyr."}
+	var from_port = from_unit.get_port(edge.get("from_port", ""))
+	var to_port = to_unit.get_port(edge.get("to_port", ""))
+	if from_port == null or to_port == null:
+		return {"ok": false, "message": "Lagret rør peker på ukjent prosessport."}
+	return _connect_ports(from_port, to_port)
+
+
 func _set_unit_ports_visible(value: bool) -> void:
 	for entry in registered_units:
 		var unit = entry["node"]

@@ -31,6 +31,67 @@ func _init(p_network = null) -> void:
 	network.topology_changed.connect(_on_topology_changed)
 
 
+func save_state() -> Dictionary:
+	var saved_equipment := {}
+	for unit_id in equipment:
+		var state: Dictionary = equipment[unit_id]
+		var saved_state := {"type": state["type"]}
+		match state["type"]:
+			"tank":
+				for field in ["volume_l", "contents", "temperature_c", "quality_percent", "crude_cost_per_l"]:
+					saved_state[field] = state[field]
+			"valve":
+				saved_state["open"] = state["open"]
+			"heater":
+				saved_state["setpoint_c"] = state["setpoint_c"]
+				saved_state["temperature_c"] = state["temperature_c"]
+			"column":
+				saved_state["processed_total_l"] = state["processed_total_l"]
+		saved_equipment[unit_id] = saved_state
+	return {
+		"commissioning_batch_available": commissioning_batch_available,
+		"commissioning_contract_complete": commissioning_contract_complete,
+		"successful_sales": successful_sales,
+		"last_batch_report": last_batch_report.duplicate(true),
+		"product_inventory_revision": product_inventory_revision,
+		"report_crude_processed_l": _report_crude_processed_l,
+		"report_temperature_total": _report_temperature_total,
+		"report_crude_cost": _report_crude_cost,
+		"equipment": saved_equipment,
+	}
+
+
+func apply_saved_state(state: Dictionary) -> void:
+	commissioning_batch_available = bool(state["commissioning_batch_available"])
+	commissioning_contract_complete = bool(state["commissioning_contract_complete"])
+	successful_sales = int(state["successful_sales"])
+	last_batch_report = state["last_batch_report"].duplicate(true)
+	product_inventory_revision = int(state["product_inventory_revision"])
+	_report_crude_processed_l = float(state["report_crude_processed_l"])
+	_report_temperature_total = float(state["report_temperature_total"])
+	_report_crude_cost = float(state["report_crude_cost"])
+	var saved_equipment: Dictionary = state["equipment"]
+	for unit_id in equipment:
+		var target: Dictionary = equipment[unit_id]
+		var saved: Dictionary = saved_equipment[unit_id]
+		match target["type"]:
+			"tank":
+				for field in ["volume_l", "contents", "temperature_c", "quality_percent", "crude_cost_per_l"]:
+					target[field] = saved[field]
+			"pump":
+				target["running"] = false
+				target["actual_flow_lps"] = 0.0
+			"valve":
+				target["open"] = bool(saved["open"])
+			"heater":
+				target["setpoint_c"] = float(saved["setpoint_c"])
+				target["temperature_c"] = float(saved["temperature_c"])
+			"column":
+				target["processed_total_l"] = float(saved["processed_total_l"])
+	actual_flow_lps = 0.0
+	last_status = "Spill lastet. Alle pumper er stoppet av sikkerhetshensyn."
+
+
 func register_unit(unit_id: String, equipment_type: String, display_name := "") -> Dictionary:
 	var graph_result: Dictionary = network.register_unit(unit_id, equipment_type, display_name)
 	if not graph_result["ok"]:

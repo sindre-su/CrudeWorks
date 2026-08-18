@@ -60,6 +60,25 @@
   - Raised the minimum pilot contract to 3 000 kr so the required 2 600 kr
     starter refinery still leaves enough for one paid recovery batch.
   - Kept the original pilot plant behavior and interaction sequence unchanged.
+- Milestone 3 completed:
+  - Added one versioned local JSON autosave for pilot state, economy,
+    progression, player transform, construction, directed topology, process
+    inventory, controls, commissioning state, and batch-report accumulators.
+  - Added a single Continue/New Game startup choice. New Game requires a second
+    confirmation and archives the previous primary, backup, and corrupt file.
+  - Added whitelist validation for every persisted section before live state is
+    touched, including bounds/overlap, unit IDs, serials, port direction,
+    process order, cycles, tank capacities, quality, money, and mass-balanced
+    report data.
+  - Rebuilt loaded connections through the existing authoritative
+    `ProcessNetwork` rules and recreated all seven visual pipes from the same
+    directed endpoints.
+  - Restored partial-batch volume, temperature, quality, proportional crude
+    cost and report tracking while always forcing pumps and derived flow off.
+  - Added temporary-file replacement, one last-known-good backup, corrupt-file
+    preservation and explicit feedback when an older backup is recovered.
+  - Kept routine autosaves silent so process and troubleshooting messages are
+    not overwritten; write failures remain prominent.
 
 ## Validation
 
@@ -85,6 +104,15 @@
   - Main integration: 33 checks passed;
   - main scene and full headless editor/resource scan passed with no logged
     parser, resource, runtime, or script errors.
+- Final Milestone 3 regression with isolated log files:
+  - pilot/economy: 23 checks passed;
+  - process network: 59 checks passed;
+  - building system: 41 checks passed;
+  - built refinery: 77 checks passed;
+  - Main integration: 33 checks passed;
+  - save system: 37 checks passed;
+  - main scene and full headless editor/resource scan passed with no logged
+    parser, resource, runtime, or script errors.
 
 ## Bugs Found
 
@@ -99,6 +127,12 @@
   which could soft-lock a player after an off-spec free batch.
 - Area 02 process alarms were present in summary text but not in the prominent
   red alarm display.
+- Initial persistence integration could partially mutate state if applied over
+  an already populated refinery.
+- Autosave confirmation reused the process notification and could hide useful
+  LOW FLOW feedback.
+- Backup recovery was technically successful but invisible to the player.
+- An unbounded saved build counter could make the next generated save invalid.
 - A concurrent parallel Godot run collided over the engine log and crashed;
   all authoritative validation was rerun sequentially with isolated log files
   and passed.
@@ -116,15 +150,21 @@
   valve-inclusive refinery.
 - Fixed built `LOW FLOW` and `HIGH TEMPERATURE` alarms being visually muted or
   one condition hiding the other.
+- Restricted save restoration to the pristine startup scene, added rollback
+  for unexpected construction failures, and tested repeated-load atomicity.
+- Made routine autosave silent and preserved operational notifications.
+- Added explicit last-known-good recovery feedback and canonical serial bounds.
 
 ## Current Stable State
 
-- Version 0.5.0 is verified stable after Milestone 2.
+- Version 0.6.0 is verified stable after Milestone 3.
 - The original pilot loop and full player-built loop both pass regression.
 - The first valid Area 02 sale now has a durable achievement and informative
   result, while later paid batches remain repeatable.
 - The complete built process now teaches the intended sequence directly:
   tank → pump → valve → heater → distillation → product tanks.
+- A player can now leave during a partial paid batch and safely continue with
+  the same mass, process conditions, economy and construction on next launch.
 
 ## Known Issues
 
@@ -136,6 +176,8 @@
 - Report accounting covers material processed since the previous sale or
   disposal. After an early partial sale, the next report covers only the
   remaining material processed afterward and its proportional crude cost.
+- Save format version 1 intentionally has no migration from unknown versions;
+  unsupported data is preserved and rejected rather than guessed.
 
 ## Roadmap Changes
 
@@ -148,9 +190,12 @@
 - After Milestone 1, the manual valve moved ahead of persistence because it
   completes the core tank–pump–valve–heater learning chain and creates the first
   player-readable troubleshooting event with little architectural risk.
+- Persistence stayed deliberately local and single-slot. Cloud sync, multiple
+  profiles and offline production would add complexity without improving the
+  current refinery learning loop.
 
 ## Next Best Action
 
-- Implement a small versioned save format for construction, topology, process
-  state, economy, and progression without changing simulation ownership or
-  destabilizing the now-complete manual refinery loop.
+- Add a small set of meaningfully different crude feeds and laboratory
+  contracts so the repeatable saved refinery asks the player to adapt process
+  conditions instead of repeating one ideal 200 °C recipe forever.

@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.5 – manuell flowkontroll og feilsøking**
+**Prototypeversjon: 0.6 – trygg lokal lagring**
 
 En liten 3D-prototype der spilleren driver et forenklet pilotraffineri. Første mål
 er å behandle 1 000 liter råolje og selge minst 200 liter diesel med 90 % eller
@@ -28,6 +28,8 @@ Den første komplette «vertical slice»-en inneholder:
 - varig fullføring av Område 02 og batchrapport med utbytte, kvalitet og økonomi
 - totrinns bekreftelse før produkter sendes til avfallshåndtering
 - diagnostiserbar `LOW FLOW` når en bygd pumpe arbeider mot stengt ventil
+- versjonert autosave av penger, progresjon, bygg, rør og prosessbeholdning
+- ett oppstartsvalg for å fortsette eller bekreftet starte et nytt spill
 
 Alle objekter er foreløpig bygget av Godots primitive 3D-former. Det gjør at vi
 kan teste gameplay før vi bruker tid på modeller og grafikk.
@@ -51,7 +53,20 @@ godot --headless --path . --script res://tests/process_network_test.gd
 godot --headless --path . --script res://tests/building_system_test.gd
 godot --headless --path . --script res://tests/built_refinery_model_test.gd
 godot --headless --path . --script res://tests/main_built_loop_test.gd
+godot --headless --path . --script res://tests/save_system_test.gd
 ```
+
+## Lagring
+
+Spillet bruker én lokal autosave. Viktige handlinger lagres etter en kort
+forsinkelse, og en stille prosess-snapshot tas omtrent hvert tolvte sekund. Ved
+neste oppstart kan spilleren velge `Enter` for å fortsette eller `N` for nytt
+spill. Nytt spill må bekreftes og den gamle filen arkiveres før den erstattes.
+
+Bygninger, rotasjon, rør, tankinnhold, temperatur, kvalitet, penger og progresjon
+gjenopprettes. Pumper og faktisk flow stoppes alltid ved lasting, slik at ingen
+prosess starter uten en bevisst handling. En siste kjent god backup beholdes, og
+ukjent eller skadet lagringsdata avvises før den kan endre spillet.
 
 ## Styring
 
@@ -145,11 +160,13 @@ CrudeWorks/
     ├── player.gd
     ├── process_model.gd
     ├── process_network.gd
-    └── process_port.gd
+    ├── process_port.gd
+    └── save_system.gd
 └── tests/
     ├── built_refinery_model_test.gd
     ├── building_system_test.gd
     ├── main_built_loop_test.gd
     ├── process_model_test.gd
-    └── process_network_test.gd
+    ├── process_network_test.gd
+    └── save_system_test.gd
 ```

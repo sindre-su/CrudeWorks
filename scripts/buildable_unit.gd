@@ -5,6 +5,7 @@ const Catalog = preload("res://scripts/equipment_catalog.gd")
 const ProcessPortScript = preload("res://scripts/process_port.gd")
 
 var equipment_type := ""
+var serial_number := 0
 var purchase_cost := 0
 var footprint_size := Vector2.ZERO
 var rotation_quadrants := 0
@@ -22,6 +23,7 @@ var valve_handle_material: StandardMaterial3D
 func configure_buildable(type: String, serial_number: int) -> void:
 	var data: Dictionary = Catalog.definition(type)
 	equipment_type = type
+	self.serial_number = serial_number
 	purchase_cost = data["cost"]
 	var size: Vector3 = data["size"]
 	footprint_size = Vector2(size.x, size.z)

@@ -8,6 +8,13 @@ const BuildControllerScript = preload("res://scripts/build_controller.gd")
 const BuildableUnitScript = preload("res://scripts/buildable_unit.gd")
 const EquipmentCatalogScript = preload("res://scripts/equipment_catalog.gd")
 const BuiltRefineryModelScript = preload("res://scripts/built_refinery_model.gd")
+const SaveSystemScript = preload("res://scripts/save_system.gd")
+
+const AUTOSAVE_INTERVAL_SECONDS := 12.0
+const SAVE_DEBOUNCE_SECONDS := 1.0
+
+@export var persistence_enabled := true
+@export var save_path := SaveSystemScript.DEFAULT_PATH
 
 var process_model
 var built_refinery_model
@@ -31,10 +38,20 @@ var help_label: Label
 var completion_panel: PanelContainer
 var batch_report_panel: PanelContainer
 var batch_report_label: Label
+var startup_panel: PanelContainer
+var startup_label: Label
 var notification_time_left := 0.0
 var batch_report_visible := false
 var discard_confirmation_time_left := 0.0
 var discard_confirmation_revision := -1
+var startup_choice_state := ""
+var pending_save_data: Dictionary = {}
+var pending_save_recovered := false
+var persistence_ready := false
+var save_debounce_time_left := -1.0
+var autosave_time_left := AUTOSAVE_INTERVAL_SECONDS
+var save_feedback_requested := false
+var suppress_save_requests := false
 
 
 func _ready() -> void:
@@ -45,11 +62,20 @@ func _ready() -> void:
 	_build_player()
 	_build_build_system()
 	_build_user_interface()
-	_show_notification("Varm opp anlegget før du starter flowen.", 7.0)
+	if persistence_enabled:
+		built_refinery_model.network.topology_changed.connect(_schedule_save)
+		_initialize_persistence()
+	else:
+		persistence_ready = false
+		_show_notification("Varm opp anlegget før du starter flowen.", 7.0)
 
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not event is InputEventKey or not event.pressed or event.echo:
+		return
+	if not startup_choice_state.is_empty():
+		_handle_startup_input(event)
+		get_viewport().set_input_as_handled()
 		return
 	if batch_report_visible and event.keycode in [KEY_ENTER, KEY_KP_ENTER, KEY_ESCAPE]:
 		_dismiss_batch_report()
@@ -67,6 +93,7 @@ func _process(delta: float) -> void:
 	discard_confirmation_time_left = maxf(discard_confirmation_time_left - delta, 0.0)
 	if discard_confirmation_time_left <= 0.0:
 		discard_confirmation_revision = -1
+	_update_autosave(delta)
 	build_controller.set_available_money(process_model.money)
 	build_controller.set_process_flow(
 		built_refinery_model.actual_flow_lps,
@@ -79,6 +106,7 @@ func _process(delta: float) -> void:
 		build_area_label.text = "BYGGEOMRÅDE 02 — ÅPENT\nTrykk B for byggemodus"
 		build_area_label.modulate = Color("78e08f")
 		_show_notification("NYTT OMRÅDE LÅST OPP — trykk B for byggemodus.", 8.0)
+		_schedule_save()
 	_update_process_visuals(delta)
 	_update_user_interface()
 	_update_unit_statuses()
@@ -366,6 +394,25 @@ func _build_user_interface() -> void:
 	batch_report_panel.add_child(batch_report_label)
 	canvas.add_child(batch_report_panel)
 
+	startup_panel = PanelContainer.new()
+	startup_panel.anchor_left = 0.5
+	startup_panel.anchor_right = 0.5
+	startup_panel.anchor_top = 0.5
+	startup_panel.anchor_bottom = 0.5
+	startup_panel.offset_left = -310.0
+	startup_panel.offset_right = 310.0
+	startup_panel.offset_top = -155.0
+	startup_panel.offset_bottom = 155.0
+	startup_panel.visible = false
+	startup_label = Label.new()
+	startup_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	startup_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	startup_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	startup_label.add_theme_font_size_override("font_size", 24)
+	startup_label.add_theme_color_override("font_color", Color("fff3bd"))
+	startup_panel.add_child(startup_label)
+	canvas.add_child(startup_panel)
+
 
 func _update_user_interface() -> void:
 	var heater_state := "AV"
@@ -400,7 +447,12 @@ func _update_user_interface() -> void:
 
 	var focused = player.focused_unit()
 	prompt_label.text = ""
-	if focused != null and not build_controller.active and not batch_report_visible:
+	if (
+		focused != null
+		and not build_controller.active
+		and not batch_report_visible
+		and startup_choice_state.is_empty()
+	):
 		if focused.unit_id.begins_with("built_"):
 			prompt_label.text = built_refinery_model.interaction_prompt(focused.unit_id)
 		else:
@@ -408,8 +460,13 @@ func _update_user_interface() -> void:
 	notification_label.visible = notification_time_left > 0.0
 	completion_panel.visible = process_model.objective_complete and not build_mode_unlocked
 	batch_report_panel.visible = batch_report_visible and not build_controller.active
+	startup_panel.visible = not startup_choice_state.is_empty()
 	var operation_ui_visible: bool = not build_controller.active
-	var regular_ui_visible: bool = operation_ui_visible and not batch_report_visible
+	var regular_ui_visible: bool = (
+		operation_ui_visible
+		and not batch_report_visible
+		and startup_choice_state.is_empty()
+	)
 	hud_label.visible = regular_ui_visible
 	objective_label.visible = regular_ui_visible
 	alarm_label.visible = regular_ui_visible
@@ -527,6 +584,8 @@ func _set_liquid_level(tank_id: String, fill_ratio: float) -> void:
 
 func _on_unit_interacted(unit_id: String) -> void:
 	var message := ""
+	var pilot_state_before: Dictionary = process_model.save_state()
+	var built_state_before: Dictionary = built_refinery_model.save_state()
 	match unit_id:
 		"pump":
 			message = process_model.toggle_pump()
@@ -571,6 +630,12 @@ func _on_unit_interacted(unit_id: String) -> void:
 					process_model.purchase(result["charge"])
 				message = result["message"]
 	_show_notification(message)
+	var changed_persistent_state: bool = (
+		pilot_state_before != process_model.save_state()
+		or built_state_before != built_refinery_model.save_state()
+	)
+	if changed_persistent_state:
+		_schedule_save()
 
 
 func _on_reset_requested() -> void:
@@ -590,9 +655,12 @@ func _on_reset_requested() -> void:
 			discard_confirmation_time_left = 0.0
 			discard_confirmation_revision = -1
 		_show_notification(discard_result["message"], 6.0)
+		if discard_result["ok"]:
+			_schedule_save()
 		return
 	process_model.reset_batch()
 	_show_notification("Ny batch lastet: 1 000 liter råolje.", 5.0)
+	_schedule_save()
 
 
 func _on_build_placement_requested(
@@ -600,14 +668,33 @@ func _on_build_placement_requested(
 	position_3d: Vector3,
 	rotation_quadrants: int
 ) -> void:
+	var result: Dictionary = _create_built_unit(
+		equipment_type,
+		position_3d,
+		rotation_quadrants,
+		build_serial_number + 1,
+		true
+	)
+	_show_notification(result["message"])
+	if result["ok"]:
+		_schedule_save()
+
+
+func _create_built_unit(
+	equipment_type: String,
+	position_3d: Vector3,
+	rotation_quadrants: int,
+	serial_number: int,
+	charge_cost: bool
+) -> Dictionary:
 	var definition: Dictionary = EquipmentCatalogScript.definition(equipment_type)
+	if serial_number < 1 or serial_number > SaveSystemScript.MAX_BUILD_SERIAL:
+		return {"ok": false, "message": "Maksimalt antall byggeserier er nådd."}
 	var cost: int = definition["cost"]
-	if not process_model.purchase(cost):
-		_show_notification("Ikke nok penger til %s." % definition["name"])
-		return
-	build_serial_number += 1
+	if charge_cost and not process_model.purchase(cost):
+		return {"ok": false, "message": "Ikke nok penger til %s." % definition["name"]}
 	var unit = BuildableUnitScript.new()
-	unit.configure_buildable(equipment_type, build_serial_number)
+	unit.configure_buildable(equipment_type, serial_number)
 	unit.position = position_3d
 	unit.rotation_quadrants = rotation_quadrants
 	unit.rotation.y = deg_to_rad(float(rotation_quadrants * 90))
@@ -619,11 +706,20 @@ func _on_build_placement_requested(
 	)
 	if not register_result["ok"]:
 		unit.queue_free()
-		process_model.refund(cost)
-		_show_notification(register_result["message"])
-		return
+		if charge_cost:
+			process_model.refund(cost)
+		return register_result
 	build_controller.register_unit(unit)
-	_show_notification("%s plassert for %d kr." % [definition["name"], cost])
+	build_serial_number = maxi(build_serial_number, serial_number)
+	return {
+		"ok": true,
+		"message": (
+			"%s plassert for %d kr." % [definition["name"], cost]
+			if charge_cost
+			else "%s gjenopprettet." % definition["name"]
+		),
+		"unit": unit,
+	}
 
 
 func _on_build_removal_requested(unit) -> void:
@@ -639,6 +735,7 @@ func _on_build_removal_requested(unit) -> void:
 	build_controller.remove_registered_unit(unit)
 	process_model.refund(refund_amount)
 	_show_notification("%s fjernet. %d kr refundert." % [equipment_name, refund_amount])
+	_schedule_save()
 
 
 func _show_notification(message: String, duration := 4.0) -> void:
@@ -683,6 +780,240 @@ func _dismiss_batch_report() -> void:
 	player.set_input_blocked(false)
 	build_controller.set_input_blocked(false)
 	_show_notification("Område 02 er godkjent. Neste utfordring er en lønnsom betalt batch.", 6.0)
+
+
+func _initialize_persistence() -> void:
+	var load_result: Dictionary = SaveSystemScript.read_snapshot(save_path)
+	if load_result.get("missing", false):
+		persistence_ready = true
+		_show_notification("Varm opp anlegget før du starter flowen.", 7.0)
+		return
+	if load_result["ok"]:
+		pending_save_data = load_result["data"]
+		pending_save_recovered = bool(load_result.get("recovered_from_backup", false))
+		startup_choice_state = "choice"
+		startup_label.text = (
+			"CRUDEWORKS\n\nLagret spill funnet.\n\n"
+			+ "Enter — fortsett\nN — nytt spill"
+		)
+	else:
+		startup_choice_state = "corrupt"
+		startup_label.text = (
+			"LAGRINGEN KAN IKKE LESES\n\n"
+			+ "Filen er beholdt og blir ikke overskrevet.\n\n"
+			+ "N — start et nytt spill"
+		)
+	_set_startup_blocked(true)
+
+
+func _handle_startup_input(event: InputEventKey) -> void:
+	if startup_choice_state == "choice":
+		if event.keycode in [KEY_ENTER, KEY_KP_ENTER]:
+			_continue_saved_game()
+		elif event.keycode == KEY_N:
+			_show_new_game_confirmation()
+	elif startup_choice_state == "corrupt":
+		if event.keycode == KEY_N:
+			_show_new_game_confirmation()
+	elif startup_choice_state == "confirm_new":
+		if event.keycode in [KEY_ENTER, KEY_KP_ENTER]:
+			_start_new_game()
+		elif event.keycode == KEY_ESCAPE:
+			startup_choice_state = "choice" if not pending_save_data.is_empty() else "corrupt"
+			if startup_choice_state == "choice":
+				startup_label.text = "CRUDEWORKS\n\nLagret spill funnet.\n\nEnter — fortsett\nN — nytt spill"
+			else:
+				startup_label.text = "LAGRINGEN KAN IKKE LESES\n\nFilen er beholdt og blir ikke overskrevet.\n\nN — start et nytt spill"
+
+
+func _show_new_game_confirmation() -> void:
+	startup_choice_state = "confirm_new"
+	startup_label.text = (
+		"STARTE NYTT SPILL?\n\n"
+		+ "Lagret fremgang blir arkivert og erstattet.\n\n"
+		+ "Enter — start på nytt\nEsc — avbryt"
+	)
+
+
+func _continue_saved_game() -> void:
+	var result: Dictionary = _apply_snapshot(pending_save_data)
+	if not result["ok"]:
+		pending_save_data = {}
+		startup_choice_state = "corrupt"
+		startup_label.text = "LAGRINGEN KAN IKKE LASTES\n\n%s\n\nN — start et nytt spill" % result["message"]
+		return
+	startup_choice_state = ""
+	pending_save_data = {}
+	var recovered_message := pending_save_recovered
+	pending_save_recovered = false
+	persistence_ready = true
+	autosave_time_left = AUTOSAVE_INTERVAL_SECONDS
+	_set_startup_blocked(false)
+	_show_notification(
+		"Forrige sikre lagring ble lastet. Alle pumper er stoppet av sikkerhetshensyn."
+		if recovered_message
+		else "Spill lastet. Alle pumper er stoppet av sikkerhetshensyn.",
+		7.0
+	)
+
+
+func _start_new_game() -> void:
+	var archive_result: Dictionary = SaveSystemScript.archive_snapshot(save_path)
+	if not archive_result["ok"]:
+		startup_label.text = "NYTT SPILL KAN IKKE STARTES\n\n%s\n\nEsc — avbryt" % archive_result["message"]
+		return
+	startup_choice_state = ""
+	pending_save_data = {}
+	pending_save_recovered = false
+	persistence_ready = true
+	autosave_time_left = AUTOSAVE_INTERVAL_SECONDS
+	_set_startup_blocked(false)
+	_show_notification("Nytt spill startet. Forrige lagring er arkivert.", 6.0)
+	_schedule_save()
+
+
+func _set_startup_blocked(value: bool) -> void:
+	player.set_input_blocked(value)
+	build_controller.set_input_blocked(value)
+
+
+func _schedule_save(show_feedback := false) -> void:
+	if not persistence_enabled or not persistence_ready or suppress_save_requests:
+		return
+	save_debounce_time_left = SAVE_DEBOUNCE_SECONDS
+	save_feedback_requested = save_feedback_requested or show_feedback
+
+
+func _update_autosave(delta: float) -> void:
+	if not persistence_enabled or not persistence_ready:
+		return
+	if save_debounce_time_left >= 0.0:
+		save_debounce_time_left -= delta
+		if save_debounce_time_left <= 0.0:
+			_write_save(save_feedback_requested)
+			save_debounce_time_left = -1.0
+			save_feedback_requested = false
+	autosave_time_left -= delta
+	if autosave_time_left <= 0.0:
+		_write_save(false)
+
+
+func _write_save(show_feedback: bool) -> Dictionary:
+	if not persistence_enabled or not persistence_ready:
+		return {"ok": false, "message": "Lagring er ikke klar."}
+	var result: Dictionary = SaveSystemScript.write_snapshot(save_path, _build_snapshot())
+	if result["ok"]:
+		autosave_time_left = AUTOSAVE_INTERVAL_SECONDS
+		if show_feedback:
+			_show_notification("LAGRET", 1.2)
+	else:
+		_show_notification("Kunne ikke lagre. Fremgangen er ikke lagret.", 10.0)
+	return result
+
+
+func _build_snapshot() -> Dictionary:
+	var placements: Array[Dictionary] = []
+	for entry in build_controller.registered_units:
+		var unit = entry["node"]
+		if not is_instance_valid(unit):
+			continue
+		placements.append({
+			"type": unit.equipment_type,
+			"serial": unit.serial_number,
+			"position": [unit.position.x, unit.position.y, unit.position.z],
+			"rotation_quadrants": unit.rotation_quadrants,
+		})
+	placements.sort_custom(func(left: Dictionary, right: Dictionary) -> bool:
+		return int(left["serial"]) < int(right["serial"])
+	)
+	return {
+		"format_version": SaveSystemScript.FORMAT_VERSION,
+		"game_version": ProjectSettings.get_setting("application/config/version", "unknown"),
+		"pilot": process_model.save_state(),
+		"construction": {
+			"build_serial_number": build_serial_number,
+			"units": placements,
+			"connections": built_refinery_model.network.connections.duplicate(true),
+		},
+		"built_refinery": built_refinery_model.save_state(),
+		"player": {
+			"position": [player.position.x, player.position.y, player.position.z],
+			"rotation_y": player.rotation.y,
+		},
+	}
+
+
+func _apply_snapshot(snapshot: Dictionary) -> Dictionary:
+	var validation: Dictionary = SaveSystemScript.validate_snapshot(snapshot)
+	if not validation["ok"]:
+		return validation
+	if (
+		not build_controller.registered_units.is_empty()
+		or not built_refinery_model.equipment.is_empty()
+		or not built_refinery_model.network.units.is_empty()
+		or built_refinery_model.network.connection_count() > 0
+	):
+		return {"ok": false, "message": "Lagring kan bare gjenopprettes fra oppstartsskjermen."}
+	suppress_save_requests = true
+	var construction: Dictionary = snapshot["construction"]
+	for placement in construction["units"]:
+		var create_result: Dictionary = _create_built_unit(
+			placement["type"],
+			Vector3(
+				float(placement["position"][0]),
+				float(placement["position"][1]),
+				float(placement["position"][2])
+			),
+			int(placement["rotation_quadrants"]),
+			int(placement["serial"]),
+			false
+		)
+		if not create_result["ok"]:
+			_rollback_loaded_construction()
+			suppress_save_requests = false
+			return create_result
+	for edge in construction["connections"]:
+		var connect_result: Dictionary = build_controller.restore_connection(edge)
+		if not connect_result["ok"]:
+			_rollback_loaded_construction()
+			suppress_save_requests = false
+			return connect_result
+	build_serial_number = int(construction["build_serial_number"])
+	built_refinery_model.apply_saved_state(snapshot["built_refinery"])
+	process_model.apply_saved_state(snapshot["pilot"])
+	build_mode_unlocked = process_model.objective_complete
+	build_controller.set_unlocked(build_mode_unlocked)
+	if build_mode_unlocked:
+		build_area_label.text = "BYGGEOMRÅDE 02 — ÅPENT\nTrykk B for byggemodus"
+		build_area_label.modulate = Color("78e08f")
+	player.position = Vector3(
+		float(snapshot["player"]["position"][0]),
+		float(snapshot["player"]["position"][1]),
+		float(snapshot["player"]["position"][2])
+	)
+	player.rotation.y = float(snapshot["player"]["rotation_y"])
+	batch_report_visible = false
+	discard_confirmation_time_left = 0.0
+	discard_confirmation_revision = -1
+	_update_unit_statuses()
+	_update_user_interface()
+	suppress_save_requests = false
+	return {"ok": true, "message": "Lagret spill er gjenopprettet."}
+
+
+func _rollback_loaded_construction() -> void:
+	for index in range(build_controller.registered_units.size() - 1, -1, -1):
+		var unit = build_controller.registered_units[index]["node"]
+		if not is_instance_valid(unit):
+			continue
+		built_refinery_model.unregister_unit(unit.unit_id)
+		build_controller.remove_registered_unit(unit)
+	build_serial_number = 0
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST and persistence_enabled and persistence_ready:
+		_write_save(false)
 
 
 func _create_box_unit(
