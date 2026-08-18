@@ -14,16 +14,16 @@
 
 ## Current Roadmap
 
-1. **Explicit single active route** — make the current one-line limitation
-   understandable before players invest in a second unusable process line.
-2. **Delivery-order variety** — give multiple fractions and crude choices
+1. **Delivery-order variety** — give multiple fractions and crude choices
    distinct order goals rather than one repeated diesel objective.
-3. **First flow/capacity choice** — add one controllable throughput tradeoff
+2. **First flow/capacity choice** — add one controllable throughput tradeoff
    with a clear quality consequence after sampling makes quality playable.
-4. **Maintenance troubleshooting** — introduce one recoverable equipment fault
+3. **Maintenance troubleshooting** — introduce one recoverable equipment fault
    that can be diagnosed from existing alarm and instrument feedback.
-5. **New treatment decision** — consider one actual treatment unit and Sour
+4. **New treatment decision** — consider one actual treatment unit and Sour
    crude only after the preceding loop is stable and hands-on tested.
+5. **Hands-on usability pass** — verify port aiming, labels, valve feedback and
+   modal readability at the target 1280 x 720 window before broadening scope.
 
 ## Completed Work
 
@@ -129,6 +129,15 @@
     consuming sale, while OFF-SPEC keeps inventory, money and bonus unchanged.
   - Made running pumps block analysis/readiness even at zero flow, and canceled
     stale product-disposal confirmation when sampling or opening the lab.
+- Milestone 7 completed:
+  - Added explicit enumeration of complete routes while keeping the process
+    network as the sole topology authority.
+  - Rejects the final connection that would complete a second Area 02 line,
+    atomically preserving the existing route, inventory and pipe visuals.
+  - Treats manipulated or legacy two-route topology as invalid with no hidden
+    first-route selection for flow, loading, sampling, sales or LS-201.
+  - Added actionable build, HUD, objective and station feedback; disconnecting
+    one pipe with `G` immediately restores the remaining complete line.
 
 ## Validation
 
@@ -212,6 +221,16 @@
   - save system: 47 checks passed;
   - main scene and full headless editor/resource scan passed with no logged
     parser, resource, runtime, or script errors.
+- Final Milestone 7 regression with isolated log files:
+  - pilot/economy: 23 checks passed;
+  - process network: 87 checks passed;
+  - building system: 41 checks passed;
+  - built refinery: 163 checks passed;
+  - Main integration: 66 checks passed;
+  - save system: 47 checks passed;
+  - main scene and full editor/resource scan loaded successfully with no
+    project parser, resource, runtime, or script errors. The sandboxed editor
+    still reports its known inability to save global macOS editor settings.
 - Final Milestone 5 regression with isolated log files:
   - pilot/economy: 23 checks passed;
   - process network: 59 checks passed;
@@ -288,7 +307,7 @@
 
 ## Current Stable State
 
-- Version 0.9.0 is verified stable after the diesel-sampling milestone.
+- Version 0.9.1 is verified stable after the single-active-route safety pass.
 - The original pilot loop and full player-built loop both pass regression.
 - The first valid Area 02 sale now has a durable achievement and informative
   result, while later paid batches remain repeatable.
@@ -308,8 +327,9 @@
 
 ## Known Issues
 
-- Multi-route operation is intentionally not part of the first vertical slice,
-  but the limitation needs clearer feedback before multiple lines are exposed.
+- Multi-route operation is intentionally not part of the first vertical slice.
+  Område 02 now enforces that limitation explicitly while still allowing spare
+  equipment and incomplete expansion work.
 - Hands-on aiming/interaction feel remains unverified by headless automation.
 - Valve handle readability and central alarm prominence still need a hands-on
   check at the target 1280 x 720 window size.
@@ -341,10 +361,12 @@
 - Lab state remains transient by design: a loaded game preserves the product
   but requires the player to take a fresh sample, avoiding save-format churn
   and stale authorization.
+- A full second process line was deferred rather than adding an implicit route
+  selector. The final conflicting connection is rejected, and defensive model
+  validation blocks ambiguous imported topology.
 
 ## Next Best Action
 
-- Make the one-active-route limitation explicit before the economy lets players
-  invest in a second complete but currently inoperable line. Preserve one
-  topology authority and give a clear player-facing validation message rather
-  than silently selecting the first route.
+- Add small delivery-order variety that uses the existing Standard/Heavy,
+  lab-result and batch-report systems to create distinct goals without adding
+  another simulator subsystem.

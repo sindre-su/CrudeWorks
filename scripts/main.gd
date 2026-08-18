@@ -639,7 +639,11 @@ func _update_unit_statuses() -> void:
 				)
 			)
 		else:
-			control_status = "VENTER — NETTVERK"
+			control_status = (
+				"UGYLDIG — FLERE LINJER"
+				if control_snapshot.get("ambiguous_routes", false)
+				else "VENTER — NETTVERK"
+			)
 	units["area02_control"].set_status(control_status)
 	units["area02_control"].set_active(
 		control_station_visible or control_alarm,

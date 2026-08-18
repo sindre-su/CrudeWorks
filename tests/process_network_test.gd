@@ -22,6 +22,7 @@ func _run_tests() -> void:
 	_test_cycle_rejection()
 	_test_removal_cleanup()
 	_test_actionable_missing_connection()
+	_test_second_complete_route_is_rejected()
 
 
 func _test_valid_topology() -> void:
@@ -99,6 +100,34 @@ func _test_actionable_missing_connection() -> void:
 	_expect("P-201" in validation["message"] and "ventil" in validation["message"], "validation identifies the missing manual valve")
 
 
+func _test_second_complete_route_is_rejected() -> void:
+	var network = _complete_network()
+	_register_route(network, "b")
+	_expect(network.try_connect("b_source", "output", "b_pump", "input")["ok"], "second route may be assembled while it is still incomplete")
+	_expect(network.try_connect("b_pump", "output", "b_valve", "input")["ok"], "second route pump and valve may be inspected before completion")
+	_expect(network.try_connect("b_valve", "output", "b_heater", "input")["ok"], "second route valve and heater may be inspected before completion")
+	_expect(network.try_connect("b_heater", "output", "b_column", "input")["ok"], "second route column feed may be inspected before completion")
+	_expect(network.try_connect("b_column", "light", "b_light", "input")["ok"], "second light branch may be connected")
+	_expect(network.try_connect("b_column", "diesel", "b_diesel", "input")["ok"], "second diesel branch may be connected")
+	var rejected: Dictionary = network.try_connect("b_column", "heavy", "b_heavy", "input")
+	_expect(not rejected["ok"] and "én komplett prosesslinje" in rejected["message"] and "Koble fra" in rejected["message"], "connection that would complete a second route is rejected with the Area 02 limitation")
+	_expect(network.connection_count() == 13 and network.find_complete_routes().size() == 1, "second-route rejection is atomic and preserves the original active line")
+	_expect(network.validate_configuration()["valid"] and network.find_complete_route()["source"] == "source", "original route remains deterministically active after rejected expansion")
+
+	# Defensive validation also rejects malformed/imported topology which bypassed try_connect.
+	network.connections.append({
+		"from_unit": "b_column",
+		"from_port": "heavy",
+		"to_unit": "b_heavy",
+		"to_port": "input",
+	})
+	var malformed: Dictionary = network.validate_configuration()
+	_expect(not malformed["valid"] and "2 komplette linjer" in malformed["message"], "defensive validation reports the exact ambiguous route count")
+	_expect(network.find_complete_routes().size() == 2 and network.find_complete_route().is_empty(), "ambiguous topology has no hidden first active route")
+	network.disconnect_ports("b_column", "heavy", "b_heavy", "input")
+	_expect(network.validate_configuration()["valid"] and network.find_complete_route()["source"] == "source", "disconnecting one route restores the sole complete route")
+
+
 func _complete_network():
 	var network = ProcessNetworkScript.new()
 	_register(network, "source", "tank", "T-201")
@@ -117,6 +146,17 @@ func _complete_network():
 	network.try_connect("column", "diesel", "diesel_tank", "input")
 	network.try_connect("column", "heavy", "heavy_tank", "input")
 	return network
+
+
+func _register_route(network, prefix: String) -> void:
+	_register(network, prefix + "_source", "tank", prefix.to_upper() + "-T1")
+	_register(network, prefix + "_pump", "pump", prefix.to_upper() + "-P1")
+	_register(network, prefix + "_valve", "valve", prefix.to_upper() + "-V1")
+	_register(network, prefix + "_heater", "heater", prefix.to_upper() + "-H1")
+	_register(network, prefix + "_column", "column", prefix.to_upper() + "-D1")
+	_register(network, prefix + "_light", "tank", prefix.to_upper() + "-T2")
+	_register(network, prefix + "_diesel", "tank", prefix.to_upper() + "-T3")
+	_register(network, prefix + "_heavy", "tank", prefix.to_upper() + "-T4")
 
 
 func _register(network, unit_id: String, equipment_type: String, display_name: String) -> void:

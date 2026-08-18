@@ -32,6 +32,7 @@ func _run_tests() -> void:
 	_test_contract_lifecycle_and_bonus_lock()
 	_test_control_station_telemetry_and_temperature_guard()
 	_test_paid_batch_lab_sampling()
+	_test_ambiguous_routes_block_operation_atomically()
 
 
 func _test_invalid_network_cannot_start() -> void:
@@ -471,6 +472,36 @@ func _test_paid_batch_lab_sampling() -> void:
 	_expect(not model.sell_diesel()["ok"] and model.successful_sales == 1, "consumed sample and inventory cannot be dispatched twice")
 
 
+func _test_ambiguous_routes_block_operation_atomically() -> void:
+	var model = _complete_model()
+	model.commissioning_batch_available = false
+	model.commissioning_contract_complete = true
+	_add_malformed_second_route(model, "b")
+	var validation: Dictionary = model.network.validate_configuration()
+	_expect(not validation["valid"] and validation["route"].is_empty(), "two complete built routes expose no arbitrary active route")
+	var entitlement_before: bool = model.commissioning_batch_available
+	var load_a: Dictionary = model.load_crude_batch("source", true, "standard")
+	var load_b: Dictionary = model.load_crude_batch("b_source", true, "standard")
+	_expect(not load_a["ok"] and not load_b["ok"] and load_a.get("charge", 0) == 0 and load_b.get("charge", 0) == 0, "ambiguous source loading is rejected without charging either line")
+	_expect(model.commissioning_batch_available == entitlement_before and is_equal_approx(_total_tank_volume(model), 0.0), "ambiguous loading preserves entitlement and creates no material")
+	_expect(not model.interact("pump")["ok"] and not model.interact("b_pump")["ok"], "neither ambiguous pump can be started")
+	model.equipment["source"]["contents"] = "crude"
+	model.equipment["source"]["volume_l"] = 100.0
+	model.equipment["pump"]["running"] = true
+	model.equipment["b_pump"]["running"] = true
+	var mass_before_tick := _total_tank_volume(model)
+	model.tick(1.0)
+	_expect(not model.equipment["pump"]["running"] and not model.equipment["b_pump"]["running"] and is_equal_approx(model.actual_flow_lps, 0.0), "ambiguous tick stops all pump commands and reports zero flow")
+	_expect(is_equal_approx(_total_tank_volume(model), mass_before_tick), "ambiguous tick cannot consume or duplicate material")
+	_expect(model.active_connection_keys().is_empty() and not model.diesel_is_approved(), "ambiguous route exposes no active pipe visuals or diesel readiness")
+	_expect("FLERE LINJER" in model.summary_text() and "koble fra" in model.objective_text(), "HUD explains how to recover from an ambiguous imported topology")
+	var station: Dictionary = model.control_snapshot()
+	_expect(not station["valid"] and station.get("ambiguous_routes", false) and not model.remote_toggle_route_pump()["ok"], "LS-201 identifies ambiguity and blocks remote commands")
+	_expect(not model.take_diesel_sample("diesel_tank")["ok"] and not model.sell_diesel()["ok"], "ambiguous topology cannot authorize sampling or product dispatch")
+	model.network.disconnect_ports("b_column", "heavy", "b_heavy", "input")
+	_expect(model.network.validate_configuration()["valid"] and model.network.find_complete_route()["source"] == "source", "disconnecting the spare route restores the original built line")
+
+
 func _take_and_analyze(model) -> Dictionary:
 	var sample: Dictionary = model.take_diesel_sample("diesel_tank")
 	if not sample["ok"]:
@@ -496,6 +527,30 @@ func _complete_model():
 	model.network.try_connect("column", "diesel", "diesel_tank", "input")
 	model.network.try_connect("column", "heavy", "heavy_tank", "input")
 	return model
+
+
+func _add_malformed_second_route(model, prefix: String) -> void:
+	model.register_unit(prefix + "_source", "tank", "B-T1")
+	model.register_unit(prefix + "_pump", "pump", "B-P1")
+	model.register_unit(prefix + "_valve", "valve", "B-V1")
+	model.register_unit(prefix + "_heater", "heater", "B-H1")
+	model.register_unit(prefix + "_column", "column", "B-D1")
+	model.register_unit(prefix + "_light", "tank", "B-T2")
+	model.register_unit(prefix + "_diesel", "tank", "B-T3")
+	model.register_unit(prefix + "_heavy", "tank", "B-T4")
+	model.network.try_connect(prefix + "_source", "output", prefix + "_pump", "input")
+	model.network.try_connect(prefix + "_pump", "output", prefix + "_valve", "input")
+	model.network.try_connect(prefix + "_valve", "output", prefix + "_heater", "input")
+	model.network.try_connect(prefix + "_heater", "output", prefix + "_column", "input")
+	model.network.try_connect(prefix + "_column", "light", prefix + "_light", "input")
+	model.network.try_connect(prefix + "_column", "diesel", prefix + "_diesel", "input")
+	# Deliberately bypass the public API to model a manipulated or legacy save.
+	model.network.connections.append({
+		"from_unit": prefix + "_column",
+		"from_port": "heavy",
+		"to_unit": prefix + "_heavy",
+		"to_port": "input",
+	})
 
 
 func _total_tank_volume(model) -> float:

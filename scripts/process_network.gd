@@ -83,12 +83,19 @@ func try_connect(
 	if _would_create_cycle(from_unit_id, to_unit_id):
 		return _result(false, "Denne koblingen ville laget en ulovlig prosessløkke.")
 
-	connections.append({
+	var new_edge := {
 		"from_unit": from_unit_id,
 		"from_port": from_port_id,
 		"to_unit": to_unit_id,
 		"to_port": to_port_id,
-	})
+	}
+	connections.append(new_edge)
+	if find_complete_routes().size() > 1:
+		connections.pop_back()
+		return _result(
+			false,
+			"KAN IKKE KOBLES: Område 02 støtter bare én komplett prosesslinje om gangen. Koble fra et rør i den andre linjen først."
+		)
 	topology_changed.emit()
 	return _result(true, "%s %s er koblet til %s IN." % [
 		_unit_name(from_unit_id),
@@ -116,12 +123,16 @@ func connection_count() -> int:
 
 
 func validate_configuration() -> Dictionary:
-	var route := find_complete_route()
-	if not route.is_empty():
+	var routes := find_complete_routes()
+	if routes.size() > 1:
+		return _validation_result(
+			"Nettverket har %d komplette linjer. Område 02 støtter én. Koble fra én linje med G." % routes.size()
+		)
+	if routes.size() == 1:
 		return {
 			"valid": true,
 			"message": "Linjen er gyldig — trykk B for å avslutte bygging, så E på kildetanken.",
-			"route": route,
+			"route": routes[0],
 		}
 	if units.is_empty():
 		return _validation_result("Plasser utstyr før du validerer prosesslinjen.")
@@ -150,6 +161,12 @@ func validate_configuration() -> Dictionary:
 
 
 func find_complete_route() -> Dictionary:
+	var routes := find_complete_routes()
+	return routes[0] if routes.size() == 1 else {}
+
+
+func find_complete_routes() -> Array[Dictionary]:
+	var routes: Array[Dictionary] = []
 	for edge in connections:
 		if _unit_type(edge["from_unit"]) != "tank" or _unit_type(edge["to_unit"]) != "pump":
 			continue
@@ -176,15 +193,15 @@ func find_complete_route() -> Dictionary:
 				break
 			products[product_port] = product_edge["to_unit"]
 		if complete:
-			return {
+			routes.append({
 				"source": source_id,
 				"pump": pump_id,
 				"valve": valve_id,
 				"heater": heater_id,
 				"column": column_id,
 				"products": products,
-			}
-	return {}
+			})
+	return routes
 
 
 func outgoing_edge(unit_id: String, port_id: String) -> Dictionary:

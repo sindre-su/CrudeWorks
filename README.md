@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.9 – dieselprøve og laboratorieanalyse**
+**Prototypeversjon: 0.9.1 – dieselprøve og entydig prosesslinje**
 
 En liten 3D-prototype der spilleren driver et forenklet pilotraffineri. Første mål
 er å behandle 1 000 liter råolje og selge minst 200 liter diesel med 90 % eller
@@ -37,6 +37,8 @@ Den første komplette «vertical slice»-en inneholder:
 - fjernstyrt pumpe og temperaturmål med temperaturvern ved fjernstart
 - fysisk dieselprøve fra aktiv produkttank før betalte batcher kan sendes
 - LAB-101-analyse med volum, kvalitet, prosessavvik og trygg utsending
+- eksplisitt grense på én komplett prosesslinje i Område 02; reserveutstyr og
+  delvise utvidelser er fortsatt tillatt
 
 Alle objekter er foreløpig bygget av Godots primitive 3D-former. Det gjør at vi
 kan teste gameplay før vi bruker tid på modeller og grafikk.
@@ -177,6 +179,11 @@ Ved fjernstart sperres en kald eller overopphetet prosess, og temperaturvernet
 stopper pumpen før mer materiale behandles dersom temperaturen forlater det
 godkjente området. Ventilen er fortsatt feltbetjent, slik at `LOW FLOW` må
 diagnostiseres og rettes ute i anlegget.
+
+Område 02 driver foreløpig én komplett prosesslinje. Spilleren kan plassere
+reserveutstyr og forberede en delvis utvidelse, men den siste koblingen som
+ville fullført en andre linje avvises med en forklaring. Den fungerende linjen
+og alt materialet i den beholdes uendret.
 
 Hvis en batch blir off-spec, forklarer
 terminalen at `R` kan sende bygde produkter til sikker avfallshåndtering uten

@@ -281,7 +281,10 @@ func discard_products(confirmed := false) -> Dictionary:
 func can_choose_contract(unit_id: String) -> Dictionary:
 	if not commissioning_contract_complete:
 		return _result(false, "Fullfør oppstartskontrakten først.")
-	if not _is_route_source(unit_id):
+	var validation: Dictionary = network.validate_configuration()
+	if not validation["valid"]:
+		return _result(false, validation["message"])
+	if validation["route"]["source"] != unit_id:
 		return _result(false, "Velg råolje ved kildetanken i den komplette linjen.")
 	if _any_pump_running():
 		return _result(false, "Stopp pumpen før en ny råoljeleveranse velges.")
@@ -309,7 +312,10 @@ func load_crude_batch(
 	paid_batch := false,
 	contract_id := CrudeCatalog.DEFAULT_ID
 ) -> Dictionary:
-	if not _is_route_source(unit_id):
+	var validation: Dictionary = network.validate_configuration()
+	if not validation["valid"]:
+		return _result(false, validation["message"])
+	if validation["route"]["source"] != unit_id:
 		return _result(false, "Tanken må være koblet som råoljekilde i en komplett prosesslinje.")
 	if not CrudeCatalog.is_valid(contract_id):
 		return _result(false, "Ukjent råoljeleveranse.")
@@ -659,6 +665,8 @@ func objective_text() -> String:
 		prefix = "OMRÅDE 02 FULLFØRT — Frivillig: "
 	var validation: Dictionary = network.validate_configuration()
 	if not validation["valid"]:
+		if network.find_complete_routes().size() > 1:
+			return prefix + "gå til byggemodus og koble fra én prosesslinje"
 		return prefix + "bygg og koble en komplett linje"
 	var route: Dictionary = validation["route"]
 	var source: Dictionary = equipment[route["source"]]
@@ -821,7 +829,11 @@ func summary_text() -> String:
 		target_text = "%.0f °C" % profile["ideal_temperature_c"]
 	return (
 		"CRUDEWORKS — BYGGEOMRÅDE 02\n\n"
-		+ "Nettverk      %s\n" % ("GYLDIG" if validation["valid"] else "UFULLSTENDIG")
+		+ "Nettverk      %s\n" % (
+			"GYLDIG"
+			if validation["valid"]
+			else ("FLERE LINJER" if network.find_complete_routes().size() > 1 else "UFULLSTENDIG")
+		)
 		+ "Råolje        %s  |  mål %s\n" % [crude_text, target_text]
 		+ "Flow          %6.1f L/s\n" % actual_flow_lps
 		+ "Diesel        %6.0f L\n" % diesel_volume
@@ -846,6 +858,7 @@ func control_snapshot() -> Dictionary:
 		return {
 			"unlocked": true,
 			"valid": false,
+			"ambiguous_routes": network.find_complete_routes().size() > 1,
 			"message": validation["message"],
 		}
 	var route: Dictionary = validation["route"]
@@ -1154,8 +1167,16 @@ func _sample_reveals_tank(unit_id: String) -> bool:
 
 
 func _current_sample_result() -> Dictionary:
+	var validation: Dictionary = network.validate_configuration()
+	if not validation["valid"]:
+		return {
+			"ok": false,
+			"sample_current": false,
+			"analyzed": false,
+			"message": validation["message"],
+		}
 	if _diesel_sample.is_empty():
-		var empty_route: Dictionary = network.find_complete_route()
+		var empty_route: Dictionary = validation["route"]
 		if not empty_route.is_empty():
 			var diesel_tank: Dictionary = equipment[empty_route["products"]["diesel"]]
 			if diesel_tank["contents"] != "diesel" or diesel_tank["volume_l"] <= 0.001:
@@ -1171,7 +1192,7 @@ func _current_sample_result() -> Dictionary:
 			"analyzed": false,
 			"message": "Ta en dieselprøve ved dieseltanken før LAB / SALG brukes.",
 		}
-	var route: Dictionary = network.find_complete_route()
+	var route: Dictionary = validation["route"]
 	var current := (
 		not route.is_empty()
 		and int(_diesel_sample.get("revision", -1)) == product_inventory_revision
