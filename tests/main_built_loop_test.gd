@@ -46,19 +46,48 @@ func _run_test() -> void:
 
 	main._on_unit_interacted("sales_terminal")
 	_expect(main.process_model.money == 3200, "built sale credits 2 800 kr through the shared economy")
+	_expect(main.built_refinery_model.commissioning_contract_complete, "first built sale persistently completes Area 02 commissioning")
+	_expect(main.batch_report_visible, "successful built sale opens a persistent batch report")
+	_expect(main.player.input_blocked and main.build_controller.input_blocked, "batch report blocks movement, interaction and build controls")
+	_expect("Råolje behandlet" in main.batch_report_label.text and "Resultat" in main.batch_report_label.text, "batch report explains process yield and economy")
+	_expect("OMRÅDE 02 FULLFØRT" in main.built_refinery_model.objective_text(), "objective changes after commissioning completion")
 	_expect(not main.built_refinery_model.diesel_is_approved(), "Main-integrated sale consumes approved diesel")
 	main._update_unit_statuses()
 	_expect("VENTER" in main.units["sales_terminal"].status_label.text, "terminal returns to waiting after inventory is sold")
 	main._on_unit_interacted("sales_terminal")
 	_expect(main.process_model.money == 3200, "repeated terminal interaction cannot duplicate built-sale revenue")
+	var dismiss_event := InputEventKey.new()
+	dismiss_event.keycode = KEY_ENTER
+	dismiss_event.pressed = true
+	main._unhandled_input(dismiss_event)
+	_expect(not main.batch_report_visible and not main.player.input_blocked and not main.build_controller.input_blocked, "Enter dismisses the report and restores gameplay controls")
 	main._on_unit_interacted(source.unit_id)
 	_expect(main.process_model.money == 2900, "second Main-integrated crude batch deducts exactly 300 kr")
 	_expect(is_equal_approx(main.built_refinery_model.equipment[source.unit_id]["volume_l"], 1000.0), "paid Main-integrated batch loads exactly 1 000 L")
 
+	main.built_refinery_model.interact(pump.unit_id)
+	main.built_refinery_model.tick(10.0)
+	main.built_refinery_model.interact(pump.unit_id)
+	var products_before_warning: float = main.built_refinery_model.product_volume_l()
+	var source_before_disposal: float = main.built_refinery_model.equipment[source.unit_id]["volume_l"]
 	main.process_model.crude_volume_l = 123.0
 	main._on_reset_requested()
+	_expect(is_equal_approx(main.built_refinery_model.product_volume_l(), products_before_warning), "first R only arms product disposal")
+	_expect(main.discard_confirmation_time_left > 0.0, "first R opens a timed disposal confirmation")
+	main._process(4.1)
+	main._on_reset_requested()
+	_expect(is_equal_approx(main.built_refinery_model.product_volume_l(), products_before_warning), "expired confirmation cannot destroy products")
+	main.built_refinery_model.interact(pump.unit_id)
+	main.built_refinery_model.tick(1.0)
+	main.built_refinery_model.interact(pump.unit_id)
+	var products_after_revision: float = main.built_refinery_model.product_volume_l()
+	source_before_disposal = main.built_refinery_model.equipment[source.unit_id]["volume_l"]
+	main._on_reset_requested()
+	_expect(is_equal_approx(main.built_refinery_model.product_volume_l(), products_after_revision), "new production invalidates an older disposal confirmation")
+	main._on_reset_requested()
 	_expect(is_equal_approx(main.process_model.crude_volume_l, 123.0), "post-unlock R cannot create another free pilot batch")
-	_expect(is_equal_approx(main.built_refinery_model.equipment[source.unit_id]["volume_l"], 1000.0), "product disposal does not erase or duplicate source crude")
+	_expect(is_equal_approx(main.built_refinery_model.product_volume_l(), 0.0), "second confirmed R clears built products (%s)" % main.notification_label.text)
+	_expect(is_equal_approx(main.built_refinery_model.equipment[source.unit_id]["volume_l"], source_before_disposal), "product disposal does not erase or duplicate source crude")
 
 	var removable_tank = _unit(main, "built_tank_5")
 	var money_before_removal: int = main.process_model.money

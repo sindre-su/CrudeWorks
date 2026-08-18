@@ -22,6 +22,9 @@ func _run_tests() -> void:
 	_test_commissioning_and_paid_batches()
 	_test_topology_change_stops_flow_and_spare_pump()
 	_test_offspec_recovery()
+	_test_partial_sale_report()
+	_test_route_scoped_alarm()
+	_test_disconnected_inventory_is_not_sellable()
 
 
 func _test_invalid_network_cannot_start() -> void:
@@ -37,7 +40,7 @@ func _test_mass_conserving_ideal_batch_and_sale() -> void:
 	var model = _complete_model()
 	model.tick(0.0)
 	_expect("kildetanken" in model.last_status, "empty valid route tells the player to load crude first")
-	_expect("commissioning" in model.interaction_prompt("source"), "empty source prompt identifies the commissioning action")
+	_expect("oppstartsbatch" in model.interaction_prompt("source"), "empty source prompt identifies the free startup action")
 	var load_result: Dictionary = model.load_crude_batch("source")
 	_expect(load_result["ok"] and load_result["charge"] == 0, "first built batch is an explicit free commissioning batch")
 	_expect(not model.can_remove("source")["ok"], "non-empty built tanks cannot be removed for a refund")
@@ -63,13 +66,28 @@ func _test_mass_conserving_ideal_batch_and_sale() -> void:
 	_expect(is_equal_approx(_total_tank_volume(model), 1000.0), "complete distillation preserves the 1 000 L batch")
 	_expect(is_equal_approx(model.equipment["diesel_tank"]["volume_l"], 350.0), "complete ideal batch yields 350 L diesel")
 	_expect(model.diesel_is_approved(), "ideal built diesel is approved")
+	var approved_disposal_warning: Dictionary = model.discard_products()
+	_expect(approved_disposal_warning.get("requires_confirmation", false) and "Godkjent" in approved_disposal_warning["message"], "approved diesel cannot be destroyed by one accidental key press")
 	var sale: Dictionary = model.sell_diesel()
 	_expect(sale["ok"] and sale["revenue"] == 2800, "approved built diesel sells for the expected revenue")
+	_expect(model.commissioning_contract_complete, "first approved built sale completes the Area 02 contract")
+	_expect(sale["contract_completed_now"], "first sale reports that commissioning completed now")
+	_expect(is_equal_approx(sale["report"]["crude_processed_l"], 1000.0), "batch report records actual processed crude")
+	_expect(is_equal_approx(sale["report"]["light_l"] + sale["report"]["diesel_l"] + sale["report"]["heavy_l"], 1000.0), "reported fractions preserve mass balance")
+	_expect(sale["report"]["crude_cost"] == 0 and sale["report"]["net_profit"] == 2800, "free startup report shows exact cost and net result")
 	_expect(is_equal_approx(model.equipment["diesel_tank"]["volume_l"], 0.0), "sale consumes the diesel inventory")
 	_expect(is_equal_approx(model.equipment["light_tank"]["volume_l"], 0.0), "successful product dispatch clears light fraction storage")
 	_expect(is_equal_approx(model.equipment["heavy_tank"]["volume_l"], 0.0), "successful product dispatch clears heavy fraction storage")
 	var repeated_sale: Dictionary = model.sell_diesel()
 	_expect(not repeated_sale["ok"] and repeated_sale["revenue"] == 0, "diesel cannot be sold repeatedly without new product")
+	_expect(model.successful_sales == 1, "repeated sale cannot duplicate the completion count")
+	var paid_load: Dictionary = model.load_crude_batch("source", true)
+	model.interact("pump")
+	model.tick(100.0)
+	var paid_sale: Dictionary = model.sell_diesel()
+	_expect(paid_load["charge"] == 300 and paid_sale["report"]["crude_cost"] == 300, "paid batch report includes the exact crude cost")
+	_expect(paid_sale["report"]["net_profit"] == 2500, "paid batch report calculates exact net profit")
+	_expect(not paid_sale["contract_completed_now"] and model.successful_sales == 2, "later sales do not recomplete the commissioning contract")
 
 
 func _test_full_tank_backpressure() -> void:
@@ -130,10 +148,58 @@ func _test_offspec_recovery() -> void:
 	model.interact("pump")
 	model.tick(100.0)
 	_expect(not model.sell_diesel()["ok"], "cold commissioning products are rejected as off-spec")
-	var discard: Dictionary = model.discard_products()
-	_expect(discard["ok"], "off-spec products have an explicit safe disposal path")
+	var before_discard := _total_tank_volume(model)
+	var warning: Dictionary = model.discard_products()
+	_expect(warning.get("requires_confirmation", false), "first disposal action requires explicit confirmation")
+	_expect(is_equal_approx(before_discard, _total_tank_volume(model)), "unconfirmed disposal does not mutate inventory")
+	var discard: Dictionary = model.discard_products(true)
+	_expect(discard["ok"], "confirmed off-spec products have an explicit safe disposal path")
 	_expect(is_equal_approx(_total_tank_volume(model), 0.0), "disposal clears product inventory without creating money")
+	_expect(not model.commissioning_contract_complete, "off-spec disposal does not complete the Area 02 contract")
 	_expect(model.load_crude_batch("source", true)["ok"], "player can load a paid recovery batch after disposal")
+
+
+func _test_partial_sale_report() -> void:
+	var model = _complete_model()
+	model.load_crude_batch("source")
+	model.interact("heater")
+	model.interact("heater")
+	model.tick(10.0)
+	model.interact("pump")
+	model.tick(((BuiltRefineryModelScript.DIESEL_TARGET_L + 0.01) / 0.35) / BuiltRefineryModelScript.PUMP_CAPACITY_LPS)
+	var products_while_running: float = model.product_volume_l()
+	_expect(not model.sell_diesel()["ok"], "diesel cannot be sold while the process pump is running")
+	_expect(not model.discard_products()["ok"] and is_equal_approx(model.product_volume_l(), products_while_running), "products cannot be discarded while the process pump is running")
+	model.interact("pump")
+	_expect(not model.equipment["pump"]["running"], "running built pump can be stopped manually")
+	var source_before_sale: float = model.equipment["source"]["volume_l"]
+	var sale: Dictionary = model.sell_diesel()
+	_expect(sale["ok"] and sale["revenue"] == 1600, "an early approved sale earns only for the diesel actually produced")
+	_expect(absf(sale["report"]["crude_processed_l"] - (200.01 / 0.35)) < 0.1, "partial-batch report uses actual transfer rather than nominal batch size")
+	_expect(is_equal_approx(model.equipment["source"]["volume_l"], source_before_sale), "selling products does not erase unprocessed source crude")
+
+
+func _test_route_scoped_alarm() -> void:
+	var model = _complete_model()
+	model.register_unit("spare_heater", "heater", "H-299")
+	model.equipment["spare_heater"]["temperature_c"] = 230.0
+	model.load_crude_batch("source")
+	model.interact("heater")
+	model.interact("heater")
+	model.tick(10.0)
+	model.interact("pump")
+	model.tick(1.0)
+	_expect("HIGH TEMPERATURE" not in model.summary_text(), "disconnected hot heater cannot create a false process alarm")
+
+
+func _test_disconnected_inventory_is_not_sellable() -> void:
+	var model = _complete_model()
+	model.register_unit("spare_tank", "tank", "T-299")
+	model.equipment["spare_tank"]["contents"] = "diesel"
+	model.equipment["spare_tank"]["volume_l"] = 350.0
+	model.equipment["spare_tank"]["quality_percent"] = 100.0
+	_expect(not model.diesel_is_approved(), "diesel readiness ignores disconnected legacy inventory")
+	_expect(not model.sell_diesel()["ok"], "disconnected legacy diesel cannot complete the active-route contract")
 
 
 func _complete_model():

@@ -22,6 +22,7 @@ var collider: CollisionShape3D
 var capsule: CapsuleShape3D
 var is_crouching := false
 var build_mode_active := false
+var input_blocked := false
 
 
 func _ready() -> void:
@@ -49,6 +50,15 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if input_blocked:
+		velocity.x = 0.0
+		velocity.z = 0.0
+		if is_on_floor():
+			velocity.y = -0.5
+		else:
+			velocity.y -= GRAVITY * delta
+		move_and_slide()
+		return
 	_update_posture(delta)
 
 	var movement := Vector2.ZERO
@@ -127,6 +137,8 @@ func _can_stand_up() -> bool:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if input_blocked:
+		return
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		rotate_y(-event.relative.x * MOUSE_SENSITIVITY)
 		camera.rotation.x = clampf(
@@ -155,6 +167,10 @@ func focused_unit():
 	if collider is InteractiveUnit:
 		return collider
 	return null
+
+
+func set_input_blocked(value: bool) -> void:
+	input_blocked = value
 
 
 func _try_interaction() -> void:

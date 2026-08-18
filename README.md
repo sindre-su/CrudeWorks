@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.4 – spillerdrevet raffineri**
+**Prototypeversjon: 0.4.1 – oppstartskontrakt og batchrapport**
 
 En liten 3D-prototype der spilleren driver et forenklet pilotraffineri. Første mål
 er å behandle 1 000 liter råolje og selge minst 200 liter diesel med 90 % eller
@@ -24,7 +24,9 @@ Den første komplette «vertical slice»-en inneholder:
 - en logisk prosesslinje: tank → pumpe → varme → kolonne → tre tanker
 - operasjonelle bygde tanker, pumper, varmeenheter og kolonner
 - massebalanse, tankkapasitet, backpressure og dieselkvalitet
-- commissioning batch, betalte råoljebatcher og salg som tømmer produktet
+- gratis oppstartsbatch, betalte råoljebatcher og salg som tømmer produktet
+- varig fullføring av Område 02 og batchrapport med utbytte, kvalitet og økonomi
+- totrinns bekreftelse før produkter sendes til avfallshåndtering
 
 Alle objekter er foreløpig bygget av Godots primitive 3D-former. Det gjør at vi
 kan teste gameplay før vi bruker tid på modeller og grafikk.
@@ -60,7 +62,8 @@ godot --headless --path . --script res://tests/main_built_loop_test.gd
 | Space | Hopp |
 | Ctrl eller C | Hold inne for å huke |
 | E | Bruk eller inspiser utstyr |
-| R | Pilot: ny batch. Område 02: tøm bygde produkter uten betaling |
+| R | Pilot: ny batch. Område 02: trykk to ganger for sikker produkttømming |
+| Enter | Lukk batchrapport |
 | Esc | Frigjør musepekeren |
 
 ### Byggemodus
@@ -106,14 +109,17 @@ direkte i 3D. Pumpens rotor og ventilhåndtak beveger seg når utstyret brukes.
 4. Koble kolonnens `LETT`, `DIESEL` og `TUNG` til hver sin tank. Trykk `V` for
    en konkret valideringsmelding. Feil rør kan fjernes med `G`.
 5. Trykk `B` for å avslutte bygging, og `E` på kildetanken for å laste den ene
-   gratis commissioning batchen.
+   gratis oppstartsbatchen.
 6. Sett varmeenheten til 200 °C, vent til den er varm, og start pumpen.
-7. Følg væskenivå, flow og kvalitet. Godkjent diesel selges ved `LAB / SALG`;
-   salget sender hele produktbatchen ut og tømmer produkttankene.
+7. Følg væskenivå, flow og kvalitet. Stopp pumpen og selg godkjent diesel ved
+   `LAB / SALG`. Salget sender produktbatchen ut og viser en batchrapport med
+   faktisk råolje behandlet, fraksjoner, kvalitet, inntekt, kostnad og resultat.
 
 Senere råoljebatcher koster 300 kr. Hvis en batch blir off-spec, forklarer
-terminalen at `R` sender bygde produkter til sikker avfallshåndtering uten
-betaling. Dette gir en gjenopprettingsvei uten gratis råolje eller penger.
+terminalen at `R` kan sende bygde produkter til sikker avfallshåndtering uten
+betaling. Spilleren må stoppe pumpen og trykke `R` to ganger innen fire
+sekunder. Dette gir en gjenopprettingsvei uten gratis råolje eller penger, men
+beskytter en godkjent batch mot ett utilsiktet tastetrykk.
 
 ## Prosjektstruktur
 

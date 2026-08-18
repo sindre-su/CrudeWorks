@@ -29,6 +29,7 @@ var connections: Array[Dictionary] = []
 var connection_source
 var process_network
 var network_feedback := "Koble en råoljetank OUT til pumpens IN."
+var input_blocked := false
 
 var canvas: CanvasLayer
 var build_panel: PanelContainer
@@ -53,6 +54,10 @@ func set_unlocked(value: bool) -> void:
 
 func set_available_money(value: int) -> void:
 	available_money = value
+
+
+func set_input_blocked(value: bool) -> void:
+	input_blocked = value
 
 
 func set_build_mode(value: bool) -> void:
@@ -131,6 +136,8 @@ func _process(_delta: float) -> void:
 
 
 func _input(event: InputEvent) -> void:
+	if input_blocked:
+		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_B:
 			if not unlocked:

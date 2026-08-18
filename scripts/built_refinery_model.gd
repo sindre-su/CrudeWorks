@@ -15,8 +15,15 @@ const DIESEL_PRICE_PER_L := 8.0
 var network
 var equipment: Dictionary = {}
 var commissioning_batch_available := true
+var commissioning_contract_complete := false
+var successful_sales := 0
+var last_batch_report: Dictionary = {}
+var product_inventory_revision := 0
 var actual_flow_lps := 0.0
 var last_status := "Bygg og valider prosesslinjen."
+var _report_crude_processed_l := 0.0
+var _report_temperature_total := 0.0
+var _report_crude_cost := 0.0
 
 
 func _init(p_network = null) -> void:
@@ -40,6 +47,7 @@ func register_unit(unit_id: String, equipment_type: String, display_name := "") 
 				"contents": "empty",
 				"temperature_c": AMBIENT_TEMPERATURE_C,
 				"quality_percent": 0.0,
+				"crude_cost_per_l": 0.0,
 			})
 		"pump":
 			state.merge({
@@ -112,7 +120,7 @@ func interaction_prompt(unit_id: String) -> String:
 			if _is_route_source(unit_id):
 				if state["volume_l"] <= 0.001:
 					return (
-						"E — last gratis commissioning batch"
+						"E — last gratis oppstartsbatch"
 						if commissioning_batch_available
 						else "E — kjøp 1 000 L råolje (%d kr)" % CRUDE_BATCH_COST
 					)
@@ -124,19 +132,34 @@ func interaction_prompt(unit_id: String) -> String:
 	return "E — inspiser bygd utstyr"
 
 
-func discard_products() -> Dictionary:
-	var discarded_l := 0.0
+func discard_products(confirmed := false) -> Dictionary:
+	var discarded_l := product_volume_l()
+	if discarded_l <= 0.001:
+		return _result(false, "Ingen bygde produkter å tømme.")
+	if _any_pump_running():
+		return _result(false, "Stopp pumpen før produktene kan tømmes.")
+	if not confirmed:
+		var warning := "Trykk R igjen innen 4 sek for å sende %.0f L produkt til sikker avfallshåndtering." % discarded_l
+		if diesel_is_approved():
+			warning = "ADVARSEL: Godkjent diesel blir destruert. Selg ved LAB / SALG, eller trykk R igjen innen 4 sek."
+		return {
+			"ok": false,
+			"message": warning,
+			"charge": 0,
+			"revenue": 0,
+			"requires_confirmation": true,
+			"product_volume_l": discarded_l,
+		}
 	for state in equipment.values():
 		if state["type"] != "tank" or state["contents"] not in ["light", "diesel", "heavy"]:
 			continue
-		discarded_l += state["volume_l"]
 		state["volume_l"] = 0.0
 		state["contents"] = "empty"
 		state["quality_percent"] = 0.0
-	if discarded_l <= 0.001:
-		return _result(false, "Ingen bygde produkter å tømme.")
 	_stop_all_pumps()
-	last_status = "%.0f L produkt sendt til sikker avfallshåndtering uten betaling." % discarded_l
+	product_inventory_revision += 1
+	_reset_report_tracking()
+	last_status = "%.0f L produkt sendt til sikker avfallshåndtering. Ingen betaling mottatt." % discarded_l
 	return _result(true, last_status)
 
 
@@ -157,8 +180,9 @@ func load_crude_batch(unit_id: String, paid_batch := false) -> Dictionary:
 	tank["contents"] = "crude"
 	tank["temperature_c"] = AMBIENT_TEMPERATURE_C
 	tank["quality_percent"] = 0.0
+	tank["crude_cost_per_l"] = float(charge) / BATCH_VOLUME_L
 	last_status = "1 000 L råolje er lastet. Varm opp anlegget før pumpen startes."
-	var message := "Commissioning batch lastet gratis: 1 000 L råolje."
+	var message := "Gratis oppstartsbatch lastet: 1 000 L råolje."
 	if charge > 0:
 		message = "Ny råoljebatch lastet for %d kr." % charge
 	return {"ok": true, "message": message, "charge": charge}
@@ -222,49 +246,118 @@ func tick(delta: float) -> void:
 
 
 func sell_diesel() -> Dictionary:
-	var diesel_tanks := _tanks_containing("diesel")
-	var total_volume := 0.0
-	var weighted_quality := 0.0
-	for tank in diesel_tanks:
-		total_volume += tank["volume_l"]
-		weighted_quality += tank["volume_l"] * tank["quality_percent"]
+	if _any_pump_running():
+		return _result(false, "Stopp pumpen før diesel kontrolleres og selges.")
+	var validation: Dictionary = network.validate_configuration()
+	if not validation["valid"]:
+		return _result(false, validation["message"])
+	var route: Dictionary = validation["route"]
+	var diesel_tank: Dictionary = equipment[route["products"]["diesel"]]
+	var total_volume: float = diesel_tank["volume_l"] if diesel_tank["contents"] == "diesel" else 0.0
+	var weighted_quality: float = total_volume * diesel_tank["quality_percent"]
 	if total_volume < DIESEL_TARGET_L:
 		return _result(
 			false,
 			"For lite bygd diesel: %.0f / %.0f liter. Trykk R for å tømme off-spec produkter." % [total_volume, DIESEL_TARGET_L]
 		)
-	var quality := weighted_quality / total_volume
+	var quality: float = weighted_quality / total_volume
 	if quality < APPROVED_QUALITY_PERCENT:
 		return _result(
 			false,
 			"OFF-SPEC: Bygd diesel er %.1f %%, minst %.0f %% kreves. Trykk R for sikker tømming." % [quality, APPROVED_QUALITY_PERCENT]
 		)
+	var products := _active_product_totals(route)
 	var revenue := int(round(total_volume * DIESEL_PRICE_PER_L))
+	var processed_l: float = products["light"] + products["diesel"] + products["heavy"]
+	var average_temperature := 0.0
+	if _report_crude_processed_l > 0.001:
+		average_temperature = _report_temperature_total / _report_crude_processed_l
+	var crude_cost := int(round(_report_crude_cost))
+	var report := {
+		"crude_processed_l": processed_l,
+		"light_l": products["light"],
+		"diesel_l": products["diesel"],
+		"heavy_l": products["heavy"],
+		"diesel_quality_percent": quality,
+		"spec_status": "GODKJENT",
+		"average_temperature_c": average_temperature,
+		"revenue": revenue,
+		"crude_cost": crude_cost,
+		"net_profit": revenue - crude_cost,
+	}
+	var contract_completed_now := not commissioning_contract_complete
+	commissioning_contract_complete = true
+	successful_sales += 1
+	last_batch_report = report.duplicate(true)
 	for state in equipment.values():
 		if state["type"] != "tank" or state["contents"] not in ["light", "diesel", "heavy"]:
 			continue
 		state["volume_l"] = 0.0
 		state["contents"] = "empty"
 		state["quality_percent"] = 0.0
+	product_inventory_revision += 1
+	_reset_report_tracking()
 	last_status = "%.0f L bygd diesel godkjent; produktbatch sendt for %d kr." % [total_volume, revenue]
 	return {
 		"ok": true,
 		"message": last_status,
 		"revenue": revenue,
 		"sold_volume_l": total_volume,
+		"report": report,
+		"contract_completed_now": contract_completed_now,
 	}
 
 
 func diesel_is_approved() -> bool:
-	var total_volume := 0.0
-	var weighted_quality := 0.0
-	for tank in _tanks_containing("diesel"):
-		total_volume += tank["volume_l"]
-		weighted_quality += tank["volume_l"] * tank["quality_percent"]
+	var route: Dictionary = network.find_complete_route()
+	if route.is_empty():
+		return false
+	var tank: Dictionary = equipment[route["products"]["diesel"]]
+	var total_volume: float = tank["volume_l"] if tank["contents"] == "diesel" else 0.0
 	return (
 		total_volume >= DIESEL_TARGET_L
-		and weighted_quality / total_volume >= APPROVED_QUALITY_PERCENT
+		and tank["quality_percent"] >= APPROVED_QUALITY_PERCENT
 	)
+
+
+func product_volume_l() -> float:
+	var total := 0.0
+	for state in equipment.values():
+		if state["type"] == "tank" and state["contents"] in ["light", "diesel", "heavy"]:
+			total += state["volume_l"]
+	return total
+
+
+func objective_text() -> String:
+	var prefix := "MÅL 02: "
+	if commissioning_contract_complete:
+		prefix = "OMRÅDE 02 FULLFØRT — Frivillig: "
+	var validation: Dictionary = network.validate_configuration()
+	if not validation["valid"]:
+		return prefix + "bygg og koble en komplett linje"
+	var route: Dictionary = validation["route"]
+	var source: Dictionary = equipment[route["source"]]
+	var heater: Dictionary = equipment[route["heater"]]
+	var pump: Dictionary = equipment[route["pump"]]
+	if source["volume_l"] <= 0.001 and product_volume_l() <= 0.001:
+		return (
+			prefix + "last en betalt batch med mål om minst 95 % kvalitet"
+			if commissioning_contract_complete
+			else prefix + "avslutt bygging og last gratis oppstartsbatch"
+		)
+	if heater["temperature_c"] < 190.0 and source["volume_l"] > 0.001:
+		return prefix + "varm anlegget til ca. 200 °C"
+	if diesel_is_approved():
+		return (
+			prefix + "stopp pumpen og lever godkjent diesel ved LAB / SALG"
+			if pump["running"]
+			else prefix + "lever godkjent diesel ved LAB / SALG"
+		)
+	if source["volume_l"] <= 0.001 and product_volume_l() > 0.001:
+		return prefix + "kontroller kvaliteten — tøm OFF-SPEC produkt med R ved behov"
+	if source["volume_l"] > 0.001 and not pump["running"]:
+		return prefix + "start pumpen og produser minst 200 L diesel"
+	return prefix + "produser minst 200 L diesel med minst 90 % kvalitet"
 
 
 func inspect_unit(unit_id: String) -> String:
@@ -322,18 +415,24 @@ func summary_text() -> String:
 	var validation: Dictionary = network.validate_configuration()
 	var diesel_volume := 0.0
 	var diesel_quality := 0.0
-	for tank in _tanks_containing("diesel"):
-		diesel_quality += tank["volume_l"] * tank["quality_percent"]
-		diesel_volume += tank["volume_l"]
-	if diesel_volume > 0.0:
-		diesel_quality /= diesel_volume
+	if validation["valid"]:
+		var tank: Dictionary = equipment[validation["route"]["products"]["diesel"]]
+		if tank["contents"] == "diesel":
+			diesel_volume = tank["volume_l"]
+			diesel_quality = tank["quality_percent"]
 	var alarm_text := _process_alarm_text()
+	var quality_text := "VENTER"
+	if diesel_volume > 0.001:
+		quality_text = "%.1f %% — %s" % [
+			diesel_quality,
+			"GODKJENT" if diesel_is_approved() else "OFF-SPEC",
+		]
 	return (
 		"CRUDEWORKS — BYGGEOMRÅDE 02\n\n"
 		+ "Nettverk      %s\n" % ("GYLDIG" if validation["valid"] else "UFULLSTENDIG")
 		+ "Flow          %6.1f L/s\n" % actual_flow_lps
 		+ "Diesel        %6.0f L\n" % diesel_volume
-		+ "Kvalitet      %6.1f %%\n\n" % diesel_quality
+		+ "Kvalitet      %s\n\n" % quality_text
 		+ (alarm_text + "\n" if not alarm_text.is_empty() else "")
 		+ last_status
 	)
@@ -372,13 +471,17 @@ func fractions_for_temperature(temperature_c: float) -> Vector3:
 
 func _toggle_pump(unit_id: String) -> Dictionary:
 	var pump: Dictionary = equipment[unit_id]
-	if not pump["running"]:
+	if pump["running"]:
+		pump["running"] = false
+		pump["actual_flow_lps"] = 0.0
+		actual_flow_lps = 0.0
+	else:
 		var validation: Dictionary = network.validate_configuration()
 		if not validation["valid"]:
 			return _result(false, validation["message"])
 		if validation["route"]["pump"] != unit_id:
 			return _result(false, "%s er ikke del av den komplette prosesslinjen." % pump["name"])
-		pump["running"] = not pump["running"]
+		pump["running"] = true
 	last_status = "%s er %s." % [pump["name"], "startet" if pump["running"] else "stoppet"]
 	return _result(true, last_status)
 
@@ -415,18 +518,22 @@ func _stop_all_pumps() -> void:
 
 
 func _process_alarm_text() -> String:
-	for state in equipment.values():
-		if state["type"] != "heater":
-			continue
-		if state["temperature_c"] > 225.0:
-			return "HIGH TEMPERATURE — dieselkvalitet i fare"
-		if actual_flow_lps > 0.01 and state["temperature_c"] < 170.0:
-			return "LOW TEMPERATURE — dårlig separasjon og kvalitet"
+	var route: Dictionary = network.find_complete_route()
+	if route.is_empty():
+		return ""
+	var state: Dictionary = equipment[route["heater"]]
+	if state["temperature_c"] > 225.0:
+		return "HIGH TEMPERATURE — dieselkvalitet i fare"
+	if actual_flow_lps > 0.01 and state["temperature_c"] < 170.0:
+		return "LOW TEMPERATURE — dårlig separasjon og kvalitet"
 	return ""
 
 
 func _process_input(route: Dictionary, input_l: float, fractions: Vector3, temperature_c: float) -> void:
 	var source: Dictionary = equipment[route["source"]]
+	_report_crude_processed_l += input_l
+	_report_temperature_total += input_l * temperature_c
+	_report_crude_cost += input_l * float(source.get("crude_cost_per_l", 0.0))
 	source["volume_l"] -= input_l
 	var diesel_quality := _diesel_quality(temperature_c, PUMP_CAPACITY_LPS)
 	for product_name in ["light", "diesel", "heavy"]:
@@ -440,6 +547,7 @@ func _process_input(route: Dictionary, input_l: float, fractions: Vector3, tempe
 		tank["contents"] = product_name
 		tank["temperature_c"] = temperature_c
 	equipment[route["column"]]["processed_total_l"] += input_l
+	product_inventory_revision += 1
 
 
 func _diesel_quality(temperature_c: float, current_flow_lps: float) -> float:
@@ -481,12 +589,26 @@ func _product_role_for_tank(unit_id: String) -> String:
 	return ""
 
 
-func _tanks_containing(contents: String) -> Array:
-	var tanks := []
+func _active_product_totals(route: Dictionary) -> Dictionary:
+	var totals := {"light": 0.0, "diesel": 0.0, "heavy": 0.0}
+	for product_name in totals:
+		var tank: Dictionary = equipment[route["products"][product_name]]
+		if tank["contents"] == product_name:
+			totals[product_name] = tank["volume_l"]
+	return totals
+
+
+func _any_pump_running() -> bool:
 	for state in equipment.values():
-		if state["type"] == "tank" and state["contents"] == contents and state["volume_l"] > 0.001:
-			tanks.append(state)
-	return tanks
+		if state["type"] == "pump" and state["running"]:
+			return true
+	return false
+
+
+func _reset_report_tracking() -> void:
+	_report_crude_processed_l = 0.0
+	_report_temperature_total = 0.0
+	_report_crude_cost = 0.0
 
 
 func _contents_name(contents: String) -> String:

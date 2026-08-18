@@ -29,7 +29,12 @@ var prompt_label: Label
 var notification_label: Label
 var help_label: Label
 var completion_panel: PanelContainer
+var batch_report_panel: PanelContainer
+var batch_report_label: Label
 var notification_time_left := 0.0
+var batch_report_visible := false
+var discard_confirmation_time_left := 0.0
+var discard_confirmation_revision := -1
 
 
 func _ready() -> void:
@@ -43,10 +48,25 @@ func _ready() -> void:
 	_show_notification("Varm opp anlegget før du starter flowen.", 7.0)
 
 
+func _unhandled_input(event: InputEvent) -> void:
+	if not event is InputEventKey or not event.pressed or event.echo:
+		return
+	if batch_report_visible and event.keycode in [KEY_ENTER, KEY_KP_ENTER, KEY_ESCAPE]:
+		_dismiss_batch_report()
+		get_viewport().set_input_as_handled()
+	elif event.keycode == KEY_ESCAPE and discard_confirmation_time_left > 0.0:
+		discard_confirmation_time_left = 0.0
+		discard_confirmation_revision = -1
+		_show_notification("Tømming avbrutt.")
+
+
 func _process(delta: float) -> void:
 	process_model.tick(delta)
 	built_refinery_model.tick(delta)
 	notification_time_left = maxf(notification_time_left - delta, 0.0)
+	discard_confirmation_time_left = maxf(discard_confirmation_time_left - delta, 0.0)
+	if discard_confirmation_time_left <= 0.0:
+		discard_confirmation_revision = -1
 	build_controller.set_available_money(process_model.money)
 	build_controller.set_process_flow(
 		built_refinery_model.actual_flow_lps,
@@ -326,6 +346,26 @@ func _build_user_interface() -> void:
 	completion_panel.add_child(completion_text)
 	canvas.add_child(completion_panel)
 
+	batch_report_panel = PanelContainer.new()
+	batch_report_panel.anchor_left = 0.5
+	batch_report_panel.anchor_right = 0.5
+	batch_report_panel.anchor_top = 0.5
+	batch_report_panel.anchor_bottom = 0.5
+	batch_report_panel.offset_left = -330.0
+	batch_report_panel.offset_right = 330.0
+	batch_report_panel.offset_top = -260.0
+	batch_report_panel.offset_bottom = 260.0
+	batch_report_panel.visible = false
+	batch_report_label = Label.new()
+	batch_report_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	batch_report_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	batch_report_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	batch_report_label.add_theme_font_size_override("font_size", 21)
+	batch_report_label.add_theme_color_override("font_color", Color("fff3bd"))
+	batch_report_label.add_theme_constant_override("line_spacing", 4)
+	batch_report_panel.add_child(batch_report_label)
+	canvas.add_child(batch_report_panel)
+
 
 func _update_user_interface() -> void:
 	var heater_state := "AV"
@@ -337,9 +377,9 @@ func _update_user_interface() -> void:
 
 	if build_mode_unlocked:
 		hud_label.text = built_refinery_model.summary_text() + "\nPenger        %d kr" % process_model.money
-		objective_label.text = "MÅL: Bygg og drift område 02 — selg ≥ 200 L godkjent diesel"
+		objective_label.text = built_refinery_model.objective_text()
 		alarm_label.text = ""
-		help_label.text = "WASD  Gå\nMus  Se\nShift  Løp\nSpace  Hopp\nCtrl / C  Huk\nE  Bruk utstyr\nB  Byggemodus\nR  Tøm produkter\nEsc  Frigjør mus"
+		help_label.text = "WASD  Gå\nMus  Se\nShift  Løp\nSpace  Hopp\nCtrl / C  Huk\nE  Bruk utstyr\nB  Byggemodus\nR x2  Sikker produkttømming\nEsc  Frigjør mus"
 	else:
 		hud_label.text = (
 			"CRUDEWORKS — PILOTANLEGG\n\n"
@@ -360,18 +400,20 @@ func _update_user_interface() -> void:
 
 	var focused = player.focused_unit()
 	prompt_label.text = ""
-	if focused != null and not build_controller.active:
+	if focused != null and not build_controller.active and not batch_report_visible:
 		if focused.unit_id.begins_with("built_"):
 			prompt_label.text = built_refinery_model.interaction_prompt(focused.unit_id)
 		else:
 			prompt_label.text = focused.interaction_prompt()
 	notification_label.visible = notification_time_left > 0.0
 	completion_panel.visible = process_model.objective_complete and not build_mode_unlocked
+	batch_report_panel.visible = batch_report_visible and not build_controller.active
 	var operation_ui_visible: bool = not build_controller.active
-	hud_label.visible = operation_ui_visible
-	objective_label.visible = operation_ui_visible
-	alarm_label.visible = operation_ui_visible
-	help_label.visible = operation_ui_visible
+	var regular_ui_visible: bool = operation_ui_visible and not batch_report_visible
+	hud_label.visible = regular_ui_visible
+	objective_label.visible = regular_ui_visible
+	alarm_label.visible = regular_ui_visible
+	help_label.visible = regular_ui_visible
 
 
 func _update_unit_statuses() -> void:
@@ -401,6 +443,7 @@ func _update_unit_statuses() -> void:
 	)
 	units["sales_terminal"].set_status("KLAR" if sales_ready else "VENTER")
 	units["sales_terminal"].set_active(sales_ready, Color("78e08f"))
+	var active_route: Dictionary = built_refinery_model.network.find_complete_route()
 	for entry in build_controller.registered_units:
 		var built_unit = entry["node"]
 		if not is_instance_valid(built_unit):
@@ -413,7 +456,9 @@ func _update_unit_statuses() -> void:
 				state["contents"]
 			)
 			built_unit.set_active(
-				state["contents"] == "diesel" and state["quality_percent"] >= BuiltRefineryModelScript.APPROVED_QUALITY_PERCENT,
+				state["contents"] == "diesel"
+				and state["volume_l"] >= BuiltRefineryModelScript.DIESEL_TARGET_L
+				and state["quality_percent"] >= BuiltRefineryModelScript.APPROVED_QUALITY_PERCENT,
 				Color("78e08f")
 			)
 		elif state.get("type", "") == "pump":
@@ -421,7 +466,11 @@ func _update_unit_statuses() -> void:
 		elif state.get("type", "") == "heater":
 			built_unit.set_active(state["setpoint_c"] > 0.0, Color("ff5a35"))
 		elif state.get("type", "") == "column":
-			built_unit.set_active(built_refinery_model.actual_flow_lps > 0.01, Color("75ddff"))
+			built_unit.set_active(
+				built_refinery_model.actual_flow_lps > 0.01
+				and active_route.get("column", "") == built_unit.unit_id,
+				Color("75ddff")
+			)
 
 
 func _update_process_visuals(delta: float) -> void:
@@ -487,6 +536,9 @@ func _on_unit_interacted(unit_id: String) -> void:
 				var sale: Dictionary = built_refinery_model.sell_diesel()
 				if sale["ok"]:
 					process_model.credit(sale["revenue"])
+					discard_confirmation_time_left = 0.0
+					discard_confirmation_revision = -1
+					_show_batch_report(sale["report"], sale["contract_completed_now"])
 				message = sale["message"]
 			else:
 				message = process_model.sell_diesel()
@@ -520,7 +572,20 @@ func _on_unit_interacted(unit_id: String) -> void:
 
 func _on_reset_requested() -> void:
 	if process_model.objective_complete or build_mode_unlocked:
-		var discard_result: Dictionary = built_refinery_model.discard_products()
+		if batch_report_visible:
+			_show_notification("Trykk Enter for å lukke batchrapporten først.")
+			return
+		var confirmation_is_current: bool = (
+			discard_confirmation_time_left > 0.0
+			and discard_confirmation_revision == built_refinery_model.product_inventory_revision
+		)
+		var discard_result: Dictionary = built_refinery_model.discard_products(confirmation_is_current)
+		if discard_result.get("requires_confirmation", false):
+			discard_confirmation_time_left = 4.0
+			discard_confirmation_revision = built_refinery_model.product_inventory_revision
+		elif discard_result["ok"]:
+			discard_confirmation_time_left = 0.0
+			discard_confirmation_revision = -1
 		_show_notification(discard_result["message"], 6.0)
 		return
 	process_model.reset_batch()
@@ -576,6 +641,45 @@ func _on_build_removal_requested(unit) -> void:
 func _show_notification(message: String, duration := 4.0) -> void:
 	notification_label.text = message if is_instance_valid(notification_label) else ""
 	notification_time_left = duration
+
+
+func _show_batch_report(report: Dictionary, completed_now: bool) -> void:
+	var heading := "OMRÅDE 02 — OPPSTART GODKJENT" if completed_now else "BATCH GODKJENT"
+	var temperature: float = report.get("average_temperature_c", 0.0)
+	var process_result := "Prosessdata ikke tilgjengelig"
+	if temperature > 0.0:
+		process_result = "%.0f °C → %s diesel" % [
+			temperature,
+			"høy kvalitet" if report["diesel_quality_percent"] >= 95.0 else "godkjent",
+		]
+	var net_profit: int = report["net_profit"]
+	var net_text := "+%d kr" % net_profit if net_profit >= 0 else "%d kr" % net_profit
+	batch_report_label.text = (
+		heading + "\n\n"
+		+ "Råolje behandlet      %7.0f L\n" % report["crude_processed_l"]
+		+ "Lett fraksjon         %7.0f L\n" % report["light_l"]
+		+ "Diesel                %7.0f L\n" % report["diesel_l"]
+		+ "Tung fraksjon         %7.0f L\n\n" % report["heavy_l"]
+		+ "Dieselkvalitet        %6.1f %% — %s\n" % [
+			report["diesel_quality_percent"],
+			report["spec_status"],
+		]
+		+ "Prosess               %s\n\n" % process_result
+		+ "Inntekt               %7d kr\n" % report["revenue"]
+		+ "Råoljekostnad         %7d kr\n" % report["crude_cost"]
+		+ "Resultat              %s\n\n" % net_text
+		+ "Enter — fortsett"
+	)
+	batch_report_visible = true
+	player.set_input_blocked(true)
+	build_controller.set_input_blocked(true)
+
+
+func _dismiss_batch_report() -> void:
+	batch_report_visible = false
+	player.set_input_blocked(false)
+	build_controller.set_input_blocked(false)
+	_show_notification("Område 02 er godkjent. Neste utfordring er en lønnsom betalt batch.", 6.0)
 
 
 func _create_box_unit(
