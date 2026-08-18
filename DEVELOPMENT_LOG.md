@@ -17,10 +17,10 @@
 1. **Area 02 commissioning contract and batch report** — make the first built
    sale a clear achievement, explain yield/quality/economy, make product
    disposal safe, and correct route-unaware feedback.
-2. **Persistent player refinery** — save and restore construction, connections,
-   process inventory, economy, and progression safely.
-3. **Manual valve and low-flow troubleshooting** — add one understandable
+2. **Manual valve and low-flow troubleshooting** — add one understandable
    operating fault and a recovery task without complex fluid physics.
+3. **Persistent player refinery** — save and restore construction, connections,
+   process inventory, economy, and progression safely.
 4. **Crude and laboratory contracts** — add a small number of meaningful feed
    choices and quality targets that vary the repeat loop.
 5. **Starter instrumentation and automation** — introduce useful measurements
@@ -46,6 +46,20 @@
     column activity to the active process route.
   - Corrected the built pump so a second interaction actually stops it.
   - Updated player terminology from `commissioning batch` to `oppstartsbatch`.
+- Milestone 2 completed:
+  - Added a required player-built manual valve between the pump and heater.
+  - Added a closed-by-default red/perpendicular valve handle which turns
+    green/parallel when opened, with matching contextual prompt and status.
+  - Added valve-aware topology validation, seven active route segments, and a
+    clear rejection when the player tries to bypass the valve.
+  - Added a real `LOW FLOW` troubleshooting state: the pump remains on, flow
+    and transfer stay at zero, and opening the correct route valve resumes the
+    same mass-conserving process.
+  - Routed Area 02 alarms through the existing red alarm display and kept
+    simultaneous high-temperature safety information visible.
+  - Raised the minimum pilot contract to 3 000 kr so the required 2 600 kr
+    starter refinery still leaves enough for one paid recovery batch.
+  - Kept the original pilot plant behavior and interaction sequence unchanged.
 
 ## Validation
 
@@ -63,6 +77,14 @@
   - built refinery: 64 checks passed;
   - Main integration: 29 checks passed;
   - main scene and full headless editor/resource scan passed.
+- Final Milestone 2 regression with isolated log files:
+  - pilot/economy: 23 checks passed;
+  - process network: 59 checks passed;
+  - building system: 41 checks passed;
+  - built refinery: 77 checks passed;
+  - Main integration: 33 checks passed;
+  - main scene and full headless editor/resource scan passed with no logged
+    parser, resource, runtime, or script errors.
 
 ## Bugs Found
 
@@ -73,6 +95,10 @@
 - Product disposal is a destructive single-key action without confirmation.
 - Multiple complete routes validate although only the first route operates.
 - Physical 1280 x 720 port aiming and real input timing still need hands-on QA.
+- Requiring the valve initially left only 200 kr after minimum pilot funding,
+  which could soft-lock a player after an off-spec free batch.
+- Area 02 process alarms were present in summary text but not in the prominent
+  red alarm display.
 - A concurrent parallel Godot run collided over the engine log and crashed;
   all authoritative validation was rerun sequentially with isolated log files
   and passed.
@@ -86,19 +112,27 @@
 - Fixed disconnected legacy diesel influencing active-line readiness and sale.
 - Fixed Area 02 remaining permanently unfinished after an approved sale.
 - Fixed single-key destruction of approved or off-spec product inventory.
+- Fixed the recovery-batch economy soft-lock after constructing the required
+  valve-inclusive refinery.
+- Fixed built `LOW FLOW` and `HIGH TEMPERATURE` alarms being visually muted or
+  one condition hiding the other.
 
 ## Current Stable State
 
-- Version 0.4.1 is verified stable after Milestone 1.
+- Version 0.5.0 is verified stable after Milestone 2.
 - The original pilot loop and full player-built loop both pass regression.
 - The first valid Area 02 sale now has a durable achievement and informative
   result, while later paid batches remain repeatable.
+- The complete built process now teaches the intended sequence directly:
+  tank → pump → valve → heater → distillation → product tanks.
 
 ## Known Issues
 
 - Multi-route operation is intentionally not part of the first vertical slice,
   but the limitation needs clearer feedback before multiple lines are exposed.
 - Hands-on aiming/interaction feel remains unverified by headless automation.
+- Valve handle readability and central alarm prominence still need a hands-on
+  check at the target 1280 x 720 window size.
 - Report accounting covers material processed since the previous sale or
   disposal. After an early partial sale, the next report covers only the
   remaining material processed afterward and its proportional crude cost.
@@ -111,9 +145,12 @@
 - Architecture review found the proposed 95 percent follow-up was not an
   enforceable contract. It is now explicitly labelled as a voluntary challenge
   and the normal load/heat/pump/deliver guidance remains active.
+- After Milestone 1, the manual valve moved ahead of persistence because it
+  completes the core tank–pump–valve–heater learning chain and creates the first
+  player-readable troubleshooting event with little architectural risk.
 
 ## Next Best Action
 
-- Reassess whether persistence remains the next highest-value milestone, then
-  implement a small versioned save format for construction, topology, process
-  state, economy, and progression without changing simulation ownership.
+- Implement a small versioned save format for construction, topology, process
+  state, economy, and progression without changing simulation ownership or
+  destabilizing the now-complete manual refinery loop.

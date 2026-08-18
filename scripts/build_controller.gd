@@ -150,7 +150,7 @@ func _input(event: InputEvent) -> void:
 		if not active:
 			return
 		match event.keycode:
-			KEY_1, KEY_2, KEY_3, KEY_4:
+			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5:
 				var index := int(event.keycode) - int(KEY_1)
 				selected_type = Catalog.ORDER[index]
 				mode = "place"
@@ -582,7 +582,7 @@ func _build_interface() -> void:
 	add_child(canvas)
 	build_panel = PanelContainer.new()
 	build_panel.position = Vector2(20.0, 20.0)
-	build_panel.custom_minimum_size = Vector2(450.0, 390.0)
+	build_panel.custom_minimum_size = Vector2(450.0, 420.0)
 	build_panel.visible = false
 	build_label = Label.new()
 	build_label.add_theme_font_size_override("font_size", 17)
@@ -627,6 +627,6 @@ func _update_build_text() -> void:
 		+ "Valgt: %s (%d kr)%s\n" % [data["name"], data["cost"], connection_text]
 		+ "Retning: %d°  |  IN blå  |  OUT oransje\n\n" % (rotation_quadrants * 90)
 		+ "Nettverk: %s\n\n" % network_feedback
-		+ "1–4 Velg  |  Q/E Roter  |  Klikk Plasser\n"
+		+ "1–5 Velg  |  Q/E Roter  |  Klikk Plasser\n"
 		+ "X Fjern  |  F Koble  |  G Koble fra  |  V Valider  |  B Avslutt"
 	)

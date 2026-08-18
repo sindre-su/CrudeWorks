@@ -14,7 +14,7 @@ func _run_test() -> void:
 	root.add_child(main)
 	await process_frame
 
-	main.process_model.money = 2800
+	main.process_model.money = ProcessModel.PILOT_CONTRACT_MINIMUM_REVENUE
 	main.process_model.objective_complete = true
 	main.process_model.diesel_volume_l = 200.0
 	main.process_model.diesel_quality_percent = 100.0
@@ -25,13 +25,15 @@ func _run_test() -> void:
 	_expect("VENTER" in main.units["sales_terminal"].status_label.text, "terminal readiness switches from sold pilot inventory to built diesel")
 
 	_place_full_refinery(main)
-	_expect(main.process_model.money == 400, "full starter refinery costs 2 400 kr from pilot proceeds")
+	_expect(main.process_model.money == 400, "pilot contract preserves one recovery batch after the 2 600 kr starter refinery")
 	_connect_full_refinery(main)
 	var validation: Dictionary = main.built_refinery_model.network.validate_configuration()
 	_expect(validation["valid"], "Main placement and connection hooks create a valid refinery route")
+	_expect(main.build_controller.connections.size() == 7, "Main route creates seven logical and visual connections")
 
 	var source = _unit(main, "built_tank_1")
-	var heater = _unit(main, "built_heater_3")
+	var valve = _unit(main, "built_valve_3")
+	var heater = _unit(main, "built_heater_4")
 	var pump = _unit(main, "built_pump_2")
 	var load_result: Dictionary = main.built_refinery_model.interact(source.unit_id)
 	_expect(load_result["ok"] and load_result["charge"] == 0, "first Main-integrated crude load uses the commissioning batch")
@@ -39,6 +41,15 @@ func _run_test() -> void:
 	main.built_refinery_model.interact(heater.unit_id)
 	main.built_refinery_model.tick(10.0)
 	_expect(main.built_refinery_model.interact(pump.unit_id)["ok"], "Main-integrated built pump starts")
+	var source_before_low_flow: float = main.built_refinery_model.equipment[source.unit_id]["volume_l"]
+	main.built_refinery_model.tick(1.0)
+	main._update_user_interface()
+	_expect(is_equal_approx(main.built_refinery_model.equipment[source.unit_id]["volume_l"], source_before_low_flow) and "LOW FLOW" in main.alarm_label.text, "closed built valve creates a visible LOW FLOW alarm without consuming crude")
+	main._update_unit_statuses()
+	_expect("STENGT" in valve.status_label.text and is_equal_approx(valve.valve_handle.rotation.y, deg_to_rad(90.0)), "closed valve world status and handle agree")
+	main._on_unit_interacted(valve.unit_id)
+	main._update_unit_statuses()
+	_expect("ÅPEN" in valve.status_label.text and is_equal_approx(valve.valve_handle.rotation.y, 0.0), "opening valve updates world status and handle")
 	main.built_refinery_model.tick(100.0)
 	_expect(main.built_refinery_model.diesel_is_approved(), "Main-integrated refinery produces approved diesel")
 	main._update_unit_statuses()
@@ -89,7 +100,7 @@ func _run_test() -> void:
 	_expect(is_equal_approx(main.built_refinery_model.product_volume_l(), 0.0), "second confirmed R clears built products (%s)" % main.notification_label.text)
 	_expect(is_equal_approx(main.built_refinery_model.equipment[source.unit_id]["volume_l"], source_before_disposal), "product disposal does not erase or duplicate source crude")
 
-	var removable_tank = _unit(main, "built_tank_5")
+	var removable_tank = _unit(main, "built_tank_6")
 	var money_before_removal: int = main.process_model.money
 	main._on_build_removal_requested(removable_tank)
 	main._on_build_removal_requested(removable_tank)
@@ -106,23 +117,26 @@ func _run_test() -> void:
 func _place_full_refinery(main) -> void:
 	main._on_build_placement_requested("tank", Vector3(-10.0, 1.96, 14.0), 0)
 	main._on_build_placement_requested("pump", Vector3(-6.0, 0.86, 14.0), 0)
-	main._on_build_placement_requested("heater", Vector3(-2.0, 1.66, 14.0), 0)
-	main._on_build_placement_requested("column", Vector3(3.0, 3.36, 14.0), 0)
-	main._on_build_placement_requested("tank", Vector3(8.0, 1.96, 13.0), 0)
-	main._on_build_placement_requested("tank", Vector3(8.0, 1.96, 18.0), 0)
-	main._on_build_placement_requested("tank", Vector3(8.0, 1.96, 23.0), 0)
+	main._on_build_placement_requested("valve", Vector3(-3.5, 0.71, 14.0), 0)
+	main._on_build_placement_requested("heater", Vector3(-0.5, 1.66, 14.0), 0)
+	main._on_build_placement_requested("column", Vector3(4.0, 3.36, 14.0), 0)
+	main._on_build_placement_requested("tank", Vector3(9.0, 1.96, 13.0), 0)
+	main._on_build_placement_requested("tank", Vector3(9.0, 1.96, 18.0), 0)
+	main._on_build_placement_requested("tank", Vector3(9.0, 1.96, 23.0), 0)
 
 
 func _connect_full_refinery(main) -> void:
 	var source = _unit(main, "built_tank_1")
 	var pump = _unit(main, "built_pump_2")
-	var heater = _unit(main, "built_heater_3")
-	var column = _unit(main, "built_column_4")
-	var light_tank = _unit(main, "built_tank_5")
-	var diesel_tank = _unit(main, "built_tank_6")
-	var heavy_tank = _unit(main, "built_tank_7")
+	var valve = _unit(main, "built_valve_3")
+	var heater = _unit(main, "built_heater_4")
+	var column = _unit(main, "built_column_5")
+	var light_tank = _unit(main, "built_tank_6")
+	var diesel_tank = _unit(main, "built_tank_7")
+	var heavy_tank = _unit(main, "built_tank_8")
 	main.build_controller._connect_ports(source.get_port("output"), pump.get_port("input"))
-	main.build_controller._connect_ports(pump.get_port("output"), heater.get_port("input"))
+	main.build_controller._connect_ports(pump.get_port("output"), valve.get_port("input"))
+	main.build_controller._connect_ports(valve.get_port("output"), heater.get_port("input"))
 	main.build_controller._connect_ports(heater.get_port("output"), column.get_port("input"))
 	main.build_controller._connect_ports(column.get_port("light"), light_tank.get_port("input"))
 	main.build_controller._connect_ports(column.get_port("diesel"), diesel_tank.get_port("input"))

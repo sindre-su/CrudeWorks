@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.4.1 – oppstartskontrakt og batchrapport**
+**Prototypeversjon: 0.5 – manuell flowkontroll og feilsøking**
 
 En liten 3D-prototype der spilleren driver et forenklet pilotraffineri. Første mål
 er å behandle 1 000 liter råolje og selge minst 200 liter diesel med 90 % eller
@@ -21,12 +21,13 @@ Den første komplette «vertical slice»-en inneholder:
 - byggeområde som låses opp etter første godkjente salg
 - lesbar plassering, rotasjon, fjerning og trygg refusjon av tomt utstyr
 - retningsbestemte OUT-til-IN-rør med validering og frakobling
-- en logisk prosesslinje: tank → pumpe → varme → kolonne → tre tanker
-- operasjonelle bygde tanker, pumper, varmeenheter og kolonner
+- en logisk prosesslinje: tank → pumpe → ventil → varme → kolonne → tre tanker
+- operasjonelle bygde tanker, pumper, manuelle ventiler, varmeenheter og kolonner
 - massebalanse, tankkapasitet, backpressure og dieselkvalitet
 - gratis oppstartsbatch, betalte råoljebatcher og salg som tømmer produktet
 - varig fullføring av Område 02 og batchrapport med utbytte, kvalitet og økonomi
 - totrinns bekreftelse før produkter sendes til avfallshåndtering
+- diagnostiserbar `LOW FLOW` når en bygd pumpe arbeider mot stengt ventil
 
 Alle objekter er foreløpig bygget av Godots primitive 3D-former. Det gjør at vi
 kan teste gameplay før vi bruker tid på modeller og grafikk.
@@ -74,6 +75,7 @@ Byggemodus låses opp når den første dieselbatchen er solgt.
 | --- | --- |
 | B | Åpne eller lukke byggemodus |
 | 1–4 | Velg tank, pumpe, varmeenhet eller destillasjonskolonne |
+| 5 | Velg manuell ventil |
 | Q / E | Roter forhåndsvisningen |
 | Venstreklikk | Plasser eller bekreft valgt handling |
 | X | Bytt til fjerningsmodus; fjerning gir full refusjon |
@@ -101,17 +103,22 @@ direkte i 3D. Pumpens rotor og ventilhåndtak beveger seg når utstyret brukes.
 
 ## Første selvbygde raffineri
 
-1. Selg godkjent pilotdiesel. Treningskontrakten garanterer minst 2 800 kr, slik
-   at spilleren alltid kan finansiere startanlegget.
-2. Trykk `B` og plasser fire tanker, én pumpe, én varmeenhet og én kolonne.
-3. Koble `tank OUT → pumpe IN`, `pumpe OUT → varme IN` og
-   `varme OUT → kolonne IN`.
+1. Selg godkjent pilotdiesel. Treningskontrakten garanterer minst 3 000 kr, slik
+   at spilleren kan finansiere startanlegget og har råd til én recovery-batch
+   dersom den gratis oppstartsbatchen blir off-spec.
+2. Trykk `B` og plasser fire tanker, én pumpe, én manuell ventil, én varmeenhet
+   og én kolonne.
+3. Koble `tank OUT → pumpe IN`, `pumpe OUT → ventil IN`,
+   `ventil OUT → varme IN` og `varme OUT → kolonne IN`.
 4. Koble kolonnens `LETT`, `DIESEL` og `TUNG` til hver sin tank. Trykk `V` for
    en konkret valideringsmelding. Feil rør kan fjernes med `G`.
 5. Trykk `B` for å avslutte bygging, og `E` på kildetanken for å laste den ene
    gratis oppstartsbatchen.
-6. Sett varmeenheten til 200 °C, vent til den er varm, og start pumpen.
-7. Følg væskenivå, flow og kvalitet. Stopp pumpen og selg godkjent diesel ved
+6. Sett varmeenheten til 200 °C, vent til den er varm, og start pumpen. Ventilen
+   er stengt som standard, så pumpen gir `LOW FLOW` til spilleren finner og
+   åpner ventilen.
+7. Følg væskenivå, flow og kvalitet. Ventilen kan stenge eller gjenopprette flow
+   uten at væske skapes eller forsvinner. Stopp pumpen og selg godkjent diesel ved
    `LAB / SALG`. Salget sender produktbatchen ut og viser en batchrapport med
    faktisk råolje behandlet, fraksjoner, kvalitet, inntekt, kostnad og resultat.
 

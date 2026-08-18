@@ -55,6 +55,8 @@ func register_unit(unit_id: String, equipment_type: String, display_name := "") 
 				"max_flow_lps": PUMP_CAPACITY_LPS,
 				"actual_flow_lps": 0.0,
 			})
+		"valve":
+			state["open"] = false
 		"heater":
 			state.merge({
 				"setpoint_c": 0.0,
@@ -86,7 +88,7 @@ func can_remove(unit_id: String) -> Dictionary:
 		return _result(false, "Tøm %s før den fjernes." % state["name"])
 	if state["type"] == "pump" and state["running"]:
 		return _result(false, "Stopp %s før den fjernes." % state["name"])
-	if actual_flow_lps > 0.01:
+	if _any_pump_running() or actual_flow_lps > 0.01:
 		return _result(false, "Stopp prosessen før utstyr fjernes.")
 	return _result(true, "%s kan fjernes." % state["name"])
 
@@ -97,6 +99,8 @@ func interact(unit_id: String, can_pay_for_crude := false) -> Dictionary:
 	match equipment[unit_id]["type"]:
 		"pump":
 			return _toggle_pump(unit_id)
+		"valve":
+			return _toggle_valve(unit_id)
 		"heater":
 			return _cycle_heater(unit_id)
 		"tank":
@@ -112,6 +116,11 @@ func interaction_prompt(unit_id: String) -> String:
 	match state["type"]:
 		"pump":
 			return "E — start/stopp bygd pumpe"
+		"valve":
+			return "E — %s %s" % [
+				"steng" if state["open"] else "åpne",
+				state["name"],
+			]
 		"heater":
 			return "E — endre temperaturmål"
 		"column":
@@ -203,6 +212,7 @@ func tick(delta: float) -> void:
 	var route: Dictionary = validation["route"]
 	var pump: Dictionary = equipment[route["pump"]]
 	var source: Dictionary = equipment[route["source"]]
+	var valve: Dictionary = equipment[route["valve"]]
 	var heater: Dictionary = equipment[route["heater"]]
 	if not pump["running"]:
 		if source["volume_l"] <= 0.001 or source["contents"] != "crude":
@@ -215,6 +225,9 @@ func tick(delta: float) -> void:
 	if source["volume_l"] <= 0.001 or source["contents"] != "crude":
 		pump["running"] = false
 		last_status = "LOW FLOW — råoljetanken er tom."
+		return
+	if not valve["open"]:
+		last_status = "Kontroller utstyret mellom pumpen og varmeenheten."
 		return
 
 	var fractions := fractions_for_temperature(heater["temperature_c"])
@@ -339,12 +352,15 @@ func objective_text() -> String:
 	var source: Dictionary = equipment[route["source"]]
 	var heater: Dictionary = equipment[route["heater"]]
 	var pump: Dictionary = equipment[route["pump"]]
+	var valve: Dictionary = equipment[route["valve"]]
 	if source["volume_l"] <= 0.001 and product_volume_l() <= 0.001:
 		return (
 			prefix + "last en betalt batch med mål om minst 95 % kvalitet"
 			if commissioning_contract_complete
 			else prefix + "avslutt bygging og last gratis oppstartsbatch"
 		)
+	if pump["running"] and not valve["open"]:
+		return prefix + "finn årsaken til LOW FLOW"
 	if heater["temperature_c"] < 190.0 and source["volume_l"] > 0.001:
 		return prefix + "varm anlegget til ca. 200 °C"
 	if diesel_is_approved():
@@ -381,6 +397,8 @@ func inspect_unit(unit_id: String) -> String:
 				"PÅ" if state["running"] else "AV",
 				state["actual_flow_lps"],
 			]
+		"valve":
+			return "Manuell ventil %s." % ("ÅPEN" if state["open"] else "STENGT")
 		"heater":
 			return "Varme %.0f °C, mål %.0f °C." % [state["temperature_c"], state["setpoint_c"]]
 		"column":
@@ -404,6 +422,8 @@ func unit_status(unit_id: String) -> String:
 			return status
 		"pump":
 			return "%s  |  %.1f L/s" % ["PÅ" if state["running"] else "AV", state["actual_flow_lps"]]
+		"valve":
+			return "ÅPEN" if state["open"] else "STENGT"
 		"heater":
 			return "%.0f °C  |  mål %.0f °C" % [state["temperature_c"], state["setpoint_c"]]
 		"column":
@@ -420,7 +440,6 @@ func summary_text() -> String:
 		if tank["contents"] == "diesel":
 			diesel_volume = tank["volume_l"]
 			diesel_quality = tank["quality_percent"]
-	var alarm_text := _process_alarm_text()
 	var quality_text := "VENTER"
 	if diesel_volume > 0.001:
 		quality_text = "%.1f %% — %s" % [
@@ -433,9 +452,12 @@ func summary_text() -> String:
 		+ "Flow          %6.1f L/s\n" % actual_flow_lps
 		+ "Diesel        %6.0f L\n" % diesel_volume
 		+ "Kvalitet      %s\n\n" % quality_text
-		+ (alarm_text + "\n" if not alarm_text.is_empty() else "")
 		+ last_status
 	)
+
+
+func alarm_text() -> String:
+	return _process_alarm_text()
 
 
 func active_connection_keys() -> Dictionary:
@@ -444,7 +466,8 @@ func active_connection_keys() -> Dictionary:
 		return {}
 	var keys := {}
 	_add_connection_key(keys, route["source"], "output", route["pump"], "input")
-	_add_connection_key(keys, route["pump"], "output", route["heater"], "input")
+	_add_connection_key(keys, route["pump"], "output", route["valve"], "input")
+	_add_connection_key(keys, route["valve"], "output", route["heater"], "input")
 	_add_connection_key(keys, route["heater"], "output", route["column"], "input")
 	for product_name in ["light", "diesel", "heavy"]:
 		_add_connection_key(
@@ -486,6 +509,13 @@ func _toggle_pump(unit_id: String) -> Dictionary:
 	return _result(true, last_status)
 
 
+func _toggle_valve(unit_id: String) -> Dictionary:
+	var valve: Dictionary = equipment[unit_id]
+	valve["open"] = not valve["open"]
+	last_status = "%s er %s." % [valve["name"], "åpen" if valve["open"] else "stengt"]
+	return _result(true, last_status)
+
+
 func _cycle_heater(unit_id: String) -> Dictionary:
 	var heater: Dictionary = equipment[unit_id]
 	if heater["setpoint_c"] < 1.0:
@@ -521,12 +551,17 @@ func _process_alarm_text() -> String:
 	var route: Dictionary = network.find_complete_route()
 	if route.is_empty():
 		return ""
+	var pump: Dictionary = equipment[route["pump"]]
+	var valve: Dictionary = equipment[route["valve"]]
 	var state: Dictionary = equipment[route["heater"]]
+	var alarms: Array[String] = []
 	if state["temperature_c"] > 225.0:
-		return "HIGH TEMPERATURE — dieselkvalitet i fare"
+		alarms.append("HIGH TEMPERATURE — dieselkvalitet i fare")
+	if pump["running"] and not valve["open"]:
+		alarms.append("LOW FLOW — pumpen går, men flow er 0.0 L/s")
 	if actual_flow_lps > 0.01 and state["temperature_c"] < 170.0:
-		return "LOW TEMPERATURE — dårlig separasjon og kvalitet"
-	return ""
+		alarms.append("LOW TEMPERATURE — dårlig separasjon og kvalitet")
+	return "\n".join(alarms)
 
 
 func _process_input(route: Dictionary, input_l: float, fractions: Vector3, temperature_c: float) -> void:

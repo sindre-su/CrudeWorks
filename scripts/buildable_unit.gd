@@ -15,6 +15,8 @@ var liquid_level: MeshInstance3D
 var liquid_material: StandardMaterial3D
 var liquid_max_height := 0.0
 var liquid_bottom_y := 0.0
+var valve_handle: Node3D
+var valve_handle_material: StandardMaterial3D
 
 
 func configure_buildable(type: String, serial_number: int) -> void:
@@ -58,6 +60,8 @@ func configure_buildable(type: String, serial_number: int) -> void:
 	if equipment_type == "tank":
 		make_transparent(0.48)
 		_create_tank_liquid(size)
+	elif equipment_type == "valve":
+		_create_valve_handle(size)
 	set_status(data["name"].to_upper())
 
 
@@ -125,6 +129,34 @@ func _create_tank_liquid(size: Vector3) -> void:
 	add_child(liquid_level)
 
 
+func _create_valve_handle(size: Vector3) -> void:
+	valve_handle = Node3D.new()
+	valve_handle.position.y = size.y * 0.5 + 0.16
+	add_child(valve_handle)
+	var bar := MeshInstance3D.new()
+	var bar_mesh := BoxMesh.new()
+	bar_mesh.size = Vector3(0.18, 0.12, 1.25)
+	bar.mesh = bar_mesh
+	valve_handle_material = StandardMaterial3D.new()
+	valve_handle_material.albedo_color = Color("d94b3d")
+	valve_handle_material.emission_enabled = true
+	valve_handle_material.emission = Color("4a120d")
+	valve_handle_material.emission_energy_multiplier = 0.25
+	bar.material_override = valve_handle_material
+	valve_handle.add_child(bar)
+	set_valve_open(false)
+
+
+func set_valve_open(value: bool) -> void:
+	if not is_instance_valid(valve_handle):
+		return
+	valve_handle.rotation.y = 0.0 if value else deg_to_rad(90.0)
+	var color := Color("78e08f") if value else Color("d94b3d")
+	valve_handle_material.albedo_color = color
+	valve_handle_material.emission = color
+	valve_handle_material.emission_energy_multiplier = 0.7 if value else 0.25
+
+
 func rotated_footprint() -> Vector2:
 	if rotation_quadrants % 2 == 0:
 		return footprint_size
@@ -144,6 +176,8 @@ func interaction_prompt() -> String:
 			return "E — inspiser / last råolje"
 		"pump":
 			return "E — start/stopp bygd pumpe"
+		"valve":
+			return "E — åpne/steng manuell ventil"
 		"heater":
 			return "E — endre temperaturmål"
 		"column":

@@ -7,7 +7,7 @@ const PUMP_CAPACITY_LPS := 10.0
 const DIESEL_TARGET_L := 200.0
 const APPROVED_QUALITY_PERCENT := 90.0
 const PRODUCT_TANK_CAPACITY_L := 600.0
-const PILOT_CONTRACT_MINIMUM_REVENUE := 2800
+const PILOT_CONTRACT_MINIMUM_REVENUE := 3000
 
 var crude_volume_l := BATCH_VOLUME_L
 var light_product_l := 0.0
@@ -174,8 +174,8 @@ func sell_diesel() -> String:
 	if diesel_quality_percent < APPROVED_QUALITY_PERCENT:
 		return "OFF-SPEC: Kvaliteten må være minst %.0f %%" % APPROVED_QUALITY_PERCENT
 
-	# The first Area 02 refinery costs 2 400 kr. The training contract guarantees
-	# enough startup capital even when the player sells as soon as 200 L is ready.
+	# The training contract funds the valve-inclusive 2 600 kr starter refinery and preserves
+	# enough money for one recovery batch if the free commissioning batch becomes off-spec.
 	var revenue := maxi(
 		int(round(diesel_volume_l * 8.0)),
 		PILOT_CONTRACT_MINIMUM_REVENUE

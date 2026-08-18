@@ -1,7 +1,7 @@
 class_name EquipmentCatalog
 extends RefCounted
 
-const ORDER := ["tank", "pump", "heater", "column"]
+const ORDER := ["tank", "pump", "heater", "column", "valve"]
 
 
 static func definition(equipment_type: String) -> Dictionary:
@@ -24,6 +24,17 @@ static func definition(equipment_type: String) -> Dictionary:
 				"cost": 200,
 				"size": Vector3(2.0, 1.4, 2.2),
 				"color": Color("327b72"),
+				"shape": "box",
+				"has_input": true,
+				"has_output": true,
+			}
+		"valve":
+			return {
+				"name": "Manuell ventil",
+				"tag": "V-201",
+				"cost": 200,
+				"size": Vector3(1.6, 1.1, 1.8),
+				"color": Color("b7791f"),
 				"shape": "box",
 				"has_input": true,
 				"has_output": true,
@@ -110,7 +121,8 @@ static func port_position(
 static func process_order_allows(from_type: String, to_type: String) -> bool:
 	return (
 		(from_type == "tank" and to_type == "pump")
-		or (from_type == "pump" and to_type == "heater")
+		or (from_type == "pump" and to_type == "valve")
+		or (from_type == "valve" and to_type == "heater")
 		or (from_type == "heater" and to_type == "column")
 		or (from_type == "column" and to_type == "tank")
 	)

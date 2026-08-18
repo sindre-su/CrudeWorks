@@ -74,6 +74,8 @@ func try_connect(
 			from_port["label"].to_lower(),
 		])
 	if not Catalog.process_order_allows(from_type, to_type):
+		if from_type == "pump" and to_type == "heater":
+			return _result(false, "Den manuelle ventilen må stå mellom pumpen og varmeenheten.")
 		return _result(false, "%s kan ikke stå før %s i prosessen." % [
 			_unit_name(from_unit_id),
 			_unit_name(to_unit_id),
@@ -130,8 +132,12 @@ func validate_configuration() -> Dictionary:
 	var pump_id: String = feed_edge["to_unit"]
 	var pump_edge := outgoing_edge(pump_id, "output")
 	if pump_edge.is_empty():
-		return _validation_result("%s sitt utløp er ikke koblet til en varmeenhet." % _unit_name(pump_id))
-	var heater_id: String = pump_edge["to_unit"]
+		return _validation_result("%s sitt utløp må kobles til en manuell ventil." % _unit_name(pump_id))
+	var valve_id: String = pump_edge["to_unit"]
+	var valve_edge := outgoing_edge(valve_id, "output")
+	if valve_edge.is_empty():
+		return _validation_result("%s sitt utløp må kobles til varmeenheten." % _unit_name(valve_id))
+	var heater_id: String = valve_edge["to_unit"]
 	var heater_edge := outgoing_edge(heater_id, "output")
 	if heater_edge.is_empty():
 		return _validation_result("%s sitt utløp er ikke koblet til destillasjonskolonnen." % _unit_name(heater_id))
@@ -150,9 +156,13 @@ func find_complete_route() -> Dictionary:
 		var source_id: String = edge["from_unit"]
 		var pump_id: String = edge["to_unit"]
 		var pump_edge := outgoing_edge(pump_id, "output")
-		if pump_edge.is_empty() or _unit_type(pump_edge["to_unit"]) != "heater":
+		if pump_edge.is_empty() or _unit_type(pump_edge["to_unit"]) != "valve":
 			continue
-		var heater_id: String = pump_edge["to_unit"]
+		var valve_id: String = pump_edge["to_unit"]
+		var valve_edge := outgoing_edge(valve_id, "output")
+		if valve_edge.is_empty() or _unit_type(valve_edge["to_unit"]) != "heater":
+			continue
+		var heater_id: String = valve_edge["to_unit"]
 		var heater_edge := outgoing_edge(heater_id, "output")
 		if heater_edge.is_empty() or _unit_type(heater_edge["to_unit"]) != "column":
 			continue
@@ -169,6 +179,7 @@ func find_complete_route() -> Dictionary:
 			return {
 				"source": source_id,
 				"pump": pump_id,
+				"valve": valve_id,
 				"heater": heater_id,
 				"column": column_id,
 				"products": products,

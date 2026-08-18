@@ -378,7 +378,7 @@ func _update_user_interface() -> void:
 	if build_mode_unlocked:
 		hud_label.text = built_refinery_model.summary_text() + "\nPenger        %d kr" % process_model.money
 		objective_label.text = built_refinery_model.objective_text()
-		alarm_label.text = ""
+		alarm_label.text = built_refinery_model.alarm_text()
 		help_label.text = "WASD  Gå\nMus  Se\nShift  Løp\nSpace  Hopp\nCtrl / C  Huk\nE  Bruk utstyr\nB  Byggemodus\nR x2  Sikker produkttømming\nEsc  Frigjør mus"
 	else:
 		hud_label.text = (
@@ -463,6 +463,9 @@ func _update_unit_statuses() -> void:
 			)
 		elif state.get("type", "") == "pump":
 			built_unit.set_active(state["running"])
+		elif state.get("type", "") == "valve":
+			built_unit.set_valve_open(state["open"])
+			built_unit.set_active(state["open"], Color("78e08f"))
 		elif state.get("type", "") == "heater":
 			built_unit.set_active(state["setpoint_c"] > 0.0, Color("ff5a35"))
 		elif state.get("type", "") == "column":

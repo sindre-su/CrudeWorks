@@ -2,6 +2,7 @@ extends SceneTree
 
 const ProcessModelScript = preload("res://scripts/process_model.gd")
 const EquipmentCatalog = preload("res://scripts/equipment_catalog.gd")
+const BuiltRefineryModelScript = preload("res://scripts/built_refinery_model.gd")
 
 var failures := 0
 
@@ -94,10 +95,14 @@ func _test_minimum_pilot_contract_funds_area_two() -> void:
 	var minimum_refinery_cost: int = (
 		EquipmentCatalog.definition("tank")["cost"] * 4
 		+ EquipmentCatalog.definition("pump")["cost"]
+		+ EquipmentCatalog.definition("valve")["cost"]
 		+ EquipmentCatalog.definition("heater")["cost"]
 		+ EquipmentCatalog.definition("column")["cost"]
 	)
-	_expect(model.money >= minimum_refinery_cost, "minimum valid pilot sale funds a complete Area 02 refinery")
+	_expect(
+		model.money >= minimum_refinery_cost + BuiltRefineryModelScript.CRUDE_BATCH_COST,
+		"minimum pilot contract funds Area 02 plus one off-spec recovery batch"
+	)
 
 
 func _simulate(model, duration_seconds: float) -> void:

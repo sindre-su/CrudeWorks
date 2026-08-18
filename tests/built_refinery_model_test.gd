@@ -17,6 +17,7 @@ func _init() -> void:
 
 func _run_tests() -> void:
 	_test_invalid_network_cannot_start()
+	_test_manual_valve_low_flow()
 	_test_mass_conserving_ideal_batch_and_sale()
 	_test_full_tank_backpressure()
 	_test_commissioning_and_paid_batches()
@@ -36,6 +37,42 @@ func _test_invalid_network_cannot_start() -> void:
 	_expect(not result["message"].is_empty(), "rejected start gives actionable player feedback")
 
 
+func _test_manual_valve_low_flow() -> void:
+	var model = _complete_model()
+	_expect(not model.equipment["valve"]["open"], "new built valve defaults closed")
+	_expect(model.active_connection_keys().size() == 7, "active route exposes all seven valve-inclusive pipe segments")
+	_expect("åpne" in model.interaction_prompt("valve"), "closed valve prompt offers the correct action")
+	model.register_unit("spare_valve", "valve", "V-299")
+	model.interact("spare_valve")
+	model.load_crude_batch("source")
+	model.interact("heater")
+	model.interact("heater")
+	model.tick(10.0)
+	model.interact("pump")
+	var mass_before_blocked := _total_tank_volume(model)
+	var source_before_blocked: float = model.equipment["source"]["volume_l"]
+	model.tick(10.0)
+	_expect(model.equipment["pump"]["running"] and is_equal_approx(model.actual_flow_lps, 0.0), "closed valve keeps pump on but blocks all flow")
+	_expect(is_equal_approx(_total_tank_volume(model), mass_before_blocked) and is_equal_approx(model.equipment["source"]["volume_l"], source_before_blocked), "closed valve consumes and creates no material")
+	_expect("LOW FLOW" in model.alarm_text() and "LOW FLOW" in model.objective_text(), "closed active-route valve creates a diagnosable LOW FLOW state")
+	_expect(not model.can_remove("valve")["ok"], "closed route valve cannot be removed while its pump is running")
+	model.equipment["heater"]["temperature_c"] = 230.0
+	_expect("HIGH TEMPERATURE" in model.alarm_text() and "LOW FLOW" in model.alarm_text(), "safety alarm remains visible alongside a simultaneous closed-valve fault")
+	model.equipment["heater"]["temperature_c"] = 200.0
+	model.tick(0.0)
+	_expect("LOW FLOW" in model.alarm_text(), "opening a disconnected spare valve cannot clear the active-route alarm")
+	model.interact("valve")
+	model.tick(10.0)
+	_expect(is_equal_approx(model.actual_flow_lps, 10.0) and is_equal_approx(model.equipment["source"]["volume_l"], 900.0), "opening the route valve restores normal bounded flow")
+	model.interact("valve")
+	var mass_before_reclose := _total_tank_volume(model)
+	model.tick(5.0)
+	_expect(is_equal_approx(model.actual_flow_lps, 0.0) and is_equal_approx(_total_tank_volume(model), mass_before_reclose), "closing the valve during production pauses transfer without stopping the pump")
+	model.interact("valve")
+	model.tick(1.0)
+	_expect(is_equal_approx(model.equipment["source"]["volume_l"], 890.0), "reopening the valve resumes the still-running route without duplication")
+
+
 func _test_mass_conserving_ideal_batch_and_sale() -> void:
 	var model = _complete_model()
 	model.tick(0.0)
@@ -52,6 +89,7 @@ func _test_mass_conserving_ideal_batch_and_sale() -> void:
 	model.interact("heater")
 	model.tick(10.0)
 	_expect(is_equal_approx(model.equipment["heater"]["temperature_c"], 200.0), "built heater reaches the ideal 200 C setpoint")
+	model.interact("valve")
 	_expect(model.interact("pump")["ok"], "pump starts on a complete route")
 	_expect(not model.can_remove("pump")["ok"], "running built pump cannot be removed")
 	var before_mass := _total_tank_volume(model)
@@ -99,6 +137,7 @@ func _test_full_tank_backpressure() -> void:
 	model.equipment["diesel_tank"]["volume_l"] = 995.0
 	model.equipment["diesel_tank"]["contents"] = "diesel"
 	model.equipment["diesel_tank"]["quality_percent"] = 100.0
+	model.interact("valve")
 	model.interact("pump")
 	var before_mass := _total_tank_volume(model)
 	var before_source: float = model.equipment["source"]["volume_l"]
@@ -131,13 +170,15 @@ func _test_topology_change_stops_flow_and_spare_pump() -> void:
 	model.interact("heater")
 	model.interact("heater")
 	model.tick(10.0)
+	model.interact("valve")
 	model.interact("pump")
 	model.tick(1.0)
-	model.network.disconnect_ports("pump", "output", "heater", "input")
+	model.network.disconnect_ports("valve", "output", "heater", "input")
 	_expect(not model.equipment["pump"]["running"], "disconnecting a live route stops its pump immediately")
 	_expect(is_equal_approx(model.actual_flow_lps, 0.0), "topology change clears actual flow immediately")
 	model.register_unit("spare_pump", "pump", "P-299")
-	model.network.try_connect("pump", "output", "heater", "input")
+	model.network.try_connect("valve", "output", "heater", "input")
+	_expect(not model.equipment["pump"]["running"], "reconnecting the valve does not auto-restart the route pump")
 	var spare_start: Dictionary = model.interact("spare_pump")
 	_expect(not spare_start["ok"], "disconnected spare pump cannot start because another route is valid")
 
@@ -145,6 +186,7 @@ func _test_topology_change_stops_flow_and_spare_pump() -> void:
 func _test_offspec_recovery() -> void:
 	var model = _complete_model()
 	model.load_crude_batch("source")
+	model.interact("valve")
 	model.interact("pump")
 	model.tick(100.0)
 	_expect(not model.sell_diesel()["ok"], "cold commissioning products are rejected as off-spec")
@@ -165,6 +207,7 @@ func _test_partial_sale_report() -> void:
 	model.interact("heater")
 	model.interact("heater")
 	model.tick(10.0)
+	model.interact("valve")
 	model.interact("pump")
 	model.tick(((BuiltRefineryModelScript.DIESEL_TARGET_L + 0.01) / 0.35) / BuiltRefineryModelScript.PUMP_CAPACITY_LPS)
 	var products_while_running: float = model.product_volume_l()
@@ -187,9 +230,10 @@ func _test_route_scoped_alarm() -> void:
 	model.interact("heater")
 	model.interact("heater")
 	model.tick(10.0)
+	model.interact("valve")
 	model.interact("pump")
 	model.tick(1.0)
-	_expect("HIGH TEMPERATURE" not in model.summary_text(), "disconnected hot heater cannot create a false process alarm")
+	_expect("HIGH TEMPERATURE" not in model.alarm_text(), "disconnected hot heater cannot create a false process alarm")
 
 
 func _test_disconnected_inventory_is_not_sellable() -> void:
@@ -206,13 +250,15 @@ func _complete_model():
 	var model = BuiltRefineryModelScript.new()
 	model.register_unit("source", "tank", "T-201")
 	model.register_unit("pump", "pump", "P-201")
+	model.register_unit("valve", "valve", "V-201")
 	model.register_unit("heater", "heater", "H-201")
 	model.register_unit("column", "column", "D-201")
 	model.register_unit("light_tank", "tank", "T-202")
 	model.register_unit("diesel_tank", "tank", "T-203")
 	model.register_unit("heavy_tank", "tank", "T-204")
 	model.network.try_connect("source", "output", "pump", "input")
-	model.network.try_connect("pump", "output", "heater", "input")
+	model.network.try_connect("pump", "output", "valve", "input")
+	model.network.try_connect("valve", "output", "heater", "input")
 	model.network.try_connect("heater", "output", "column", "input")
 	model.network.try_connect("column", "light", "light_tank", "input")
 	model.network.try_connect("column", "diesel", "diesel_tank", "input")

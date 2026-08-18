@@ -25,6 +25,12 @@ func _run_tests() -> void:
 	_expect(controller.ghost.has_node("PreviewInputPort"), "placement preview shows the input port")
 	_expect(controller.ghost.has_node("PreviewOutputPort"), "placement preview shows the output port")
 	_expect(controller.ghost.has_node("FlowDirection"), "placement preview shows a flow-direction arrow")
+	var valve_key := InputEventKey.new()
+	valve_key.keycode = KEY_5
+	valve_key.pressed = true
+	controller._input(valve_key)
+	_expect(controller.selected_type == "valve", "key 5 selects the new manual valve without changing keys 1-4")
+	_expect(controller.ghost.has_node("PreviewInputPort") and controller.ghost.has_node("PreviewOutputPort"), "manual-valve preview exposes readable IN and OUT ports")
 	controller.set_build_mode(false)
 
 	_test_catalog()
@@ -40,7 +46,7 @@ func _run_tests() -> void:
 
 
 func _test_catalog() -> void:
-	_expect(Catalog.ORDER.size() == 4, "catalog exposes four starter machine types")
+	_expect(Catalog.ORDER.size() == 5, "catalog exposes five starter machine types including the valve")
 	for equipment_type in Catalog.ORDER:
 		var definition: Dictionary = Catalog.definition(equipment_type)
 		_expect(not definition.is_empty(), "%s has a catalog definition" % equipment_type)
@@ -59,6 +65,13 @@ func _test_units_and_footprints(world: Node3D) -> void:
 	world.add_child(column)
 	_expect(column.ports_of_kind("output").size() == 3, "distillation column exposes three labelled product outlets")
 	_expect(column.get_port("diesel") != null, "column exposes a dedicated diesel outlet")
+	var valve = BuildableUnitScript.new()
+	valve.configure_buildable("valve", 10)
+	world.add_child(valve)
+	_expect(is_instance_valid(valve.valve_handle), "manual valve has a readable physical handle")
+	_expect(is_equal_approx(valve.valve_handle.rotation.y, deg_to_rad(90.0)), "new valve handle is perpendicular while closed")
+	valve.set_valve_open(true)
+	_expect(is_equal_approx(valve.valve_handle.rotation.y, 0.0), "open valve handle aligns with process flow")
 	var original := heater.rotated_footprint()
 	heater.rotation_quadrants = 1
 	var rotated := heater.rotated_footprint()
