@@ -14,16 +14,16 @@
 
 ## Current Roadmap
 
-1. **Delivery-order variety** — give multiple fractions and crude choices
-   distinct order goals rather than one repeated diesel objective.
-2. **First flow/capacity choice** — add one controllable throughput tradeoff
+1. **First flow/capacity choice** — add one controllable throughput tradeoff
    with a clear quality consequence after sampling makes quality playable.
-3. **Maintenance troubleshooting** — introduce one recoverable equipment fault
+2. **Maintenance troubleshooting** — introduce one recoverable equipment fault
    that can be diagnosed from existing alarm and instrument feedback.
-4. **New treatment decision** — consider one actual treatment unit and Sour
+3. **New treatment decision** — consider one actual treatment unit and Sour
    crude only after the preceding loop is stable and hands-on tested.
-5. **Hands-on usability pass** — verify port aiming, labels, valve feedback and
+4. **Hands-on usability pass** — verify port aiming, labels, valve feedback and
    modal readability at the target 1280 x 720 window before broadening scope.
+5. **Product-value expansion** — add another useful product destination only
+   after delivery orders and capacity decisions are proven enjoyable.
 
 ## Completed Work
 
@@ -138,6 +138,20 @@
     first-route selection for flow, loading, sampling, sales or LS-201.
   - Added actionable build, HUD, objective and station feedback; disconnecting
     one pipe with `G` immediately restores the remaining complete line.
+- Milestone 8 completed:
+  - Turned the two existing crude choices into catalog-derived feed/order
+    packages without adding separate mutable order state or a save migration.
+  - Standard keeps the proven diesel target; Heavy now requires 600 L of active
+    route heavy fraction plus 200 L diesel and a 90 percent diesel-quality test.
+  - LAB, dynamic objectives and reports distinguish process quality from
+    ordered product volume and explain recoverable shortfalls without urging
+    the player to destroy a still-completable batch.
+  - Continued production invalidates an early sample; a fresh qualifying sample
+    dispatches once with exact proportional cost and the one-shot Heavy bonus.
+  - Disconnected product now blocks dispatch instead of being silently erased;
+    successful sale consumes only the three authorized active-route tanks.
+  - New optional report fields are catalog-validated while older format-2
+    reports without those fields remain valid.
 
 ## Validation
 
@@ -231,6 +245,16 @@
   - main scene and full editor/resource scan loaded successfully with no
     project parser, resource, runtime, or script errors. The sandboxed editor
     still reports its known inability to save global macOS editor settings.
+- Final Milestone 8 regression with isolated log files:
+  - pilot/economy: 23 checks passed;
+  - process network: 87 checks passed;
+  - building system: 41 checks passed;
+  - built refinery: 178 checks passed;
+  - Main integration: 67 checks passed;
+  - save system: 51 checks passed;
+  - main scene and full editor/resource scan loaded successfully with no
+    project parser, resource, runtime, or script errors. Only the known
+    sandboxed macOS certificate/editor-settings warnings remain.
 - Final Milestone 5 regression with isolated log files:
   - pilot/economy: 23 checks passed;
   - process network: 59 checks passed;
@@ -307,7 +331,7 @@
 
 ## Current Stable State
 
-- Version 0.9.1 is verified stable after the single-active-route safety pass.
+- Version 0.10.0 is verified stable after the delivery-order milestone.
 - The original pilot loop and full player-built loop both pass regression.
 - The first valid Area 02 sale now has a durable achievement and informative
   result, while later paid batches remain repeatable.
@@ -324,6 +348,8 @@
   player can continue learning without creating post-commission free batches.
 - Paid batches now end in an actual sample → analysis → conditional dispatch
   loop instead of exposing all quality data and selling in one interaction.
+- Standard and Heavy now produce different player goals: a Heavy batch can have
+  good diesel quality while still needing more ordered heavy fraction.
 
 ## Known Issues
 
@@ -364,9 +390,10 @@
 - A full second process line was deferred rather than adding an implicit route
   selector. The final conflicting connection is rejected, and defensive model
   validation blocks ambiguous imported topology.
+- Delivery orders remain derived from the batch-locked crude contract. A new
+  independent order market was deliberately avoided until two orders prove fun.
 
 ## Next Best Action
 
-- Add small delivery-order variety that uses the existing Standard/Heavy,
-  lab-result and batch-report systems to create distinct goals without adding
-  another simulator subsystem.
+- Add one player-controlled flow setting with an explicit throughput-versus-
+  quality consequence, visible on FT-201 and protected by the existing LAB.

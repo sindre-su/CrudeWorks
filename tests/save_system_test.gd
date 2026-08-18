@@ -18,6 +18,7 @@ func _run_tests() -> void:
 	var source_main = await _create_partial_paid_refinery()
 	var snapshot: Dictionary = source_main._build_snapshot()
 	_test_schema_validation(snapshot, source_main)
+	_test_optional_delivery_report_validation(snapshot)
 	_test_disk_round_trip(snapshot)
 	_test_v1_to_v2_contract_migration(snapshot)
 	await _test_startup_continue(snapshot)
@@ -88,6 +89,45 @@ func _test_schema_validation(snapshot: Dictionary, live_main) -> void:
 	var fractional_serial := snapshot.duplicate(true)
 	fractional_serial["construction"]["units"][0]["serial"] = 1.5
 	_expect(not SaveSystemScript.validate_snapshot(fractional_serial)["ok"], "fractional serial numbers are rejected instead of truncated")
+
+
+func _test_optional_delivery_report_validation(snapshot: Dictionary) -> void:
+	var with_order := snapshot.duplicate(true)
+	with_order["built_refinery"]["last_batch_report"] = {
+		"contract_id": "standard",
+		"contract_name": "Standard råolje",
+		"order_name": "DIESELLEVERANSE",
+		"delivery_product": "diesel",
+		"delivery_product_name": "Diesel",
+		"delivery_target_l": 200.0,
+		"delivery_volume_l": 350.0,
+		"ideal_temperature_c": 200.0,
+		"diesel_target_l": 200.0,
+		"required_quality_percent": 90.0,
+		"crude_processed_l": 1000.0,
+		"light_l": 300.0,
+		"diesel_l": 350.0,
+		"heavy_l": 350.0,
+		"diesel_quality_percent": 100.0,
+		"spec_status": "GODKJENT",
+		"average_temperature_c": 200.0,
+		"product_revenue": 2800,
+		"delivery_bonus": 0,
+		"revenue": 2800,
+		"crude_cost": 300,
+		"net_profit": 2500,
+	}
+	_expect(SaveSystemScript.validate_snapshot(with_order)["ok"], "current save accepts a catalog-derived delivery-order report")
+	var tampered := with_order.duplicate(true)
+	tampered["built_refinery"]["last_batch_report"]["delivery_product"] = "heavy"
+	_expect(not SaveSystemScript.validate_snapshot(tampered)["ok"], "save validation rejects a report whose ordered product was edited")
+	var partial_metadata := with_order.duplicate(true)
+	partial_metadata["built_refinery"]["last_batch_report"].erase("delivery_product")
+	_expect(not SaveSystemScript.validate_snapshot(partial_metadata)["ok"], "save validation rejects a partially removed delivery-order field set")
+	var legacy_report := with_order.duplicate(true)
+	for field in ["order_name", "delivery_product", "delivery_product_name", "delivery_target_l", "delivery_volume_l"]:
+		legacy_report["built_refinery"]["last_batch_report"].erase(field)
+	_expect(SaveSystemScript.validate_snapshot(legacy_report)["ok"], "older v2 reports remain valid without optional order fields")
 
 
 func _test_disk_round_trip(snapshot: Dictionary) -> void:

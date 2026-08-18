@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.9.1 – dieselprøve og entydig prosesslinje**
+**Prototypeversjon: 0.10 – leveringsordrer og produktmål**
 
 En liten 3D-prototype der spilleren driver et forenklet pilotraffineri. Første mål
 er å behandle 1 000 liter råolje og selge minst 200 liter diesel med 90 % eller
@@ -39,6 +39,8 @@ Den første komplette «vertical slice»-en inneholder:
 - LAB-101-analyse med volum, kvalitet, prosessavvik og trygg utsending
 - eksplisitt grense på én komplett prosesslinje i Område 02; reserveutstyr og
   delvise utvidelser er fortsatt tillatt
+- to tydelige leveringsordrer: Standard prioriterer diesel, mens Tung krever
+  både tungfraksjon og en godkjent dieselprøve
 
 Alle objekter er foreløpig bygget av Godots primitive 3D-former. Det gjør at vi
 kan teste gameplay før vi bruker tid på modeller og grafikk.
@@ -150,11 +152,14 @@ direkte i 3D. Pumpens rotor og ventilhåndtak beveger seg når utstyret brukes.
    `LAB / SALG`. Salget sender produktbatchen ut og viser en batchrapport med
    faktisk råolje behandlet, fraksjoner, kvalitet, inntekt, kostnad og resultat.
 
-Etter godkjent oppstart åpner `E` på en tom kildetank leveransevalget:
+Etter godkjent oppstart åpner `E` på en tom kildetank leveransevalget. Valget
+bestemmer både råoljen og leveringsordren:
 
-- **Standard** koster 300 kr, har mål rundt 200 °C og gir omtrent 35 % diesel.
-- **Tung** koster 180 kr, har mål rundt 230 °C, gir mer tungolje og omtrent 22 %
-  diesel. En godkjent Tung-leveranse gir en engangsbonus på 1 000 kr.
+- **Dieselleveranse / Standard** koster 300 kr, har mål rundt 200 °C og krever
+  minst 200 liter diesel med minst 90 % kvalitet.
+- **Tung leveranse / Tung** koster 180 kr, har mål rundt 230 °C og krever minst
+  600 liter tungfraksjon, minst 200 liter diesel og minst 90 % dieselkvalitet.
+  En godkjent ordre gir en engangsbonus på 1 000 kr.
 
 Råoljetypen låses til batchen. En ny type kan først velges når alle bygde tanker
 er tomme og pumpen er stoppet. Batchrapporten viser valgt råolje, faktisk
@@ -166,6 +171,9 @@ Den første Område 02-oppstarten bruker fortsatt den enkle direktekontrollen ve
 produktkvaliteten som `IKKE ANALYSERT`; en prøve fra en frakoblet tank kan ikke
 brukes. Ved `LAB / SALG` viser LAB-101 faktisk dieselvolum og kvalitet mot
 kontraktskravet, samt gjennomsnittlig prosesstemperatur mot målet.
+For Tung viser analysen dieselkvaliteten og tungfraksjonsmålet som to separate
+krav. En god dieselprøve kan derfor være godkjent selv om ordren ennå trenger
+mer tungfraksjon; videre produksjon krever deretter en ny prøve.
 
 En godkjent, fortsatt gyldig prøve kan sendes med `Enter`. OFF-SPEC-produkt
 beholdes og gir ingen inntekt. Ny produksjon, endret rørnett, tømming, salg eller

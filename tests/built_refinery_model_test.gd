@@ -33,6 +33,9 @@ func _run_tests() -> void:
 	_test_control_station_telemetry_and_temperature_guard()
 	_test_paid_batch_lab_sampling()
 	_test_ambiguous_routes_block_operation_atomically()
+	_test_distinct_delivery_order_definitions()
+	_test_heavy_delivery_order_volume_gate()
+	_test_off_route_product_blocks_dispatch()
 
 
 func _test_invalid_network_cannot_start() -> void:
@@ -432,10 +435,13 @@ func _test_paid_batch_lab_sampling() -> void:
 	_expect(not model.sell_diesel()["ok"] and "Analyser" in model.sell_diesel()["message"], "a current but unanalyzed sample cannot authorize dispatch")
 	var early_analysis: Dictionary = model.analyze_diesel_sample()
 	_expect(early_analysis["ok"] and early_analysis["status"] == "IKKE KLAR" and not early_analysis["approved"], "lab analysis reports the exact missing-volume condition without dispatch")
-	_expect("100.0 %" in model.summary_text() and "IKKE KLAR" in model.objective_text(), "analyzed sample reveals quality while retaining the failed volume result")
+	_expect("100.0 % — GODKJENT" in model.summary_text() and "ikke klar" in model.objective_text(), "analyzed sample keeps good diesel quality separate from the incomplete order")
 	_expect("42.0 %" not in model.unit_status("spare_sample_tank") and "42.0 %" not in model.inspect_unit("spare_sample_tank"), "active-route analysis never reveals disconnected diesel quality")
 	var inventory_before_failed_sale: float = model.product_volume_l()
 	_expect(not model.sell_diesel()["ok"] and is_equal_approx(model.product_volume_l(), inventory_before_failed_sale), "failed analyzed sample consumes no product or contract value")
+	model.equipment["spare_sample_tank"]["contents"] = "empty"
+	model.equipment["spare_sample_tank"]["volume_l"] = 0.0
+	model.equipment["spare_sample_tank"]["quality_percent"] = 0.0
 
 	model.interact("pump")
 	model.tick(1.0)
@@ -500,6 +506,68 @@ func _test_ambiguous_routes_block_operation_atomically() -> void:
 	_expect(not model.take_diesel_sample("diesel_tank")["ok"] and not model.sell_diesel()["ok"], "ambiguous topology cannot authorize sampling or product dispatch")
 	model.network.disconnect_ports("b_column", "heavy", "b_heavy", "input")
 	_expect(model.network.validate_configuration()["valid"] and model.network.find_complete_route()["source"] == "source", "disconnecting the spare route restores the original built line")
+
+
+func _test_distinct_delivery_order_definitions() -> void:
+	var standard := CrudeCatalogScript.definition("standard")
+	var heavy := CrudeCatalogScript.definition("heavy")
+	_expect(standard["delivery_product"] == "diesel" and is_equal_approx(standard["delivery_target_l"], 200.0), "Standard remains a 200 L diesel delivery order")
+	_expect(heavy["delivery_product"] == "heavy" and is_equal_approx(heavy["delivery_target_l"], 600.0), "Heavy is a distinct 600 L heavy-fraction delivery order")
+	_expect(standard["order_name"] != heavy["order_name"] and heavy["delivery_bonus"] == 1000, "delivery packages have distinct player names and preserve the Heavy reward")
+
+
+func _test_heavy_delivery_order_volume_gate() -> void:
+	var model = _complete_model()
+	model.commissioning_batch_available = false
+	model.commissioning_contract_complete = true
+	model.load_crude_batch("source", true, "heavy")
+	model.equipment["heater"]["temperature_c"] = 230.0
+	model.equipment["heater"]["setpoint_c"] = 230.0
+	model.interact("valve")
+	model.interact("pump")
+	model.tick(91.0)
+	model.interact("pump")
+	model.take_diesel_sample("diesel_tank")
+	var early: Dictionary = model.analyze_diesel_sample()
+	_expect(early["quality_ready"] and early["sample_volume_ready"] and not early["delivery_ready"], "Heavy diesel QC may pass before its heavy-fraction order volume")
+	_expect(not early["approved"] and early["status"] == "IKKE KLAR" and "tung fraksjon" in early["deviation"], "Heavy analysis explains the missing ordered fraction instead of dispatching on the old diesel gate")
+	_expect("100.0 % — GODKJENT" in model.summary_text() and "tøm" not in model.objective_text(), "good Heavy diesel remains good while recoverable order guidance avoids destructive disposal")
+	var inventory_before_rejection: float = model.product_volume_l()
+	_expect(not model.sell_diesel()["ok"] and is_equal_approx(model.product_volume_l(), inventory_before_rejection) and model.active_contract_bonus_available, "incomplete Heavy order mutates no product or bonus")
+	model.interact("pump")
+	model.tick(5.0)
+	model.interact("pump")
+	_expect(not model.lab_dispatch_status()["sample_current"], "new production invalidates the early order analysis")
+	model.take_diesel_sample("diesel_tank")
+	var approved: Dictionary = model.analyze_diesel_sample()
+	_expect(approved["approved"] and is_equal_approx(approved["delivery_volume_l"], 604.8) and approved["revenue_preview"] == 2690, "fresh Heavy sample approves 604.8 L ordered product with exact dispatch value")
+	var sale: Dictionary = model.sell_diesel()
+	_expect(sale["ok"] and sale["revenue"] == 2690 and sale["report"]["delivery_product"] == "heavy" and is_equal_approx(sale["report"]["delivery_volume_l"], 604.8), "Heavy delivery report records the actual ordered fraction and pays once")
+	_expect(sale["report"]["product_revenue"] == 1690 and sale["report"]["delivery_bonus"] == 1000 and sale["report"]["crude_cost"] == 173 and sale["report"]["net_profit"] == 2517, "partial Heavy order preserves exact base, bonus, proportional cost and net result")
+	_expect(is_equal_approx(model.equipment["source"]["volume_l"], 40.0) and not model.sell_diesel()["ok"] and not model.active_contract_bonus_available, "dispatch preserves unprocessed crude and cannot repeat its order bonus")
+
+
+func _test_off_route_product_blocks_dispatch() -> void:
+	var model = _complete_model()
+	model.commissioning_batch_available = false
+	model.commissioning_contract_complete = true
+	model.register_unit("legacy_product", "tank", "T-299")
+	model.load_crude_batch("source", true, "standard")
+	model.equipment["heater"]["temperature_c"] = 200.0
+	model.equipment["heater"]["setpoint_c"] = 200.0
+	model.interact("valve")
+	model.interact("pump")
+	model.tick(100.0)
+	model.equipment["legacy_product"]["contents"] = "heavy"
+	model.equipment["legacy_product"]["volume_l"] = 100.0
+	model.take_diesel_sample("diesel_tank")
+	var analysis: Dictionary = model.analyze_diesel_sample()
+	_expect(not analysis["approved"] and "frakoblet produkt" in analysis["deviation"], "LAB identifies disconnected product before an active order can be dispatched")
+	var active_before: float = model.product_volume_l()
+	var revision_before: int = model.product_inventory_revision
+	var sale: Dictionary = model.sell_diesel()
+	_expect(not sale["ok"] and is_equal_approx(model.product_volume_l(), active_before) and model.product_inventory_revision == revision_before, "blocked dispatch clears neither active nor disconnected product")
+	_expect(is_equal_approx(model.equipment["legacy_product"]["volume_l"], 100.0) and model.successful_sales == 0, "disconnected legacy inventory cannot be silently erased or credited")
 
 
 func _take_and_analyze(model) -> Dictionary:

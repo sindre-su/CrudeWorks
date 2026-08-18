@@ -915,7 +915,8 @@ func _show_notification(message: String, duration := 4.0) -> void:
 func _show_batch_report(report: Dictionary, completed_now: bool) -> void:
 	var contract_name: String = String(report.get("contract_name", "Standard råolje"))
 	var short_name := contract_name.trim_suffix(" råolje").to_upper()
-	var heading := "OMRÅDE 02 — OPPSTART GODKJENT" if completed_now else "BATCH GODKJENT — %s" % short_name
+	var order_name: String = String(report.get("order_name", short_name))
+	var heading := "OMRÅDE 02 — OPPSTART GODKJENT" if completed_now else "BATCH GODKJENT — %s" % order_name
 	var temperature: float = report.get("average_temperature_c", 0.0)
 	var process_result := "Prosessdata ikke tilgjengelig"
 	if temperature > 0.0:
@@ -934,6 +935,11 @@ func _show_batch_report(report: Dictionary, completed_now: bool) -> void:
 		+ "Dieselkvalitet        %6.1f %% — %s\n" % [
 			report["diesel_quality_percent"],
 			report["spec_status"],
+		]
+		+ "Ordre                 %s %.0f / %.0f L — OPPFYLT\n" % [
+			report.get("delivery_product_name", "Diesel"),
+			report.get("delivery_volume_l", report["diesel_l"]),
+			report.get("delivery_target_l", report["diesel_target_l"]),
 		]
 		+ "Prosess               %s\n\n" % process_result
 		+ "Dieselsalg            %7d kr\n" % int(report.get("product_revenue", report["revenue"]))
@@ -1015,12 +1021,12 @@ func _update_contract_selection_text(error_text := "") -> void:
 	var standard := CrudeCatalogScript.definition("standard")
 	var heavy := CrudeCatalogScript.definition("heavy")
 	contract_selection_label.text = (
-		"RÅOLJELEVERANSE\nPenger: %d kr\nVelg 1 000 L\n\n" % process_model.money
-		+ "1 %s — %d kr\n  %s\n\n" % [
-			standard["short_name"], standard["purchase_cost"], standard["description"],
+		"LEVERINGSORDRE — VELG 1 000 L\nPenger: %d kr\n\n" % process_model.money
+		+ "1 %s / %s — %d kr\n  %s\n\n" % [
+			standard["order_name"], standard["short_name"], standard["purchase_cost"], standard["description"],
 		]
-		+ "2 %s — %d kr\n  %s\n\n" % [
-			heavy["short_name"], heavy["purchase_cost"], heavy["description"],
+		+ "2 %s / %s — %d kr\n  %s • bonus +%d kr\n\n" % [
+			heavy["order_name"], heavy["short_name"], heavy["purchase_cost"], heavy["description"], heavy["delivery_bonus"],
 		]
 		+ (error_text + "\n\n" if not error_text.is_empty() else "")
 		+ "1 / 2 — kjøp og last    Esc — avbryt"

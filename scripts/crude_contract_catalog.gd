@@ -12,28 +12,36 @@ static func definition(contract_id: String) -> Dictionary:
 				"id": "standard",
 				"display_name": "Standard råolje",
 				"short_name": "STANDARD",
+				"order_name": "DIESELLEVERANSE",
 				"purchase_cost": 300,
 				"ideal_temperature_c": 200.0,
 				"minimum_quality_percent": 90.0,
 				"diesel_target_l": 200.0,
+				"delivery_product": "diesel",
+				"delivery_product_name": "Diesel",
+				"delivery_target_l": 200.0,
 				"diesel_price_per_l": 8.0,
 				"delivery_bonus": 0,
 				"quality_penalty_per_degree": 1.15,
-				"description": "ca. 200 °C • balansert og tilgivende",
+				"description": "mål 200 °C • lever minst 200 L diesel • kvalitet ≥ 90 %",
 			}
 		"heavy":
 			return {
 				"id": "heavy",
 				"display_name": "Tung råolje",
 				"short_name": "TUNG",
+				"order_name": "TUNG LEVERANSE",
 				"purchase_cost": 180,
 				"ideal_temperature_c": 230.0,
 				"minimum_quality_percent": 90.0,
 				"diesel_target_l": 200.0,
+				"delivery_product": "heavy",
+				"delivery_product_name": "Tung fraksjon",
+				"delivery_target_l": 600.0,
 				"diesel_price_per_l": 8.0,
 				"delivery_bonus": 1000,
 				"quality_penalty_per_degree": 1.2,
-				"description": "ca. 230 °C • mer tungolje • +1 000 kr bonus",
+				"description": "mål 230 °C • tungfraksjon ≥ 600 L • diesel ≥ 200 L / 90 %",
 			}
 	return {}
 

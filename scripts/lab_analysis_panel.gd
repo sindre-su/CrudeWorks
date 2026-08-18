@@ -29,17 +29,25 @@ func show_analysis(result: Dictionary) -> void:
 	analysis = result.duplicate(true)
 	visible = true
 	var approved: bool = bool(analysis.get("approved", false))
-	var footer := (
-		"Enter — send batch (%s kr)\nEsc — behold produktet" % _money_text(int(analysis["revenue_preview"]))
-		if approved
-		else "Esc — behold produktet\nR x2 etter lukking — sikker tømming"
-	)
+	var footer := "Enter — send batch (%s kr)\nEsc — behold produktet" % _money_text(int(analysis["revenue_preview"]))
+	if not approved:
+		footer = (
+			"Esc — fortsett produksjonen; ny prøve kreves"
+			if analysis.get("status", "OFF-SPEC") == "IKKE KLAR"
+			else "Esc — behold produktet\nR x2 etter lukking — sikker tømming"
+		)
 	result_label.text = (
 		"LAB-101 — DIESELPRØVE\n\n"
 		+ "Prøve        %s — %s\n" % [analysis["sample_id"], String(analysis["contract_name"]).to_upper()]
-		+ "Diesel       %6.0f L / krav %.0f L\n" % [analysis["volume_l"], analysis["required_volume_l"]]
+		+ "Diesel i tank %6.0f L / minimum %.0f L\n" % [analysis["volume_l"], analysis["required_volume_l"]]
 		+ "Kvalitet     %6.1f %% / krav ≥ %.1f %%\n" % [analysis["quality_percent"], analysis["required_quality_percent"]]
 		+ "Prosess      %6.0f °C snitt / %.0f °C mål\n\n" % [analysis["average_temperature_c"], analysis["ideal_temperature_c"]]
+		+ "ORDRE        %s\n" % analysis.get("order_name", analysis["contract_name"])
+		+ "%s  %6.0f L / krav %.0f L\n" % [
+			analysis.get("delivery_product_name", "Diesel"),
+			analysis.get("delivery_volume_l", analysis["volume_l"]),
+			analysis.get("required_delivery_volume_l", analysis["required_volume_l"]),
+		]
 		+ "STATUS       %s\n" % analysis["status"]
 		+ ("AVVIK        %s\n" % analysis["deviation"] if not approved else "")
 		+ "\n" + footer

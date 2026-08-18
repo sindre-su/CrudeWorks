@@ -424,6 +424,37 @@ static func _validate_report(report: Dictionary) -> bool:
 		return false
 	if int(round(float(report["revenue"]))) != int(round(float(report["product_revenue"]))) + int(round(float(report["delivery_bonus"]))):
 		return false
+	var delivery_fields := [
+		"order_name", "delivery_product", "delivery_product_name",
+		"delivery_target_l", "delivery_volume_l",
+	]
+	var has_delivery_fields := false
+	for field in delivery_fields:
+		if report.has(field):
+			has_delivery_fields = true
+			break
+	if has_delivery_fields:
+		for field in delivery_fields:
+			if not report.has(field):
+				return false
+		if (
+			typeof(report["order_name"]) != TYPE_STRING
+			or typeof(report["delivery_product"]) != TYPE_STRING
+			or typeof(report["delivery_product_name"]) != TYPE_STRING
+			or not _finite_number(report["delivery_target_l"])
+			or not _finite_number(report["delivery_volume_l"])
+		):
+			return false
+		var delivery_product: String = report["delivery_product"]
+		if (
+			delivery_product != String(profile["delivery_product"])
+			or String(report["order_name"]) != String(profile["order_name"])
+			or String(report["delivery_product_name"]) != String(profile["delivery_product_name"])
+			or not is_equal_approx(float(report["delivery_target_l"]), float(profile["delivery_target_l"]))
+			or not is_equal_approx(float(report["delivery_volume_l"]), float(report[delivery_product + "_l"]))
+			or float(report["delivery_volume_l"]) + 0.01 < float(report["delivery_target_l"])
+		):
+			return false
 	return typeof(report.get("spec_status")) == TYPE_STRING
 
 

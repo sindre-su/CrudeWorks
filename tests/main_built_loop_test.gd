@@ -95,6 +95,7 @@ func _run_test() -> void:
 	_expect(not main.control_station_visible and not main.player.input_blocked and not main.build_controller.input_blocked, "Escape closes LS-201 without issuing another process command")
 	main._on_unit_interacted(source.unit_id)
 	_expect(main.contract_selection_visible and main.player.input_blocked and main.build_controller.input_blocked, "empty commissioned source opens a modal crude-delivery choice")
+	_expect("DIESELLEVERANSE" in main.contract_selection_label.text and "200 L diesel" in main.contract_selection_label.text and "TUNG LEVERANSE" in main.contract_selection_label.text and "600 L" in main.contract_selection_label.text, "delivery modal explains the two distinct product orders before purchase")
 	var money_before_cancel: int = main.process_model.money
 	var cancel_contract_event := InputEventKey.new()
 	cancel_contract_event.keycode = KEY_ESCAPE
@@ -220,14 +221,14 @@ func _test_heavy_contract_through_main() -> void:
 	main._on_unit_interacted("sales_terminal")
 	_expect(main.lab_analysis_panel.visible and main.player.input_blocked and main.build_controller.input_blocked, "LAB analysis opens a modal and blocks field/build controls")
 	_expect(main.discard_confirmation_time_left <= 0.0, "opening a lab analysis also cancels stale disposal intent")
-	_expect("P-001 — TUNG" in main.lab_analysis_panel.result_label.text and "GODKJENT" in main.lab_analysis_panel.result_label.text and "2 760 kr" in main.lab_analysis_panel.result_label.text, "Heavy lab result shows provenance, specification and exact dispatch value")
+	_expect("P-001 — TUNG" in main.lab_analysis_panel.result_label.text and "TUNG LEVERANSE" in main.lab_analysis_panel.result_label.text and "Tung fraksjon" in main.lab_analysis_panel.result_label.text and "630 L / krav 600 L" in main.lab_analysis_panel.result_label.text and "GODKJENT" in main.lab_analysis_panel.result_label.text and "2 760 kr" in main.lab_analysis_panel.result_label.text, "Heavy lab separates diesel QC from the ordered heavy-fraction target")
 	var dispatch_event := InputEventKey.new()
 	dispatch_event.keycode = KEY_ENTER
 	dispatch_event.pressed = true
 	main._unhandled_input(dispatch_event)
 	_expect(not main.lab_analysis_panel.visible and main.batch_report_visible, "approved lab Enter transitions directly to the existing batch report")
 	_expect(main.process_model.money == 3580, "Main Heavy sample dispatch credits 1 760 kr product revenue and one 1 000 kr bonus")
-	_expect("BATCH GODKJENT — TUNG" in main.batch_report_label.text and "Kontraktbonus" in main.batch_report_label.text, "Heavy batch report names the feed and explains its bonus")
+	_expect("BATCH GODKJENT — TUNG LEVERANSE" in main.batch_report_label.text and "Tung fraksjon 630 / 600 L" in main.batch_report_label.text and "Kontraktbonus" in main.batch_report_label.text, "Heavy batch report records the fulfilled order and its bonus")
 	main._on_unit_interacted("sales_terminal")
 	_expect(main.process_model.money == 3580, "repeated Main terminal use cannot duplicate the Heavy bonus")
 	main.queue_free()
