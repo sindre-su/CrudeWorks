@@ -3,8 +3,9 @@ extends RefCounted
 
 const EquipmentCatalogScript = preload("res://scripts/equipment_catalog.gd")
 const ProcessNetworkScript = preload("res://scripts/process_network.gd")
+const CrudeCatalogScript = preload("res://scripts/crude_contract_catalog.gd")
 
-const FORMAT_VERSION := 1
+const FORMAT_VERSION := 2
 const DEFAULT_PATH := "user://crudeworks_save.json"
 const BUILD_BOUNDS := Rect2(-14.0, 10.5, 28.0, 20.0)
 const MAX_UNITS := 128
@@ -137,6 +138,48 @@ static func validate_snapshot(snapshot) -> Dictionary:
 	}
 
 
+static func migrate_snapshot(snapshot) -> Dictionary:
+	if typeof(snapshot) != TYPE_DICTIONARY or not _is_integer_number(snapshot.get("format_version")):
+		return _result(false, "Lagringen mangler versjonsnummer.")
+	var version := int(snapshot["format_version"])
+	if version == FORMAT_VERSION:
+		return {"ok": true, "message": "Lagringen bruker gjeldende format.", "data": snapshot.duplicate(true)}
+	if version != 1:
+		return _result(false, "Lagringsversjonen støttes ikke.")
+	if typeof(snapshot.get("built_refinery")) != TYPE_DICTIONARY:
+		return _result(false, "Eldre lagring mangler prosesstilstand.")
+	var migrated: Dictionary = snapshot.duplicate(true)
+	var built: Dictionary = migrated["built_refinery"]
+	var has_batch_state := (
+		float(built.get("report_crude_processed_l", 0.0)) > 0.001
+		or float(built.get("report_temperature_total", 0.0)) > 0.001
+		or float(built.get("report_crude_cost", 0.0)) > 0.001
+	)
+	if typeof(built.get("equipment")) == TYPE_DICTIONARY:
+		for state in built["equipment"].values():
+			if (
+				typeof(state) == TYPE_DICTIONARY
+				and state.get("type") == "tank"
+				and float(state.get("volume_l", 0.0)) > 0.001
+				and state.get("contents", "empty") in ["crude", "light", "diesel", "heavy"]
+			):
+				has_batch_state = true
+	built["active_contract_id"] = CrudeCatalogScript.DEFAULT_ID if has_batch_state else ""
+	built["active_contract_bonus_available"] = false
+	var report = built.get("last_batch_report", {})
+	if typeof(report) == TYPE_DICTIONARY and not report.is_empty():
+		var standard := CrudeCatalogScript.definition(CrudeCatalogScript.DEFAULT_ID)
+		report["contract_id"] = CrudeCatalogScript.DEFAULT_ID
+		report["contract_name"] = standard["display_name"]
+		report["ideal_temperature_c"] = standard["ideal_temperature_c"]
+		report["diesel_target_l"] = standard["diesel_target_l"]
+		report["required_quality_percent"] = standard["minimum_quality_percent"]
+		report["product_revenue"] = report.get("revenue", 0)
+		report["delivery_bonus"] = 0
+	migrated["format_version"] = FORMAT_VERSION
+	return {"ok": true, "message": "Lagringen er oppgradert til format 2.", "data": migrated}
+
+
 static func _read_and_validate(path: String) -> Dictionary:
 	if not FileAccess.file_exists(path):
 		return _result(false, "Lagringsfilen finnes ikke.")
@@ -145,13 +188,17 @@ static func _read_and_validate(path: String) -> Dictionary:
 	if json.parse(json_text) != OK:
 		return _result(false, "Lagringsfilen inneholder ugyldig JSON.")
 	var parsed = json.data
-	var validation := validate_snapshot(parsed)
+	var migration := migrate_snapshot(parsed)
+	if not migration["ok"]:
+		return migration
+	var canonical = migration["data"]
+	var validation := validate_snapshot(canonical)
 	if not validation["ok"]:
 		return validation
 	return {
 		"ok": true,
 		"message": "Lagringen er lest.",
-		"data": parsed,
+		"data": canonical,
 		"recovered_from_backup": false,
 	}
 
@@ -251,9 +298,21 @@ static func _validate_built_refinery(state: Dictionary, unit_types: Dictionary) 
 	for field in ["commissioning_batch_available", "commissioning_contract_complete"]:
 		if typeof(state.get(field)) != TYPE_BOOL:
 			return _result(false, "Ugyldig progresjonsstatus: %s." % field)
+	if state["commissioning_contract_complete"] and state["commissioning_batch_available"]:
+		return _result(false, "Oppstartsbatchen kan ikke være tilgjengelig etter fullført kontrakt.")
 	for field in ["successful_sales", "product_inventory_revision"]:
 		if not _is_integer_number(state.get(field)) or int(state[field]) < 0:
 			return _result(false, "Ugyldig prosessverdi: %s." % field)
+	if typeof(state.get("active_contract_id")) != TYPE_STRING:
+		return _result(false, "Aktiv råoljekontrakt mangler.")
+	var active_contract_id: String = state["active_contract_id"]
+	if not active_contract_id.is_empty() and not CrudeCatalogScript.is_valid(active_contract_id):
+		return _result(false, "Lagringen inneholder en ukjent råoljekontrakt.")
+	if typeof(state.get("active_contract_bonus_available")) != TYPE_BOOL:
+		return _result(false, "Kontraktbonusens status er ugyldig.")
+	if state["active_contract_bonus_available"]:
+		if active_contract_id.is_empty() or int(CrudeCatalogScript.definition(active_contract_id)["delivery_bonus"]) <= 0:
+			return _result(false, "Lagringen inneholder en ugyldig kontraktbonus.")
 	for field in ["report_crude_processed_l", "report_temperature_total", "report_crude_cost"]:
 		if not _finite_number(state.get(field)) or float(state[field]) < 0.0:
 			return _result(false, "Ugyldig prosessverdi: %s." % field)
@@ -266,6 +325,7 @@ static func _validate_built_refinery(state: Dictionary, unit_types: Dictionary) 
 	var saved_equipment: Dictionary = state["equipment"]
 	if saved_equipment.size() != unit_types.size():
 		return _result(false, "Prosessutstyr og byggedata er ikke synkronisert.")
+	var has_material := false
 	for unit_id in unit_types:
 		if typeof(saved_equipment.get(unit_id)) != TYPE_DICTIONARY:
 			return _result(false, "%s mangler prosesstilstand." % unit_id)
@@ -275,9 +335,24 @@ static func _validate_built_refinery(state: Dictionary, unit_types: Dictionary) 
 		var equipment_result := _validate_equipment_state(unit_state)
 		if not equipment_result["ok"]:
 			return equipment_result
+		if (
+			unit_state["type"] == "tank"
+			and float(unit_state["volume_l"]) > 0.001
+			and unit_state["contents"] in ["crude", "light", "diesel", "heavy"]
+		):
+			has_material = true
 	for unit_id in saved_equipment:
 		if not unit_types.has(unit_id):
 			return _result(false, "Prosesstilstanden inneholder ukjent utstyr.")
+	var has_tracking := (
+		float(state["report_crude_processed_l"]) > 0.001
+		or float(state["report_temperature_total"]) > 0.001
+		or float(state["report_crude_cost"]) > 0.001
+	)
+	if (has_material or has_tracking) and active_contract_id.is_empty():
+		return _result(false, "Materiale mangler en aktiv råoljekontrakt.")
+	if not has_material and not has_tracking and not active_contract_id.is_empty():
+		return _result(false, "En aktiv råoljekontrakt finnes uten batchmateriale.")
 	return _result(true, "Bygd prosesstilstand er gyldig.")
 
 
@@ -320,19 +395,34 @@ static func _validate_report(report: Dictionary) -> bool:
 		return true
 	for field in [
 		"crude_processed_l", "light_l", "diesel_l", "heavy_l", "diesel_quality_percent",
-		"average_temperature_c", "revenue", "crude_cost", "net_profit",
+		"average_temperature_c", "ideal_temperature_c", "diesel_target_l",
+		"required_quality_percent", "product_revenue", "delivery_bonus",
+		"revenue", "crude_cost", "net_profit",
 	]:
 		if not _finite_number(report.get(field)):
 			return false
-	for field in ["crude_processed_l", "light_l", "diesel_l", "heavy_l", "revenue", "crude_cost"]:
+	for field in ["crude_processed_l", "light_l", "diesel_l", "heavy_l", "product_revenue", "delivery_bonus", "revenue", "crude_cost"]:
 		if float(report[field]) < 0.0:
 			return false
 	if not _in_range(report["diesel_quality_percent"], 0.0, 100.0):
+		return false
+	if typeof(report.get("contract_id")) != TYPE_STRING or not CrudeCatalogScript.is_valid(report["contract_id"]):
+		return false
+	if typeof(report.get("contract_name")) != TYPE_STRING or String(report["contract_name"]).is_empty():
+		return false
+	var profile := CrudeCatalogScript.definition(report["contract_id"])
+	if (
+		not is_equal_approx(float(report["ideal_temperature_c"]), float(profile["ideal_temperature_c"]))
+		or not is_equal_approx(float(report["diesel_target_l"]), float(profile["diesel_target_l"]))
+		or not is_equal_approx(float(report["required_quality_percent"]), float(profile["minimum_quality_percent"]))
+	):
 		return false
 	var product_total := float(report["light_l"]) + float(report["diesel_l"]) + float(report["heavy_l"])
 	if absf(float(report["crude_processed_l"]) - product_total) > 0.1:
 		return false
 	if int(round(float(report["net_profit"]))) != int(round(float(report["revenue"]))) - int(round(float(report["crude_cost"]))):
+		return false
+	if int(round(float(report["revenue"]))) != int(round(float(report["product_revenue"]))) + int(round(float(report["delivery_bonus"]))):
 		return false
 	return typeof(report.get("spec_status")) == TYPE_STRING
 

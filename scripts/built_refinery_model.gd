@@ -2,6 +2,7 @@ class_name BuiltRefineryModel
 extends RefCounted
 
 const ProcessNetworkScript = preload("res://scripts/process_network.gd")
+const CrudeCatalog = preload("res://scripts/crude_contract_catalog.gd")
 
 const AMBIENT_TEMPERATURE_C := 20.0
 const TANK_CAPACITY_L := 1000.0
@@ -17,6 +18,8 @@ var equipment: Dictionary = {}
 var commissioning_batch_available := true
 var commissioning_contract_complete := false
 var successful_sales := 0
+var active_contract_id := ""
+var active_contract_bonus_available := false
 var last_batch_report: Dictionary = {}
 var product_inventory_revision := 0
 var actual_flow_lps := 0.0
@@ -52,6 +55,8 @@ func save_state() -> Dictionary:
 		"commissioning_batch_available": commissioning_batch_available,
 		"commissioning_contract_complete": commissioning_contract_complete,
 		"successful_sales": successful_sales,
+		"active_contract_id": active_contract_id,
+		"active_contract_bonus_available": active_contract_bonus_available,
 		"last_batch_report": last_batch_report.duplicate(true),
 		"product_inventory_revision": product_inventory_revision,
 		"report_crude_processed_l": _report_crude_processed_l,
@@ -65,6 +70,8 @@ func apply_saved_state(state: Dictionary) -> void:
 	commissioning_batch_available = bool(state["commissioning_batch_available"])
 	commissioning_contract_complete = bool(state["commissioning_contract_complete"])
 	successful_sales = int(state["successful_sales"])
+	active_contract_id = String(state["active_contract_id"])
+	active_contract_bonus_available = bool(state["active_contract_bonus_available"])
 	last_batch_report = state["last_batch_report"].duplicate(true)
 	product_inventory_revision = int(state["product_inventory_revision"])
 	_report_crude_processed_l = float(state["report_crude_processed_l"])
@@ -166,6 +173,8 @@ func interact(unit_id: String, can_pay_for_crude := false) -> Dictionary:
 			return _cycle_heater(unit_id)
 		"tank":
 			if _is_route_source(unit_id) and equipment[unit_id]["volume_l"] <= 0.001:
+				if commissioning_contract_complete and can_choose_contract(unit_id)["ok"]:
+					return _result(false, "Velg råoljeleveranse før kildetanken lastes.")
 				return load_crude_batch(unit_id, can_pay_for_crude)
 	return _result(true, inspect_unit(unit_id))
 
@@ -189,12 +198,16 @@ func interaction_prompt(unit_id: String) -> String:
 		"tank":
 			if _is_route_source(unit_id):
 				if state["volume_l"] <= 0.001:
+					if commissioning_contract_complete:
+						if _material_volume_l() <= 0.001 and active_contract_id.is_empty():
+							return "E — velg råoljeleveranse"
+						return "Selg eller tøm produktene før ny levering"
 					return (
 						"E — last gratis oppstartsbatch"
 						if commissioning_batch_available
 						else "E — kjøp 1 000 L råolje (%d kr)" % CRUDE_BATCH_COST
 					)
-				return "E — inspiser råoljetank"
+				return "E — inspiser %s råoljetank" % _active_contract_short_name()
 			var product_role: String = _product_role_for_tank(unit_id)
 			if not product_role.is_empty():
 				return "E — inspiser %s-tank" % _contents_name(product_role)
@@ -229,33 +242,89 @@ func discard_products(confirmed := false) -> Dictionary:
 	_stop_all_pumps()
 	product_inventory_revision += 1
 	_reset_report_tracking()
+	_clear_contract_if_empty()
 	last_status = "%.0f L produkt sendt til sikker avfallshåndtering. Ingen betaling mottatt." % discarded_l
 	return _result(true, last_status)
 
 
-func load_crude_batch(unit_id: String, paid_batch := false) -> Dictionary:
+func can_choose_contract(unit_id: String) -> Dictionary:
+	if not commissioning_contract_complete:
+		return _result(false, "Fullfør oppstartskontrakten først.")
+	if not _is_route_source(unit_id):
+		return _result(false, "Velg råolje ved kildetanken i den komplette linjen.")
+	if _any_pump_running():
+		return _result(false, "Stopp pumpen før en ny råoljeleveranse velges.")
+	if _material_volume_l() > 0.001 or _report_crude_processed_l > 0.001:
+		return _result(false, "Alle tanker må være tomme før en ny leveranse velges.")
+	if not active_contract_id.is_empty():
+		return _result(false, "Forrige råoljebatch må avsluttes før en ny leveranse velges.")
+	return _result(true, "Velg råoljeleveranse.")
+
+
+func contract_definition(contract_id := "") -> Dictionary:
+	var resolved_id: String = contract_id if not contract_id.is_empty() else active_contract_id
+	if resolved_id.is_empty():
+		resolved_id = CrudeCatalog.DEFAULT_ID
+	return CrudeCatalog.definition(resolved_id)
+
+
+func contract_cost(contract_id: String) -> int:
+	var data := CrudeCatalog.definition(contract_id)
+	return int(data.get("purchase_cost", 0))
+
+
+func load_crude_batch(
+	unit_id: String,
+	paid_batch := false,
+	contract_id := CrudeCatalog.DEFAULT_ID
+) -> Dictionary:
 	if not _is_route_source(unit_id):
 		return _result(false, "Tanken må være koblet som råoljekilde i en komplett prosesslinje.")
+	if not CrudeCatalog.is_valid(contract_id):
+		return _result(false, "Ukjent råoljeleveranse.")
+	if not commissioning_contract_complete and contract_id != CrudeCatalog.DEFAULT_ID:
+		return _result(false, "Tung råolje låses opp etter oppstartskontrakten.")
+	if _any_pump_running():
+		return _result(false, "Stopp pumpen før råolje lastes.")
+	_clear_contract_if_empty()
 	var tank: Dictionary = equipment[unit_id]
 	if tank["volume_l"] > 0.001:
 		return _result(false, "%s er ikke tom." % tank["name"])
+	if _material_volume_l() > 0.001 or _report_crude_processed_l > 0.001:
+		return _result(false, "Alle tanker må være tomme før en ny batch lastes.")
+	if not active_contract_id.is_empty():
+		return _result(false, "Forrige råoljebatch er ikke avsluttet.")
+	var selected_id: String = contract_id
 	var charge := 0
 	if commissioning_batch_available:
+		selected_id = CrudeCatalog.DEFAULT_ID
 		commissioning_batch_available = false
 	elif paid_batch:
-		charge = CRUDE_BATCH_COST
+		charge = contract_cost(selected_id)
 	else:
-		return _result(false, "Ny råoljebatch koster %d kr." % CRUDE_BATCH_COST)
+		return _result(false, "%s koster %d kr." % [
+			CrudeCatalog.definition(selected_id)["display_name"],
+			contract_cost(selected_id),
+		])
+	var profile := CrudeCatalog.definition(selected_id)
+	active_contract_id = selected_id
+	active_contract_bonus_available = int(profile["delivery_bonus"]) > 0
 	tank["volume_l"] = BATCH_VOLUME_L
 	tank["contents"] = "crude"
 	tank["temperature_c"] = AMBIENT_TEMPERATURE_C
 	tank["quality_percent"] = 0.0
 	tank["crude_cost_per_l"] = float(charge) / BATCH_VOLUME_L
-	last_status = "1 000 L råolje er lastet. Varm opp anlegget før pumpen startes."
-	var message := "Gratis oppstartsbatch lastet: 1 000 L råolje."
+	last_status = "1 000 L %s lastet. Varm mot ca. %.0f °C." % [
+		profile["short_name"], profile["ideal_temperature_c"],
+	]
+	var message := "Gratis oppstartsbatch: 1 000 L %s, mål ca. %.0f °C." % [
+		profile["short_name"], profile["ideal_temperature_c"],
+	]
 	if charge > 0:
-		message = "Ny råoljebatch lastet for %d kr." % charge
-	return {"ok": true, "message": message, "charge": charge}
+		message = "%s lastet for %d kr. Temperaturmål ca. %.0f °C." % [
+			profile["display_name"], charge, profile["ideal_temperature_c"],
+		]
+	return {"ok": true, "message": message, "charge": charge, "contract_id": selected_id}
 
 
 func tick(delta: float) -> void:
@@ -275,11 +344,24 @@ func tick(delta: float) -> void:
 	var source: Dictionary = equipment[route["source"]]
 	var valve: Dictionary = equipment[route["valve"]]
 	var heater: Dictionary = equipment[route["heater"]]
+	var profile := contract_definition()
 	if not pump["running"]:
 		if source["volume_l"] <= 0.001 or source["contents"] != "crude":
-			last_status = "Linjen er klar. Trykk E på kildetanken for å laste råolje."
-		elif heater["temperature_c"] < 190.0:
-			last_status = "Råolje lastet. Varm anlegget til ca. 200 °C før pumpen startes."
+			last_status = (
+				"Linjen er klar. Trykk E på kildetanken for å velge råolje."
+				if commissioning_contract_complete
+				else "Linjen er klar. Trykk E på kildetanken for å laste råolje."
+			)
+		elif not CrudeCatalog.is_valid(active_contract_id):
+			last_status = "Råoljebatchen mangler gyldig type. Last en sikker lagring eller tøm batchen."
+		elif heater["temperature_c"] < CrudeCatalog.approved_temperature_range(active_contract_id).x:
+			last_status = "%s lastet. Varm anlegget til ca. %.0f °C før pumpen startes." % [
+				profile["short_name"], profile["ideal_temperature_c"],
+			]
+		elif heater["temperature_c"] > CrudeCatalog.approved_temperature_range(active_contract_id).y:
+			last_status = "Temperaturen er for høy. Senk %s mot ca. %.0f °C." % [
+				profile["short_name"], profile["ideal_temperature_c"],
+			]
 		else:
 			last_status = "Temperaturen er klar. Trykk E på pumpen for å starte flow."
 		return
@@ -287,11 +369,15 @@ func tick(delta: float) -> void:
 		pump["running"] = false
 		last_status = "LOW FLOW — råoljetanken er tom."
 		return
+	if not CrudeCatalog.is_valid(active_contract_id):
+		_stop_all_pumps()
+		last_status = "Produksjonen er stoppet: råoljens batchdata er ugyldige."
+		return
 	if not valve["open"]:
 		last_status = "Kontroller utstyret mellom pumpen og varmeenheten."
 		return
 
-	var fractions := fractions_for_temperature(heater["temperature_c"])
+	var fractions := fractions_for_temperature(heater["temperature_c"], active_contract_id)
 	var safe_input := minf(source["volume_l"], pump["max_flow_lps"] * delta)
 	var products: Dictionary = route["products"]
 	for product_name in ["light", "diesel", "heavy"]:
@@ -326,28 +412,52 @@ func sell_diesel() -> Dictionary:
 	if not validation["valid"]:
 		return _result(false, validation["message"])
 	var route: Dictionary = validation["route"]
+	if not CrudeCatalog.is_valid(active_contract_id):
+		return _result(false, "Ingen aktiv råoljekontrakt er knyttet til produktene.")
+	var profile := contract_definition()
 	var diesel_tank: Dictionary = equipment[route["products"]["diesel"]]
 	var total_volume: float = diesel_tank["volume_l"] if diesel_tank["contents"] == "diesel" else 0.0
 	var weighted_quality: float = total_volume * diesel_tank["quality_percent"]
-	if total_volume < DIESEL_TARGET_L:
-		return _result(
-			false,
-			"For lite bygd diesel: %.0f / %.0f liter. Trykk R for å tømme off-spec produkter." % [total_volume, DIESEL_TARGET_L]
-		)
-	var quality: float = weighted_quality / total_volume
-	if quality < APPROVED_QUALITY_PERCENT:
-		return _result(
-			false,
-			"OFF-SPEC: Bygd diesel er %.1f %%, minst %.0f %% kreves. Trykk R for sikker tømming." % [quality, APPROVED_QUALITY_PERCENT]
-		)
-	var products := _active_product_totals(route)
-	var revenue := int(round(total_volume * DIESEL_PRICE_PER_L))
-	var processed_l: float = products["light"] + products["diesel"] + products["heavy"]
+	var target_l := float(profile["diesel_target_l"])
+	var minimum_quality := float(profile["minimum_quality_percent"])
 	var average_temperature := 0.0
 	if _report_crude_processed_l > 0.001:
 		average_temperature = _report_temperature_total / _report_crude_processed_l
+	if _report_crude_processed_l <= 0.001 and total_volume <= 0.001:
+		return _result(false, "Ingen diesel produsert. Varm anlegget og start prosessen.")
+	if total_volume < target_l:
+		return _result(
+			false,
+			"For lite %s-diesel: %.0f / %.0f L. Snitt %.0f °C, mål ca. %.0f °C. R x2 tømmer produktene." % [
+				profile["short_name"], total_volume, target_l,
+				average_temperature, profile["ideal_temperature_c"],
+			]
+		)
+	var quality: float = weighted_quality / total_volume
+	if quality < minimum_quality:
+		return _result(
+			false,
+			"OFF-SPEC %s: %.1f %% ved %.0f °C. Minst %.0f %% kreves; mål ca. %.0f °C. R x2 tømmer." % [
+				profile["short_name"], quality, average_temperature,
+				minimum_quality, profile["ideal_temperature_c"],
+			]
+		)
+	var products := _active_product_totals(route)
+	var product_revenue := int(round(total_volume * float(profile["diesel_price_per_l"])))
+	var delivery_bonus := (
+		int(profile["delivery_bonus"])
+		if active_contract_bonus_available
+		else 0
+	)
+	var revenue := product_revenue + delivery_bonus
+	var processed_l: float = products["light"] + products["diesel"] + products["heavy"]
 	var crude_cost := int(round(_report_crude_cost))
 	var report := {
+		"contract_id": active_contract_id,
+		"contract_name": profile["display_name"],
+		"ideal_temperature_c": profile["ideal_temperature_c"],
+		"diesel_target_l": target_l,
+		"required_quality_percent": minimum_quality,
 		"crude_processed_l": processed_l,
 		"light_l": products["light"],
 		"diesel_l": products["diesel"],
@@ -355,6 +465,8 @@ func sell_diesel() -> Dictionary:
 		"diesel_quality_percent": quality,
 		"spec_status": "GODKJENT",
 		"average_temperature_c": average_temperature,
+		"product_revenue": product_revenue,
+		"delivery_bonus": delivery_bonus,
 		"revenue": revenue,
 		"crude_cost": crude_cost,
 		"net_profit": revenue - crude_cost,
@@ -362,6 +474,7 @@ func sell_diesel() -> Dictionary:
 	var contract_completed_now := not commissioning_contract_complete
 	commissioning_contract_complete = true
 	successful_sales += 1
+	active_contract_bonus_available = false
 	last_batch_report = report.duplicate(true)
 	for state in equipment.values():
 		if state["type"] != "tank" or state["contents"] not in ["light", "diesel", "heavy"]:
@@ -371,6 +484,7 @@ func sell_diesel() -> Dictionary:
 		state["quality_percent"] = 0.0
 	product_inventory_revision += 1
 	_reset_report_tracking()
+	_clear_contract_if_empty()
 	last_status = "%.0f L bygd diesel godkjent; produktbatch sendt for %d kr." % [total_volume, revenue]
 	return {
 		"ok": true,
@@ -388,9 +502,10 @@ func diesel_is_approved() -> bool:
 		return false
 	var tank: Dictionary = equipment[route["products"]["diesel"]]
 	var total_volume: float = tank["volume_l"] if tank["contents"] == "diesel" else 0.0
+	var profile := contract_definition()
 	return (
-		total_volume >= DIESEL_TARGET_L
-		and tank["quality_percent"] >= APPROVED_QUALITY_PERCENT
+		total_volume >= float(profile["diesel_target_l"])
+		and tank["quality_percent"] >= float(profile["minimum_quality_percent"])
 	)
 
 
@@ -414,16 +529,24 @@ func objective_text() -> String:
 	var heater: Dictionary = equipment[route["heater"]]
 	var pump: Dictionary = equipment[route["pump"]]
 	var valve: Dictionary = equipment[route["valve"]]
+	var profile := contract_definition()
 	if source["volume_l"] <= 0.001 and product_volume_l() <= 0.001:
 		return (
-			prefix + "last en betalt batch med mål om minst 95 % kvalitet"
+			prefix + "velg Standard eller Tung råolje ved kildetanken"
 			if commissioning_contract_complete
 			else prefix + "avslutt bygging og last gratis oppstartsbatch"
 		)
 	if pump["running"] and not valve["open"]:
 		return prefix + "finn årsaken til LOW FLOW"
-	if heater["temperature_c"] < 190.0 and source["volume_l"] > 0.001:
-		return prefix + "varm anlegget til ca. 200 °C"
+	if heater["temperature_c"] < CrudeCatalog.approved_temperature_range(active_contract_id).x and source["volume_l"] > 0.001:
+		return prefix + "varm %s til ca. %.0f °C" % [
+			profile["short_name"], profile["ideal_temperature_c"],
+		]
+	if heater["temperature_c"] > CrudeCatalog.approved_temperature_range(active_contract_id).y and source["volume_l"] > 0.001:
+		return prefix + "%ssenk %s mot ca. %.0f °C" % [
+			"stopp pumpen og " if pump["running"] else "",
+			profile["short_name"], profile["ideal_temperature_c"],
+		]
 	if diesel_is_approved():
 		return (
 			prefix + "stopp pumpen og lever godkjent diesel ved LAB / SALG"
@@ -433,8 +556,10 @@ func objective_text() -> String:
 	if source["volume_l"] <= 0.001 and product_volume_l() > 0.001:
 		return prefix + "kontroller kvaliteten — tøm OFF-SPEC produkt med R ved behov"
 	if source["volume_l"] > 0.001 and not pump["running"]:
-		return prefix + "start pumpen og produser minst 200 L diesel"
-	return prefix + "produser minst 200 L diesel med minst 90 % kvalitet"
+		return prefix + "start pumpen og produser minst %.0f L diesel" % profile["diesel_target_l"]
+	return prefix + "produser minst %.0f L diesel med minst %.0f %% kvalitet" % [
+		profile["diesel_target_l"], profile["minimum_quality_percent"],
+	]
 
 
 func inspect_unit(unit_id: String) -> String:
@@ -444,6 +569,8 @@ func inspect_unit(unit_id: String) -> String:
 	match state["type"]:
 		"tank":
 			var contents_name := _contents_name(state["contents"])
+			if state["contents"] == "crude" and CrudeCatalog.is_valid(active_contract_id):
+				contents_name = contract_definition()["short_name"] + " RÅOLJE"
 			var details := "%s: %.0f / %.0f L, %.0f °C" % [
 				contents_name,
 				state["volume_l"],
@@ -473,10 +600,13 @@ func unit_status(unit_id: String) -> String:
 	var state: Dictionary = equipment[unit_id]
 	match state["type"]:
 		"tank":
+			var contents_label := _contents_name(state["contents"])
+			if state["contents"] == "crude" and CrudeCatalog.is_valid(active_contract_id):
+				contents_label = contract_definition()["short_name"]
 			var status := "%.0f / %.0f L  |  %s" % [
 				state["volume_l"],
 				state["capacity_l"],
-				_contents_name(state["contents"]),
+				contents_label,
 			]
 			if state["contents"] == "diesel":
 				status += "  |  %.1f %%" % state["quality_percent"]
@@ -507,9 +637,16 @@ func summary_text() -> String:
 			diesel_quality,
 			"GODKJENT" if diesel_is_approved() else "OFF-SPEC",
 		]
+	var crude_text := "INGEN"
+	var target_text := "—"
+	if CrudeCatalog.is_valid(active_contract_id):
+		var profile := contract_definition()
+		crude_text = profile["short_name"]
+		target_text = "%.0f °C" % profile["ideal_temperature_c"]
 	return (
 		"CRUDEWORKS — BYGGEOMRÅDE 02\n\n"
 		+ "Nettverk      %s\n" % ("GYLDIG" if validation["valid"] else "UFULLSTENDIG")
+		+ "Råolje        %s  |  mål %s\n" % [crude_text, target_text]
 		+ "Flow          %6.1f L/s\n" % actual_flow_lps
 		+ "Diesel        %6.0f L\n" % diesel_volume
 		+ "Kvalitet      %s\n\n" % quality_text
@@ -541,16 +678,11 @@ func active_connection_keys() -> Dictionary:
 	return keys
 
 
-func fractions_for_temperature(temperature_c: float) -> Vector3:
-	if temperature_c < 170.0:
-		return Vector3(0.08, 0.12, 0.80)
-	if temperature_c < 185.0:
-		return Vector3(0.20, 0.25, 0.55)
-	if temperature_c <= 215.0:
-		return Vector3(0.30, 0.35, 0.35)
-	if temperature_c <= 225.0:
-		return Vector3(0.40, 0.30, 0.30)
-	return Vector3(0.55, 0.20, 0.25)
+func fractions_for_temperature(
+	temperature_c: float,
+	contract_id := CrudeCatalog.DEFAULT_ID
+) -> Vector3:
+	return CrudeCatalog.fractions_for_temperature(contract_id, temperature_c)
 
 
 func _toggle_pump(unit_id: String) -> Dictionary:
@@ -615,12 +747,15 @@ func _process_alarm_text() -> String:
 	var pump: Dictionary = equipment[route["pump"]]
 	var valve: Dictionary = equipment[route["valve"]]
 	var state: Dictionary = equipment[route["heater"]]
+	if not CrudeCatalog.is_valid(active_contract_id):
+		return ""
+	var approved_range := CrudeCatalog.approved_temperature_range(active_contract_id)
 	var alarms: Array[String] = []
-	if state["temperature_c"] > 225.0:
+	if state["temperature_c"] > approved_range.y:
 		alarms.append("HIGH TEMPERATURE — dieselkvalitet i fare")
 	if pump["running"] and not valve["open"]:
 		alarms.append("LOW FLOW — pumpen går, men flow er 0.0 L/s")
-	if actual_flow_lps > 0.01 and state["temperature_c"] < 170.0:
+	if actual_flow_lps > 0.01 and state["temperature_c"] < approved_range.x:
 		alarms.append("LOW TEMPERATURE — dårlig separasjon og kvalitet")
 	return "\n".join(alarms)
 
@@ -647,9 +782,12 @@ func _process_input(route: Dictionary, input_l: float, fractions: Vector3, tempe
 
 
 func _diesel_quality(temperature_c: float, current_flow_lps: float) -> float:
-	var temperature_penalty := absf(temperature_c - 200.0) * 1.15
-	var flow_penalty := maxf(current_flow_lps - PUMP_CAPACITY_LPS, 0.0) * 2.0
-	return clampf(100.0 - temperature_penalty - flow_penalty, 0.0, 100.0)
+	return CrudeCatalog.diesel_quality(
+		active_contract_id if CrudeCatalog.is_valid(active_contract_id) else CrudeCatalog.DEFAULT_ID,
+		temperature_c,
+		current_flow_lps,
+		PUMP_CAPACITY_LPS
+	)
 
 
 func _fraction_value(fractions: Vector3, product_name: String) -> float:
@@ -705,6 +843,32 @@ func _reset_report_tracking() -> void:
 	_report_crude_processed_l = 0.0
 	_report_temperature_total = 0.0
 	_report_crude_cost = 0.0
+
+
+func _clear_contract_if_empty() -> void:
+	var crude_remaining := false
+	for state in equipment.values():
+		if state["type"] == "tank" and state["contents"] == "crude" and state["volume_l"] > 0.001:
+			crude_remaining = true
+			break
+	if crude_remaining or product_volume_l() > 0.001 or _report_crude_processed_l > 0.001:
+		return
+	active_contract_id = ""
+	active_contract_bonus_available = false
+
+
+func _material_volume_l() -> float:
+	var total := 0.0
+	for state in equipment.values():
+		if state["type"] == "tank" and state["contents"] in ["crude", "light", "diesel", "heavy"]:
+			total += state["volume_l"]
+	return total
+
+
+func _active_contract_short_name() -> String:
+	if not CrudeCatalog.is_valid(active_contract_id):
+		return ""
+	return CrudeCatalog.definition(active_contract_id)["short_name"]
 
 
 func _contents_name(contents: String) -> String:

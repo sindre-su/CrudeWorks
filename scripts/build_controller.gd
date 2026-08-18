@@ -47,7 +47,7 @@ func setup(p_player, p_process_network = null) -> void:
 func set_unlocked(value: bool) -> void:
 	unlocked = value
 	if is_instance_valid(build_hint):
-		build_hint.visible = unlocked and not active
+		build_hint.visible = unlocked and not active and not input_blocked
 	if not unlocked and active:
 		set_build_mode(false)
 
@@ -58,6 +58,8 @@ func set_available_money(value: int) -> void:
 
 func set_input_blocked(value: bool) -> void:
 	input_blocked = value
+	if is_instance_valid(build_hint):
+		build_hint.visible = unlocked and not active and not input_blocked
 
 
 func set_build_mode(value: bool) -> void:
@@ -69,7 +71,7 @@ func set_build_mode(value: bool) -> void:
 	if is_instance_valid(build_panel):
 		build_panel.visible = active
 	if is_instance_valid(build_hint):
-		build_hint.visible = unlocked and not active
+		build_hint.visible = unlocked and not active and not input_blocked
 	if is_instance_valid(ghost):
 		ghost.visible = active
 	_set_unit_ports_visible(active)

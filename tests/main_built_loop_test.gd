@@ -74,6 +74,23 @@ func _run_test() -> void:
 	main._unhandled_input(dismiss_event)
 	_expect(not main.batch_report_visible and not main.player.input_blocked and not main.build_controller.input_blocked, "Enter dismisses the report and restores gameplay controls")
 	main._on_unit_interacted(source.unit_id)
+	_expect(main.contract_selection_visible and main.player.input_blocked and main.build_controller.input_blocked, "empty commissioned source opens a modal crude-delivery choice")
+	var money_before_cancel: int = main.process_model.money
+	var cancel_contract_event := InputEventKey.new()
+	cancel_contract_event.keycode = KEY_ESCAPE
+	cancel_contract_event.pressed = true
+	main._unhandled_input(cancel_contract_event)
+	_expect(not main.contract_selection_visible and main.process_model.money == money_before_cancel and is_equal_approx(main.built_refinery_model.equipment[source.unit_id]["volume_l"], 0.0), "Escape cancels crude selection without charging or loading material")
+	main._on_unit_interacted(source.unit_id)
+	main.process_model.money = 100
+	var standard_event := InputEventKey.new()
+	standard_event.keycode = KEY_1
+	standard_event.pressed = true
+	main._unhandled_input(standard_event)
+	_expect(main.contract_selection_visible and main.process_model.money == 100 and is_equal_approx(main.built_refinery_model.equipment[source.unit_id]["volume_l"], 0.0), "unaffordable contract stays open and changes neither money nor material")
+	main.process_model.money = money_before_cancel
+	main._unhandled_input(standard_event)
+	_expect(not main.contract_selection_visible and not main.player.input_blocked and not main.build_controller.input_blocked, "contract choice closes cleanly and restores gameplay controls")
 	_expect(main.process_model.money == 2900, "second Main-integrated crude batch deducts exactly 300 kr")
 	_expect(is_equal_approx(main.built_refinery_model.equipment[source.unit_id]["volume_l"], 1000.0), "paid Main-integrated batch loads exactly 1 000 L")
 
@@ -106,6 +123,7 @@ func _run_test() -> void:
 	main._on_build_removal_requested(removable_tank)
 	main._on_build_removal_requested(removable_tank)
 	_expect(main.process_model.money == money_before_removal + removable_tank.purchase_cost, "same equipment can only be refunded once")
+	await _test_heavy_contract_through_main()
 
 	if failures == 0:
 		print("PASS: full Main-integrated CrudeWorks built loop passed")
@@ -113,6 +131,41 @@ func _run_test() -> void:
 	else:
 		printerr("FAIL: %d Main integration check(s) failed" % failures)
 		quit(1)
+
+
+func _test_heavy_contract_through_main() -> void:
+	var main = MainScene.instantiate()
+	main.persistence_enabled = false
+	root.add_child(main)
+	await process_frame
+	main.process_model.money = 3600
+	main.process_model.objective_complete = true
+	main._process(0.0)
+	_place_full_refinery(main)
+	_connect_full_refinery(main)
+	main.built_refinery_model.commissioning_batch_available = false
+	main.built_refinery_model.commissioning_contract_complete = true
+	var source = _unit(main, "built_tank_1")
+	main._on_unit_interacted(source.unit_id)
+	var heavy_event := InputEventKey.new()
+	heavy_event.keycode = KEY_2
+	heavy_event.pressed = true
+	main._unhandled_input(heavy_event)
+	_expect(main.process_model.money == 820 and main.built_refinery_model.active_contract_id == "heavy", "Main Heavy choice charges exactly 180 kr and locks the selected feed")
+	var heater = _unit(main, "built_heater_4")
+	var valve = _unit(main, "built_valve_3")
+	var pump = _unit(main, "built_pump_2")
+	main.built_refinery_model.equipment[heater.unit_id]["temperature_c"] = 230.0
+	main.built_refinery_model.equipment[heater.unit_id]["setpoint_c"] = 230.0
+	main._on_unit_interacted(valve.unit_id)
+	main._on_unit_interacted(pump.unit_id)
+	main.built_refinery_model.tick(100.0)
+	main._on_unit_interacted("sales_terminal")
+	_expect(main.process_model.money == 3580, "Main Heavy sale credits 1 760 kr product revenue and one 1 000 kr bonus")
+	_expect("BATCH GODKJENT — TUNG" in main.batch_report_label.text and "Kontraktbonus" in main.batch_report_label.text, "Heavy batch report names the feed and explains its bonus")
+	main._on_unit_interacted("sales_terminal")
+	_expect(main.process_model.money == 3580, "repeated Main terminal use cannot duplicate the Heavy bonus")
+	main.queue_free()
 
 
 func _place_full_refinery(main) -> void:

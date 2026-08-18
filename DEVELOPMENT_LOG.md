@@ -21,8 +21,8 @@
    operating fault and a recovery task without complex fluid physics.
 3. **Persistent player refinery** — save and restore construction, connections,
    process inventory, economy, and progression safely.
-4. **Crude and laboratory contracts** — add a small number of meaningful feed
-   choices and quality targets that vary the repeat loop.
+4. **Crude choices and delivery contracts** — add a small number of meaningful
+   feed choices and quality targets that vary the repeat loop.
 5. **Starter instrumentation and automation** — introduce useful measurements
    and limited remote control after manual operation is proven.
 
@@ -79,6 +79,20 @@
     preservation and explicit feedback when an older backup is recovered.
   - Kept routine autosaves silent so process and troubleshooting messages are
     not overwritten; write failures remain prominent.
+- Milestone 4 completed:
+  - Added a small data-driven raw-oil contract catalog with Standard and Heavy
+    feeds while preserving the pilot plant and the established Standard curve.
+  - Added a modal post-commissioning delivery choice. Standard costs 300 kr and
+    targets 200 °C; Heavy costs 180 kr, targets 230 °C, yields more residue and
+    offers one 1 000 kr bonus for an approved delivery.
+  - Locked process yield, quality, sale requirements and payout to the loaded
+    batch so a cheaper feed cannot be changed into a higher-paying contract.
+  - Blocked new contracts while any built tank contains process material or a
+    pump is commanded on, including material disconnected from the active route.
+  - Made alarms, objectives, tank inspection, readiness and batch reports use
+    the active feed's temperature and quality requirements.
+  - Upgraded persistence to format 2 and added strict format-1 migration to a
+    Standard contract without a free batch or retroactive delivery bonus.
 
 ## Validation
 
@@ -113,6 +127,23 @@
   - save system: 37 checks passed;
   - main scene and full headless editor/resource scan passed with no logged
     parser, resource, runtime, or script errors.
+- Milestone 4 focused validation:
+  - Standard at 200 °C retained 300/350/350 L output and 2 800 kr revenue;
+  - Heavy at 230 °C produced 150/220/630 L at 100 percent quality and paid
+    1 760 kr plus one 1 000 kr bonus;
+  - Heavy at 200 °C produced only 180 L diesel at 64 percent quality and was
+    rejected without consuming inventory or its pending bonus;
+  - contract switching, repeated purchase/sale, disconnected inventory and
+    v1-to-v2 migration received focused regression coverage.
+- Final Milestone 4 regression with isolated log files:
+  - pilot/economy: 23 checks passed;
+  - process network: 59 checks passed;
+  - building system: 41 checks passed;
+  - built refinery: 100 checks passed;
+  - Main integration: 41 checks passed;
+  - save system: 45 checks passed;
+  - main scene and full headless editor/resource scan passed with no logged
+    parser, resource, runtime, or script errors.
 
 ## Bugs Found
 
@@ -136,6 +167,11 @@
 - A concurrent parallel Godot run collided over the engine log and crashed;
   all authoritative validation was rerun sequentially with isolated log files
   and passed.
+- The repeatable refinery had one fixed Standard feed and one 200 °C solution,
+  so post-commissioning play did not require process adaptation.
+- Early contract UI drafts could describe an overheated Heavy batch as ready,
+  advertise a new purchase while old products remained, or show a fictitious
+  0 °C process average before any production.
 
 ## Bugs Fixed
 
@@ -154,10 +190,14 @@
   for unexpected construction failures, and tested repeated-load atomicity.
 - Made routine autosave silent and preserved operational notifications.
 - Added explicit last-known-good recovery feedback and canonical serial bounds.
+- Added batch-locked Standard/Heavy provenance, exact single-charge/single-bonus
+  transactions and material-empty switching rules across disconnected tanks.
+- Made high/low temperature guidance, source prompts, empty-process sales and
+  report-dismiss messages agree with the actual contract and inventory state.
 
 ## Current Stable State
 
-- Version 0.6.0 is verified stable after Milestone 3.
+- Version 0.7.0 is verified stable after Milestone 4.
 - The original pilot loop and full player-built loop both pass regression.
 - The first valid Area 02 sale now has a durable achievement and informative
   result, while later paid batches remain repeatable.
@@ -165,6 +205,8 @@
   tank → pump → valve → heater → distillation → product tanks.
 - A player can now leave during a partial paid batch and safely continue with
   the same mass, process conditions, economy and construction on next launch.
+- After commissioning, the same refinery now supports two economically and
+  operationally distinct feed choices instead of repeating one 200 °C recipe.
 
 ## Known Issues
 
@@ -176,8 +218,8 @@
 - Report accounting covers material processed since the previous sale or
   disposal. After an early partial sale, the next report covers only the
   remaining material processed afterward and its proportional crude cost.
-- Save format version 1 intentionally has no migration from unknown versions;
-  unsupported data is preserved and rejected rather than guessed.
+- Save format 1 is migrated explicitly to Standard; unknown older or future
+  versions are still preserved and rejected rather than guessed.
 
 ## Roadmap Changes
 
@@ -193,9 +235,11 @@
 - Persistence stayed deliberately local and single-slot. Cloud sync, multiple
   profiles and offline production would add complexity without improving the
   current refinery learning loop.
+- Crude variety was limited to Standard and Heavy. Sour crude remains deferred
+  because it would be a label without meaningful treatment equipment today.
 
 ## Next Best Action
 
-- Add a small set of meaningfully different crude feeds and laboratory
-  contracts so the repeatable saved refinery asks the player to adapt process
-  conditions instead of repeating one ideal 200 °C recipe forever.
+- Add starter instrumentation and limited automation so the player can monitor
+  temperature, flow and tank level from a compact control point after proving
+  the manual refinery loop.

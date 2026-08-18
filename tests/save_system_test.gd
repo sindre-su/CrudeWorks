@@ -4,6 +4,7 @@ const MainScene = preload("res://scenes/main.tscn")
 const SaveSystemScript = preload("res://scripts/save_system.gd")
 
 const TEST_PATH := "user://crudeworks_save_system_test.json"
+const LEGACY_PATH := "user://crudeworks_save_system_legacy_test.json"
 
 var failures := 0
 
@@ -18,6 +19,7 @@ func _run_tests() -> void:
 	var snapshot: Dictionary = source_main._build_snapshot()
 	_test_schema_validation(snapshot, source_main)
 	_test_disk_round_trip(snapshot)
+	_test_v1_to_v2_contract_migration(snapshot)
 	await _test_startup_continue(snapshot)
 	await _test_main_round_trip(snapshot, source_main)
 	_test_startup_confirmation(source_main)
@@ -114,6 +116,45 @@ func _test_disk_round_trip(snapshot: Dictionary) -> void:
 	_expect(recovered["ok"] and recovered["recovered_from_backup"], "corrupt primary file recovers the last valid backup")
 	_expect(SaveSystemScript.write_snapshot(TEST_PATH, snapshot)["ok"], "valid snapshot safely replaces the recovered primary")
 	_expect(FileAccess.file_exists(TEST_PATH + ".bak"), "successful replacement retains one last-known-good backup")
+
+
+func _test_v1_to_v2_contract_migration(snapshot: Dictionary) -> void:
+	var legacy := snapshot.duplicate(true)
+	legacy["format_version"] = 1
+	legacy["built_refinery"].erase("active_contract_id")
+	legacy["built_refinery"].erase("active_contract_bonus_available")
+	var legacy_file := FileAccess.open(LEGACY_PATH, FileAccess.WRITE)
+	if legacy_file == null:
+		_expect(false, "legacy migration fixture can create its save file")
+		return
+	legacy_file.store_string(JSON.stringify(legacy))
+	legacy_file.close()
+	var migrated: Dictionary = SaveSystemScript.read_snapshot(LEGACY_PATH)
+	_expect(migrated["ok"], "known v1 save migrates instead of appearing corrupt")
+	if not migrated["ok"]:
+		return
+	var data: Dictionary = migrated["data"]
+	_expect(data["format_version"] == 2 and SaveSystemScript.validate_snapshot(data)["ok"], "v1 migration returns a canonical validated v2 snapshot")
+	_expect(data["built_refinery"]["active_contract_id"] == "standard", "legacy material is explicitly assigned to the Standard contract")
+	_expect(not data["built_refinery"]["active_contract_bonus_available"], "legacy save cannot gain a retroactive delivery bonus")
+	_expect(is_equal_approx(data["built_refinery"]["equipment"]["built_tank_1"]["volume_l"], snapshot["built_refinery"]["equipment"]["built_tank_1"]["volume_l"]), "migration preserves partial source inventory exactly")
+	_expect(is_equal_approx(data["built_refinery"]["report_crude_cost"], snapshot["built_refinery"]["report_crude_cost"]), "migration preserves proportional paid-crude report accounting")
+	var unknown_contract := data.duplicate(true)
+	unknown_contract["built_refinery"]["active_contract_id"] = "mystery"
+	_expect(not SaveSystemScript.validate_snapshot(unknown_contract)["ok"], "unknown contract IDs are rejected before live state can mutate")
+
+	var pilot_only := legacy.duplicate(true)
+	pilot_only["built_refinery"]["report_crude_processed_l"] = 0.0
+	pilot_only["built_refinery"]["report_temperature_total"] = 0.0
+	pilot_only["built_refinery"]["report_crude_cost"] = 0.0
+	for state in pilot_only["built_refinery"]["equipment"].values():
+		if state["type"] == "tank":
+			state["volume_l"] = 0.0
+			state["contents"] = "empty"
+			state["quality_percent"] = 0.0
+			state["crude_cost_per_l"] = 0.0
+	var pilot_migration: Dictionary = SaveSystemScript.migrate_snapshot(pilot_only)
+	_expect(pilot_migration["ok"] and pilot_migration["data"]["built_refinery"]["active_contract_id"].is_empty(), "empty legacy refinery migrates without a phantom active batch")
 
 
 func _test_startup_continue(snapshot: Dictionary) -> void:
@@ -237,10 +278,11 @@ func _total_tank_volume(main) -> float:
 
 
 func _cleanup_test_files() -> void:
-	for suffix in ["", ".tmp", ".bak", ".corrupt", ".previous", ".bak.previous", ".corrupt.previous"]:
-		var path: String = TEST_PATH + String(suffix)
-		if FileAccess.file_exists(path):
-			DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	for base_path in [TEST_PATH, LEGACY_PATH]:
+		for suffix in ["", ".tmp", ".bak", ".corrupt", ".previous", ".bak.previous", ".corrupt.previous"]:
+			var path: String = base_path + String(suffix)
+			if FileAccess.file_exists(path):
+				DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 
 
 func _expect(condition: bool, description: String) -> void:

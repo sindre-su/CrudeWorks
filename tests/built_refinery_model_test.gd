@@ -1,6 +1,7 @@
 extends SceneTree
 
 const BuiltRefineryModelScript = preload("res://scripts/built_refinery_model.gd")
+const CrudeCatalogScript = preload("res://scripts/crude_contract_catalog.gd")
 
 var failures := 0
 
@@ -26,6 +27,9 @@ func _run_tests() -> void:
 	_test_partial_sale_report()
 	_test_route_scoped_alarm()
 	_test_disconnected_inventory_is_not_sellable()
+	_test_standard_contract_regression()
+	_test_heavy_contract_temperature_tradeoff()
+	_test_contract_lifecycle_and_bonus_lock()
 
 
 func _test_invalid_network_cannot_start() -> void:
@@ -59,6 +63,7 @@ func _test_manual_valve_low_flow() -> void:
 	model.equipment["heater"]["temperature_c"] = 230.0
 	_expect("HIGH TEMPERATURE" in model.alarm_text() and "LOW FLOW" in model.alarm_text(), "safety alarm remains visible alongside a simultaneous closed-valve fault")
 	model.equipment["heater"]["temperature_c"] = 200.0
+	model.equipment["heater"]["setpoint_c"] = 200.0
 	model.tick(0.0)
 	_expect("LOW FLOW" in model.alarm_text(), "opening a disconnected spare valve cannot clear the active-route alarm")
 	model.interact("valve")
@@ -244,6 +249,92 @@ func _test_disconnected_inventory_is_not_sellable() -> void:
 	model.equipment["spare_tank"]["quality_percent"] = 100.0
 	_expect(not model.diesel_is_approved(), "diesel readiness ignores disconnected legacy inventory")
 	_expect(not model.sell_diesel()["ok"], "disconnected legacy diesel cannot complete the active-route contract")
+
+
+func _test_standard_contract_regression() -> void:
+	var fractions := CrudeCatalogScript.fractions_for_temperature("standard", 200.0)
+	_expect(fractions.is_equal_approx(Vector3(0.30, 0.35, 0.35)), "Standard contract preserves the proven 30/35/35 split at 200 C")
+	_expect(is_equal_approx(fractions.x + fractions.y + fractions.z, 1.0), "Standard fractions conserve the complete input")
+	var model = _complete_model()
+	model.commissioning_batch_available = false
+	model.commissioning_contract_complete = true
+	var load: Dictionary = model.load_crude_batch("source", true, "standard")
+	_expect(load["ok"] and load["charge"] == 300 and model.active_contract_id == "standard", "paid Standard load locks the correct 300 kr contract")
+	model.equipment["heater"]["temperature_c"] = 200.0
+	model.equipment["heater"]["setpoint_c"] = 200.0
+	model.interact("valve")
+	model.interact("pump")
+	model.tick(100.0)
+	_expect(is_equal_approx(model.equipment["light_tank"]["volume_l"], 300.0) and is_equal_approx(model.equipment["diesel_tank"]["volume_l"], 350.0) and is_equal_approx(model.equipment["heavy_tank"]["volume_l"], 350.0), "paid Standard batch keeps the established 300/350/350 L output")
+	var sale: Dictionary = model.sell_diesel()
+	_expect(sale["ok"] and sale["report"]["product_revenue"] == 2800 and sale["report"]["delivery_bonus"] == 0, "Standard sale keeps the established 2 800 kr product revenue without a bonus")
+	_expect(sale["report"]["crude_cost"] == 300 and sale["report"]["net_profit"] == 2500, "Standard report preserves exact paid-batch economics")
+
+
+func _test_heavy_contract_temperature_tradeoff() -> void:
+	var ideal_fractions := CrudeCatalogScript.fractions_for_temperature("heavy", 230.0)
+	_expect(ideal_fractions.is_equal_approx(Vector3(0.15, 0.22, 0.63)), "Heavy crude has a distinct 15/22/63 split at its 230 C target")
+	_expect(is_equal_approx(ideal_fractions.x + ideal_fractions.y + ideal_fractions.z, 1.0), "Heavy fractions conserve the complete input")
+	var ideal = _complete_model()
+	ideal.commissioning_batch_available = false
+	ideal.commissioning_contract_complete = true
+	var ideal_load: Dictionary = ideal.load_crude_batch("source", true, "heavy")
+	_expect(ideal_load["ok"] and ideal_load["charge"] == 180 and ideal.active_contract_bonus_available, "Heavy delivery costs 180 kr and arms one delivery bonus")
+	var no_process_sale: Dictionary = ideal.sell_diesel()
+	_expect(not no_process_sale["ok"] and "Ingen diesel produsert" in no_process_sale["message"] and ideal.active_contract_bonus_available, "unprocessed contract gives truthful guidance without consuming its bonus")
+	ideal.equipment["heater"]["temperature_c"] = 240.0
+	ideal.tick(0.0)
+	_expect("Senk" in ideal.last_status and "senk" in ideal.objective_text() and "HIGH TEMPERATURE" in ideal.alarm_text(), "overheated Heavy feed gives one consistent cool-down instruction")
+	ideal.equipment["heater"]["temperature_c"] = 230.0
+	ideal.equipment["heater"]["setpoint_c"] = 230.0
+	ideal.interact("valve")
+	ideal.interact("pump")
+	ideal.tick(100.0)
+	_expect(is_equal_approx(_total_tank_volume(ideal), 1000.0), "ideal Heavy processing conserves the full 1 000 L batch")
+	_expect(is_equal_approx(ideal.equipment["light_tank"]["volume_l"], 150.0) and is_equal_approx(ideal.equipment["diesel_tank"]["volume_l"], 220.0) and is_equal_approx(ideal.equipment["heavy_tank"]["volume_l"], 630.0), "ideal Heavy processing produces the declared 150/220/630 L outputs")
+	_expect(ideal.diesel_is_approved() and "HIGH TEMPERATURE" not in ideal.alarm_text(), "Heavy diesel is approved at 230 C without a false high-temperature alarm")
+	var ideal_sale: Dictionary = ideal.sell_diesel()
+	_expect(ideal_sale["ok"] and ideal_sale["report"]["product_revenue"] == 1760 and ideal_sale["report"]["delivery_bonus"] == 1000 and ideal_sale["revenue"] == 2760, "first approved Heavy delivery pays exact product revenue plus its one-time bonus")
+	_expect(ideal_sale["report"]["crude_cost"] == 180 and ideal_sale["report"]["net_profit"] == 2580, "Heavy report calculates exact cost and net profit")
+	var repeated: Dictionary = ideal.sell_diesel()
+	_expect(not repeated["ok"] and repeated["revenue"] == 0 and not ideal.active_contract_bonus_available, "Heavy product and bonus cannot be sold repeatedly")
+
+	var cold = _complete_model()
+	cold.commissioning_batch_available = false
+	cold.commissioning_contract_complete = true
+	cold.load_crude_batch("source", true, "heavy")
+	cold.equipment["heater"]["temperature_c"] = 200.0
+	cold.equipment["heater"]["setpoint_c"] = 200.0
+	cold.interact("valve")
+	cold.interact("pump")
+	cold.tick(100.0)
+	_expect(is_equal_approx(cold.equipment["diesel_tank"]["volume_l"], 180.0) and is_equal_approx(cold.equipment["diesel_tank"]["quality_percent"], 64.0), "Heavy crude run at the Standard setting yields only 180 L diesel at 64 percent quality")
+	var rejected: Dictionary = cold.sell_diesel()
+	_expect(not rejected["ok"] and rejected["revenue"] == 0 and cold.active_contract_bonus_available, "off-spec Heavy product earns no money and cannot consume its pending contract state")
+
+
+func _test_contract_lifecycle_and_bonus_lock() -> void:
+	var model = _complete_model()
+	model.commissioning_batch_available = false
+	model.commissioning_contract_complete = true
+	model.register_unit("hidden_tank", "tank", "T-299")
+	model.equipment["hidden_tank"]["contents"] = "crude"
+	model.equipment["hidden_tank"]["volume_l"] = 1.0
+	_expect(not model.can_choose_contract("source")["ok"] and not model.load_crude_batch("source", true, "heavy")["ok"], "disconnected material blocks a new contract instead of bypassing provenance")
+	model.equipment["hidden_tank"]["contents"] = "empty"
+	model.equipment["hidden_tank"]["volume_l"] = 0.0
+	_expect(model.can_choose_contract("source")["ok"], "a stopped and fully empty refinery may choose a new contract")
+	model.load_crude_batch("source", true, "heavy")
+	var state_after_load: Dictionary = model.save_state()
+	_expect(not model.load_crude_batch("source", true, "standard")["ok"] and model.save_state() == state_after_load, "loaded Heavy provenance cannot be replaced by a second contract")
+	model.equipment["heater"]["temperature_c"] = 230.0
+	model.equipment["heater"]["setpoint_c"] = 230.0
+	model.interact("valve")
+	model.interact("pump")
+	model.tick(100.0)
+	_expect(not model.can_choose_contract("source")["ok"], "stored Heavy products block contract switching after source depletion")
+	model.sell_diesel()
+	_expect(model.can_choose_contract("source")["ok"] and model.active_contract_id.is_empty(), "successful dispatch clears the finished contract and enables the next choice")
 
 
 func _complete_model():

@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.6 – trygg lokal lagring**
+**Prototypeversjon: 0.7 – råoljekontrakter**
 
 En liten 3D-prototype der spilleren driver et forenklet pilotraffineri. Første mål
 er å behandle 1 000 liter råolje og selge minst 200 liter diesel med 90 % eller
@@ -30,6 +30,9 @@ Den første komplette «vertical slice»-en inneholder:
 - diagnostiserbar `LOW FLOW` når en bygd pumpe arbeider mot stengt ventil
 - versjonert autosave av penger, progresjon, bygg, rør og prosessbeholdning
 - ett oppstartsvalg for å fortsette eller bekreftet starte et nytt spill
+- valg mellom Standard og Tung råolje etter oppstartskontrakten
+- råoljespesifikke temperaturmål, fraksjoner, kvalitet og kontraktøkonomi
+- trygg automatisk migrering av eldre 0.6-lagringer til Standard-råolje
 
 Alle objekter er foreløpig bygget av Godots primitive 3D-former. Det gjør at vi
 kan teste gameplay før vi bruker tid på modeller og grafikk.
@@ -67,6 +70,8 @@ Bygninger, rotasjon, rør, tankinnhold, temperatur, kvalitet, penger og progresj
 gjenopprettes. Pumper og faktisk flow stoppes alltid ved lasting, slik at ingen
 prosess starter uten en bevisst handling. En siste kjent god backup beholdes, og
 ukjent eller skadet lagringsdata avvises før den kan endre spillet.
+Lagringer fra versjon 0.6 oppgraderes til dagens format og beholder eksisterende
+batch som Standard-råolje uten å gi en ny batch eller bonus.
 
 ## Styring
 
@@ -80,6 +85,7 @@ ukjent eller skadet lagringsdata avvises før den kan endre spillet.
 | E | Bruk eller inspiser utstyr |
 | R | Pilot: ny batch. Område 02: trykk to ganger for sikker produkttømming |
 | Enter | Lukk batchrapport |
+| 1 / 2 | Velg Standard eller Tung råolje når leveransevinduet er åpent |
 | Esc | Frigjør musepekeren |
 
 ### Byggemodus
@@ -137,7 +143,17 @@ direkte i 3D. Pumpens rotor og ventilhåndtak beveger seg når utstyret brukes.
    `LAB / SALG`. Salget sender produktbatchen ut og viser en batchrapport med
    faktisk råolje behandlet, fraksjoner, kvalitet, inntekt, kostnad og resultat.
 
-Senere råoljebatcher koster 300 kr. Hvis en batch blir off-spec, forklarer
+Etter godkjent oppstart åpner `E` på en tom kildetank leveransevalget:
+
+- **Standard** koster 300 kr, har mål rundt 200 °C og gir omtrent 35 % diesel.
+- **Tung** koster 180 kr, har mål rundt 230 °C, gir mer tungolje og omtrent 22 %
+  diesel. En godkjent Tung-leveranse gir en engangsbonus på 1 000 kr.
+
+Råoljetypen låses til batchen. En ny type kan først velges når alle bygde tanker
+er tomme og pumpen er stoppet. Batchrapporten viser valgt råolje, faktisk
+snittemperatur, temperaturmål, dieselsalg, eventuell bonus, kostnad og resultat.
+
+Hvis en batch blir off-spec, forklarer
 terminalen at `R` kan sende bygde produkter til sikker avfallshåndtering uten
 betaling. Spilleren må stoppe pumpen og trykke `R` to ganger innen fire
 sekunder. Dette gir en gjenopprettingsvei uten gratis råolje eller penger, men
@@ -154,6 +170,7 @@ CrudeWorks/
     ├── built_refinery_model.gd
     ├── build_controller.gd
     ├── buildable_unit.gd
+    ├── crude_contract_catalog.gd
     ├── equipment_catalog.gd
     ├── interactive_unit.gd
     ├── main.gd

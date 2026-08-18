@@ -9,6 +9,7 @@ const BuildableUnitScript = preload("res://scripts/buildable_unit.gd")
 const EquipmentCatalogScript = preload("res://scripts/equipment_catalog.gd")
 const BuiltRefineryModelScript = preload("res://scripts/built_refinery_model.gd")
 const SaveSystemScript = preload("res://scripts/save_system.gd")
+const CrudeCatalogScript = preload("res://scripts/crude_contract_catalog.gd")
 
 const AUTOSAVE_INTERVAL_SECONDS := 12.0
 const SAVE_DEBOUNCE_SECONDS := 1.0
@@ -38,10 +39,14 @@ var help_label: Label
 var completion_panel: PanelContainer
 var batch_report_panel: PanelContainer
 var batch_report_label: Label
+var contract_selection_panel: PanelContainer
+var contract_selection_label: Label
 var startup_panel: PanelContainer
 var startup_label: Label
 var notification_time_left := 0.0
 var batch_report_visible := false
+var contract_selection_visible := false
+var contract_selection_source_id := ""
 var discard_confirmation_time_left := 0.0
 var discard_confirmation_revision := -1
 var startup_choice_state := ""
@@ -75,6 +80,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if not startup_choice_state.is_empty():
 		_handle_startup_input(event)
+		get_viewport().set_input_as_handled()
+		return
+	if contract_selection_visible:
+		_handle_contract_selection_input(event)
 		get_viewport().set_input_as_handled()
 		return
 	if batch_report_visible and event.keycode in [KEY_ENTER, KEY_KP_ENTER, KEY_ESCAPE]:
@@ -394,6 +403,26 @@ func _build_user_interface() -> void:
 	batch_report_panel.add_child(batch_report_label)
 	canvas.add_child(batch_report_panel)
 
+	contract_selection_panel = PanelContainer.new()
+	contract_selection_panel.anchor_left = 0.5
+	contract_selection_panel.anchor_right = 0.5
+	contract_selection_panel.anchor_top = 0.5
+	contract_selection_panel.anchor_bottom = 0.5
+	contract_selection_panel.offset_left = -350.0
+	contract_selection_panel.offset_right = 350.0
+	contract_selection_panel.offset_top = -235.0
+	contract_selection_panel.offset_bottom = 235.0
+	contract_selection_panel.visible = false
+	contract_selection_label = Label.new()
+	contract_selection_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	contract_selection_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	contract_selection_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	contract_selection_label.add_theme_font_size_override("font_size", 22)
+	contract_selection_label.add_theme_color_override("font_color", Color("fff3bd"))
+	contract_selection_label.add_theme_constant_override("line_spacing", 5)
+	contract_selection_panel.add_child(contract_selection_label)
+	canvas.add_child(contract_selection_panel)
+
 	startup_panel = PanelContainer.new()
 	startup_panel.anchor_left = 0.5
 	startup_panel.anchor_right = 0.5
@@ -451,6 +480,7 @@ func _update_user_interface() -> void:
 		focused != null
 		and not build_controller.active
 		and not batch_report_visible
+		and not contract_selection_visible
 		and startup_choice_state.is_empty()
 	):
 		if focused.unit_id.begins_with("built_"):
@@ -460,11 +490,13 @@ func _update_user_interface() -> void:
 	notification_label.visible = notification_time_left > 0.0
 	completion_panel.visible = process_model.objective_complete and not build_mode_unlocked
 	batch_report_panel.visible = batch_report_visible and not build_controller.active
+	contract_selection_panel.visible = contract_selection_visible and not build_controller.active
 	startup_panel.visible = not startup_choice_state.is_empty()
 	var operation_ui_visible: bool = not build_controller.active
 	var regular_ui_visible: bool = (
 		operation_ui_visible
 		and not batch_report_visible
+		and not contract_selection_visible
 		and startup_choice_state.is_empty()
 	)
 	hud_label.visible = regular_ui_visible
@@ -514,8 +546,8 @@ func _update_unit_statuses() -> void:
 			)
 			built_unit.set_active(
 				state["contents"] == "diesel"
-				and state["volume_l"] >= BuiltRefineryModelScript.DIESEL_TARGET_L
-				and state["quality_percent"] >= BuiltRefineryModelScript.APPROVED_QUALITY_PERCENT,
+				and active_route.get("products", {}).get("diesel", "") == built_unit.unit_id
+				and built_refinery_model.diesel_is_approved(),
 				Color("78e08f")
 			)
 		elif state.get("type", "") == "pump":
@@ -622,6 +654,10 @@ func _on_unit_interacted(unit_id: String) -> void:
 			message = "Tungolje: %.0f liter." % process_model.heavy_product_l
 		_:
 			if unit_id.begins_with("built_"):
+				var contract_choice: Dictionary = built_refinery_model.can_choose_contract(unit_id)
+				if contract_choice["ok"]:
+					_open_contract_selection(unit_id)
+					return
 				var result: Dictionary = built_refinery_model.interact(
 					unit_id,
 					process_model.can_afford(BuiltRefineryModelScript.CRUDE_BATCH_COST)
@@ -744,18 +780,20 @@ func _show_notification(message: String, duration := 4.0) -> void:
 
 
 func _show_batch_report(report: Dictionary, completed_now: bool) -> void:
-	var heading := "OMRÅDE 02 — OPPSTART GODKJENT" if completed_now else "BATCH GODKJENT"
+	var contract_name: String = String(report.get("contract_name", "Standard råolje"))
+	var short_name := contract_name.trim_suffix(" råolje").to_upper()
+	var heading := "OMRÅDE 02 — OPPSTART GODKJENT" if completed_now else "BATCH GODKJENT — %s" % short_name
 	var temperature: float = report.get("average_temperature_c", 0.0)
 	var process_result := "Prosessdata ikke tilgjengelig"
 	if temperature > 0.0:
-		process_result = "%.0f °C → %s diesel" % [
-			temperature,
-			"høy kvalitet" if report["diesel_quality_percent"] >= 95.0 else "godkjent",
+		process_result = "%.0f °C snitt / %.0f °C mål" % [
+			temperature, float(report.get("ideal_temperature_c", 200.0)),
 		]
 	var net_profit: int = report["net_profit"]
 	var net_text := "+%d kr" % net_profit if net_profit >= 0 else "%d kr" % net_profit
 	batch_report_label.text = (
 		heading + "\n\n"
+		+ "Råolje                %s\n" % contract_name
 		+ "Råolje behandlet      %7.0f L\n" % report["crude_processed_l"]
 		+ "Lett fraksjon         %7.0f L\n" % report["light_l"]
 		+ "Diesel                %7.0f L\n" % report["diesel_l"]
@@ -765,7 +803,8 @@ func _show_batch_report(report: Dictionary, completed_now: bool) -> void:
 			report["spec_status"],
 		]
 		+ "Prosess               %s\n\n" % process_result
-		+ "Inntekt               %7d kr\n" % report["revenue"]
+		+ "Dieselsalg            %7d kr\n" % int(report.get("product_revenue", report["revenue"]))
+		+ ("Kontraktbonus        %7d kr\n" % int(report.get("delivery_bonus", 0)) if int(report.get("delivery_bonus", 0)) > 0 else "")
 		+ "Råoljekostnad         %7d kr\n" % report["crude_cost"]
 		+ "Resultat              %s\n\n" % net_text
 		+ "Enter — fortsett"
@@ -779,7 +818,81 @@ func _dismiss_batch_report() -> void:
 	batch_report_visible = false
 	player.set_input_blocked(false)
 	build_controller.set_input_blocked(false)
-	_show_notification("Område 02 er godkjent. Neste utfordring er en lønnsom betalt batch.", 6.0)
+	var route: Dictionary = built_refinery_model.network.find_complete_route()
+	var remaining_crude := 0.0
+	if not route.is_empty():
+		var source: Dictionary = built_refinery_model.equipment[route["source"]]
+		if source["contents"] == "crude":
+			remaining_crude = source["volume_l"]
+	var message := "Godkjent levering. Velg neste råolje ved kildetanken."
+	if remaining_crude > 0.001:
+		message = "Godkjent levering. %.0f L råolje gjenstår i kildetanken." % remaining_crude
+	elif built_refinery_model.successful_sales == 1:
+		message = "Område 02 er godkjent. Velg neste råolje ved kildetanken."
+	_show_notification(message, 6.0)
+
+
+func _open_contract_selection(source_id: String) -> void:
+	contract_selection_visible = true
+	contract_selection_source_id = source_id
+	notification_time_left = 0.0
+	_update_contract_selection_text()
+	player.set_input_blocked(true)
+	build_controller.set_input_blocked(true)
+
+
+func _update_contract_selection_text(error_text := "") -> void:
+	var standard := CrudeCatalogScript.definition("standard")
+	var heavy := CrudeCatalogScript.definition("heavy")
+	contract_selection_label.text = (
+		"RÅOLJELEVERANSE\nPenger: %d kr\nVelg 1 000 L\n\n" % process_model.money
+		+ "1 %s — %d kr\n  %s\n\n" % [
+			standard["short_name"], standard["purchase_cost"], standard["description"],
+		]
+		+ "2 %s — %d kr\n  %s\n\n" % [
+			heavy["short_name"], heavy["purchase_cost"], heavy["description"],
+		]
+		+ (error_text + "\n\n" if not error_text.is_empty() else "")
+		+ "1 / 2 — kjøp og last    Esc — avbryt"
+	)
+
+
+func _handle_contract_selection_input(event: InputEventKey) -> void:
+	if event.keycode == KEY_ESCAPE:
+		_close_contract_selection()
+		_show_notification("Råoljevalg avbrutt.")
+	elif event.keycode == KEY_1:
+		_select_contract("standard")
+	elif event.keycode == KEY_2:
+		_select_contract("heavy")
+
+
+func _select_contract(contract_id: String) -> void:
+	var cost: int = built_refinery_model.contract_cost(contract_id)
+	if not process_model.can_afford(cost):
+		_update_contract_selection_text("Ikke nok penger — mangler %d kr." % (cost - process_model.money))
+		return
+	var result: Dictionary = built_refinery_model.load_crude_batch(
+		contract_selection_source_id,
+		true,
+		contract_id
+	)
+	if not result["ok"]:
+		_update_contract_selection_text(result["message"])
+		return
+	if result["charge"] > 0 and not process_model.purchase(result["charge"]):
+		_update_contract_selection_text("Kjøpet kunne ikke fullføres.")
+		return
+	_close_contract_selection()
+	_show_notification(result["message"], 7.0)
+	_schedule_save()
+
+
+func _close_contract_selection() -> void:
+	contract_selection_visible = false
+	contract_selection_source_id = ""
+	player.set_input_blocked(false)
+	build_controller.set_input_blocked(false)
 
 
 func _initialize_persistence() -> void:
@@ -993,6 +1106,8 @@ func _apply_snapshot(snapshot: Dictionary) -> Dictionary:
 	)
 	player.rotation.y = float(snapshot["player"]["rotation_y"])
 	batch_report_visible = false
+	contract_selection_visible = false
+	contract_selection_source_id = ""
 	discard_confirmation_time_left = 0.0
 	discard_confirmation_revision = -1
 	_update_unit_statuses()
