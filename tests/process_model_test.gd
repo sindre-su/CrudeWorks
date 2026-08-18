@@ -101,7 +101,7 @@ func _test_minimum_pilot_contract_funds_area_two() -> void:
 	)
 	_expect(
 		model.money >= minimum_refinery_cost + BuiltRefineryModelScript.CRUDE_BATCH_COST,
-		"minimum pilot contract funds Area 02 plus one off-spec recovery batch"
+		"minimum pilot contract funds Area 02 and leaves post-build operating cash"
 	)
 
 

@@ -191,20 +191,36 @@ func _test_topology_change_stops_flow_and_spare_pump() -> void:
 
 func _test_offspec_recovery() -> void:
 	var model = _complete_model()
-	model.load_crude_batch("source")
 	model.interact("valve")
+	for attempt in range(3):
+		var load: Dictionary = model.load_crude_batch("source")
+		_expect(load["ok"] and load["charge"] == 0, "pre-commission retry %d remains subsidized after a learning failure" % (attempt + 1))
+		model.interact("pump")
+		model.tick(100.0)
+		_expect(not model.sell_diesel()["ok"], "cold commissioning attempt %d is rejected as off-spec" % (attempt + 1))
+		var before_discard := _total_tank_volume(model)
+		var warning: Dictionary = model.discard_products()
+		_expect(warning.get("requires_confirmation", false), "attempt %d still requires explicit disposal confirmation" % (attempt + 1))
+		_expect(is_equal_approx(before_discard, _total_tank_volume(model)), "unconfirmed attempt %d does not mutate inventory" % (attempt + 1))
+		var discard: Dictionary = model.discard_products(true)
+		_expect(discard["ok"] and is_equal_approx(_total_tank_volume(model), 0.0), "confirmed attempt %d clears products without value creation" % (attempt + 1))
+		_expect(not model.commissioning_contract_complete and model.commissioning_batch_available, "failed attempt %d preserves a safe route to another free commissioning batch" % (attempt + 1))
+		if attempt == 1:
+			var restored_model = _complete_model()
+			restored_model.apply_saved_state(model.save_state())
+			model = restored_model
+			_expect(model.commissioning_batch_available, "commissioning retry survives save/load between failures")
+
+	var final_load: Dictionary = model.load_crude_batch("source")
+	_expect(final_load["ok"] and final_load["charge"] == 0, "successful commissioning attempt is still subsidized after repeated failures")
+	model.equipment["heater"]["temperature_c"] = 200.0
+	model.equipment["heater"]["setpoint_c"] = 200.0
 	model.interact("pump")
 	model.tick(100.0)
-	_expect(not model.sell_diesel()["ok"], "cold commissioning products are rejected as off-spec")
-	var before_discard := _total_tank_volume(model)
-	var warning: Dictionary = model.discard_products()
-	_expect(warning.get("requires_confirmation", false), "first disposal action requires explicit confirmation")
-	_expect(is_equal_approx(before_discard, _total_tank_volume(model)), "unconfirmed disposal does not mutate inventory")
-	var discard: Dictionary = model.discard_products(true)
-	_expect(discard["ok"], "confirmed off-spec products have an explicit safe disposal path")
-	_expect(is_equal_approx(_total_tank_volume(model), 0.0), "disposal clears product inventory without creating money")
-	_expect(not model.commissioning_contract_complete, "off-spec disposal does not complete the Area 02 contract")
-	_expect(model.load_crude_batch("source", true)["ok"], "player can load a paid recovery batch after disposal")
+	var sale: Dictionary = model.sell_diesel()
+	_expect(sale["ok"] and model.commissioning_contract_complete, "first approved retry completes commissioning exactly once")
+	var paid_after_completion: Dictionary = model.load_crude_batch("source", true)
+	_expect(paid_after_completion["ok"] and paid_after_completion["charge"] == BuiltRefineryModelScript.CRUDE_BATCH_COST, "subsidy ends permanently after approved commissioning")
 
 
 func _test_partial_sale_report() -> void:

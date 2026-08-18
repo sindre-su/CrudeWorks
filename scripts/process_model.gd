@@ -208,7 +208,7 @@ func sell_diesel() -> String:
 		return "OFF-SPEC: Kvaliteten må være minst %.0f %%" % APPROVED_QUALITY_PERCENT
 
 	# The training contract funds the valve-inclusive 2 600 kr starter refinery and preserves
-	# enough money for one recovery batch if the free commissioning batch becomes off-spec.
+	# enough money to build the starter refinery with some operating cash remaining.
 	var revenue := maxi(
 		int(round(diesel_volume_l * 8.0)),
 		PILOT_CONTRACT_MINIMUM_REVENUE

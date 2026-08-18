@@ -253,6 +253,8 @@ func discard_products(confirmed := false) -> Dictionary:
 	product_inventory_revision += 1
 	_reset_report_tracking()
 	_clear_contract_if_empty()
+	if not commissioning_contract_complete and _material_volume_l() <= 0.001:
+		commissioning_batch_available = true
 	last_status = "%.0f L produkt sendt til sikker avfallshåndtering. Ingen betaling mottatt." % discarded_l
 	return _result(true, last_status)
 

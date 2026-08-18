@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.8 – LS-201 lokalstasjon**
+**Prototypeversjon: 0.8.1 – LS-201 lokalstasjon**
 
 En liten 3D-prototype der spilleren driver et forenklet pilotraffineri. Første mål
 er å behandle 1 000 liter råolje og selge minst 200 liter diesel med 90 % eller
@@ -24,7 +24,7 @@ Den første komplette «vertical slice»-en inneholder:
 - en logisk prosesslinje: tank → pumpe → ventil → varme → kolonne → tre tanker
 - operasjonelle bygde tanker, pumper, manuelle ventiler, varmeenheter og kolonner
 - massebalanse, tankkapasitet, backpressure og dieselkvalitet
-- gratis oppstartsbatch, betalte råoljebatcher og salg som tømmer produktet
+- subsidierte oppstartsforsøk fram til godkjenning, deretter betalte batcher
 - varig fullføring av Område 02 og batchrapport med utbytte, kvalitet og økonomi
 - totrinns bekreftelse før produkter sendes til avfallshåndtering
 - diagnostiserbar `LOW FLOW` når en bygd pumpe arbeider mot stengt ventil
@@ -128,16 +128,16 @@ direkte i 3D. Pumpens rotor og ventilhåndtak beveger seg når utstyret brukes.
 ## Første selvbygde raffineri
 
 1. Selg godkjent pilotdiesel. Treningskontrakten garanterer minst 3 000 kr, slik
-   at spilleren kan finansiere startanlegget og har råd til én recovery-batch
-   dersom den gratis oppstartsbatchen blir off-spec.
+   at spilleren kan finansiere startanlegget og beholde litt driftskapital.
 2. Trykk `B` og plasser fire tanker, én pumpe, én manuell ventil, én varmeenhet
    og én kolonne.
 3. Koble `tank OUT → pumpe IN`, `pumpe OUT → ventil IN`,
    `ventil OUT → varme IN` og `varme OUT → kolonne IN`.
 4. Koble kolonnens `LETT`, `DIESEL` og `TUNG` til hver sin tank. Trykk `V` for
    en konkret valideringsmelding. Feil rør kan fjernes med `G`.
-5. Trykk `B` for å avslutte bygging, og `E` på kildetanken for å laste den ene
-   gratis oppstartsbatchen.
+5. Trykk `B` for å avslutte bygging, og `E` på kildetanken for å laste en
+   subsidiert oppstartsbatch. Hvis produktet blir off-spec og tømmes sikkert,
+   kan oppstarten prøves igjen uten kostnad fram til første godkjente levering.
 6. Sett varmeenheten til 200 °C, vent til den er varm, og start pumpen. Ventilen
    er stengt som standard, så pumpen gir `LOW FLOW` til spilleren finner og
    åpner ventilen.

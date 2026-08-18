@@ -14,17 +14,16 @@
 
 ## Current Roadmap
 
-1. **Area 02 commissioning contract and batch report** — make the first built
-   sale a clear achievement, explain yield/quality/economy, make product
-   disposal safe, and correct route-unaware feedback.
-2. **Manual valve and low-flow troubleshooting** — add one understandable
-   operating fault and a recovery task without complex fluid physics.
-3. **Persistent player refinery** — save and restore construction, connections,
-   process inventory, economy, and progression safely.
-4. **Crude choices and delivery contracts** — add a small number of meaningful
-   feed choices and quality targets that vary the repeat loop.
-5. **Starter instrumentation and automation** — introduce useful measurements
-   and limited remote control after manual operation is proven.
+1. **Resilient commissioning retries** — remove the progression softlock after
+   repeated off-spec learning attempts without granting free value later.
+2. **Physical diesel sampling** — take a revision-bound sample, analyze it at
+   LAB / SALG, and require a valid result before paid-batch dispatch.
+3. **Explicit single active route** — make the current one-line limitation
+   understandable before players invest in a second unusable process line.
+4. **Delivery-order variety** — give multiple fractions and crude choices
+   distinct order goals rather than one repeated diesel objective.
+5. **First flow/capacity choice** — add one controllable throughput tradeoff
+   with a clear quality consequence after sampling makes quality playable.
 
 ## Completed Work
 
@@ -106,6 +105,14 @@
     closed-valve LOW FLOW remains an intentional troubleshooting lesson.
   - Added a live modal panel, truthful idle/guard/alarm feedback, save-safe
     transient state, and an explicit unlock location in the batch report.
+- Post-roadmap recovery fix completed:
+  - Confirmed a real softlock after two failed commissioning batches left the
+    player with only 100 kr and no affordable crude or refundable escape.
+  - Restored the free Standard commissioning entitlement only after a failed
+    pre-commission batch is completely and safely discarded.
+  - Allowed repeated learning attempts, including across save/load, while the
+    first approved sale permanently ends the subsidy and keeps later Standard
+    and Heavy deliveries paid.
 
 ## Validation
 
@@ -165,6 +172,13 @@
   - spare equipment and invalid topology could not be controlled remotely;
   - the live panel blocked field/build input and preserved modal state as
     transient across saves.
+- Recovery softlock validation:
+  - three consecutive cold commissioning batches were rejected and safely
+    discarded without revenue, bonus, or retained material;
+  - every failed attempt restored exactly one free Standard retry;
+  - the retry entitlement survived save/load;
+  - the first approved retry completed commissioning once, and the following
+    Standard batch again charged exactly 300 kr.
 - Final Milestone 5 regression with isolated log files:
   - pilot/economy: 23 checks passed;
   - process network: 59 checks passed;
@@ -204,6 +218,8 @@
   0 °C process average before any production.
 - Early LS-201 feedback showed a fictitious 0 °C target while idle and let a
   stale successful command hide a later LOW FLOW alarm.
+- Two failed commissioning attempts could leave only 100 kr and permanently
+  strand the player without crude, income, or enough refundable value.
 
 ## Bugs Fixed
 
@@ -228,10 +244,12 @@
   report-dismiss messages agree with the actual contract and inventory state.
 - Made LS-201 idle state, remote-guard mode and alarm priority agree with the
   active batch and actual process condition.
+- Made pre-commission learning retries repeatably subsidized only after all
+  failed material is safely removed; approved commissioning ends the subsidy.
 
 ## Current Stable State
 
-- Version 0.8.0 is verified stable after Milestone 5.
+- Version 0.8.1 is verified stable after the commissioning-recovery fix.
 - The original pilot loop and full player-built loop both pass regression.
 - The first valid Area 02 sale now has a durable achievement and informative
   result, while later paid batches remain repeatable.
@@ -244,6 +262,8 @@
 - After proving manual operation, the player can monitor the active route from
   LS-201 and use limited remote control with a feed-aware temperature trip,
   while still walking into the plant to operate and troubleshoot the valve.
+- Repeated off-spec commissioning mistakes no longer force a new game; the
+  player can continue learning without creating post-commission free batches.
 
 ## Known Issues
 
@@ -274,11 +294,13 @@
   current refinery learning loop.
 - Crude variety was limited to Standard and Heavy. Sour crude remains deferred
   because it would be a label without meaningful treatment equipment today.
+- The completed five-milestone roadmap was reassessed from the actual 0.8.0
+  loop. A QA-discovered commissioning softlock moved ahead of the planned lab
+  milestone; the next content focus is now physical diesel sampling.
 
 ## Next Best Action
 
-- Perform a hands-on 1280 x 720 playthrough focused on port targeting,
-  local-station readability and the walking distance between source, valve,
-  terminal and LS-201. Then reassess whether the next vertical improvement
-  should deepen laboratory sampling/troubleshooting or add a second operating
-  objective; do not expand automation until the current controls feel good.
+- Add the small paid-batch laboratory loop: take a diesel sample at the active
+  product tank, analyze it at LAB / SALG, and require a current approved result
+  before dispatch. Keep the sample transient and revision-bound so save/load or
+  new production can never reuse stale authorization.
