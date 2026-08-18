@@ -195,6 +195,7 @@ func _test_main_round_trip(snapshot: Dictionary, source_main) -> void:
 	_expect(restored.built_refinery_model.equipment["built_valve_3"]["open"], "manual valve state restores")
 	_expect(not restored.built_refinery_model.equipment["built_pump_2"]["running"] and is_equal_approx(restored.built_refinery_model.actual_flow_lps, 0.0), "all pumps and derived flow are stopped on load")
 	_expect(not restored.control_station_visible, "transient LS-201 panel state is never restored from a save")
+	_expect(not restored.lab_analysis_panel.visible and not restored.built_refinery_model.lab_dispatch_status().get("sample_current", false), "transient lab panel and sample authorization are never restored from a save")
 	_expect(restored.player.position.is_equal_approx(Vector3(-4.0, 0.1, 17.0)) and is_equal_approx(restored.player.rotation.y, 1.25), "valid player position and direction restore")
 
 	var source_before: float = snapshot["built_refinery"]["equipment"]["built_tank_1"]["volume_l"]

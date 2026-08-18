@@ -207,11 +207,68 @@ func _test_heavy_contract_through_main() -> void:
 	close_station.keycode = KEY_ESCAPE
 	close_station.pressed = true
 	main._unhandled_input(close_station)
+	main._update_unit_statuses()
+	_expect("PRØVE KREVES" in main.units["sales_terminal"].status_label.text and not main.units["sales_terminal"].material.emission_enabled, "paid Heavy delivery stays unsellable until a physical diesel sample is analyzed")
 	main._on_unit_interacted("sales_terminal")
-	_expect(main.process_model.money == 3580, "Main Heavy sale credits 1 760 kr product revenue and one 1 000 kr bonus")
+	_expect(not main.lab_analysis_panel.visible and "dieselprøve" in main.notification_label.text, "LAB / SALG directs the player to the active diesel tank when no sample exists")
+	main._on_reset_requested()
+	_expect(main.discard_confirmation_time_left > 0.0, "paid product can arm the existing two-step disposal warning before sampling")
+	main._on_unit_interacted("built_tank_7")
+	_expect("P-001" in main.notification_label.text and "PRØVE KREVES" in main.built_refinery_model.unit_status("built_tank_7"), "active Heavy diesel tank creates a carried sample without revealing quality")
+	_expect(main.discard_confirmation_time_left <= 0.0, "taking a sample cancels any older disposal confirmation")
+	main._on_reset_requested()
+	main._on_unit_interacted("sales_terminal")
+	_expect(main.lab_analysis_panel.visible and main.player.input_blocked and main.build_controller.input_blocked, "LAB analysis opens a modal and blocks field/build controls")
+	_expect(main.discard_confirmation_time_left <= 0.0, "opening a lab analysis also cancels stale disposal intent")
+	_expect("P-001 — TUNG" in main.lab_analysis_panel.result_label.text and "GODKJENT" in main.lab_analysis_panel.result_label.text and "2 760 kr" in main.lab_analysis_panel.result_label.text, "Heavy lab result shows provenance, specification and exact dispatch value")
+	var dispatch_event := InputEventKey.new()
+	dispatch_event.keycode = KEY_ENTER
+	dispatch_event.pressed = true
+	main._unhandled_input(dispatch_event)
+	_expect(not main.lab_analysis_panel.visible and main.batch_report_visible, "approved lab Enter transitions directly to the existing batch report")
+	_expect(main.process_model.money == 3580, "Main Heavy sample dispatch credits 1 760 kr product revenue and one 1 000 kr bonus")
 	_expect("BATCH GODKJENT — TUNG" in main.batch_report_label.text and "Kontraktbonus" in main.batch_report_label.text, "Heavy batch report names the feed and explains its bonus")
 	main._on_unit_interacted("sales_terminal")
 	_expect(main.process_model.money == 3580, "repeated Main terminal use cannot duplicate the Heavy bonus")
+	main.queue_free()
+	await _test_offspec_lab_through_main()
+
+
+func _test_offspec_lab_through_main() -> void:
+	var main = MainScene.instantiate()
+	main.persistence_enabled = false
+	root.add_child(main)
+	await process_frame
+	main.process_model.money = 3600
+	main.process_model.objective_complete = true
+	main._process(0.0)
+	_place_full_refinery(main)
+	_connect_full_refinery(main)
+	main.built_refinery_model.commissioning_batch_available = false
+	main.built_refinery_model.commissioning_contract_complete = true
+	var load: Dictionary = main.built_refinery_model.load_crude_batch("built_tank_1", true, "heavy")
+	main.process_model.purchase(load["charge"])
+	main.built_refinery_model.equipment["built_heater_4"]["temperature_c"] = 200.0
+	main.built_refinery_model.equipment["built_heater_4"]["setpoint_c"] = 200.0
+	main.built_refinery_model.interact("built_valve_3")
+	main.built_refinery_model.interact("built_pump_2")
+	main.built_refinery_model.tick(100.0)
+	main._on_unit_interacted("built_tank_7")
+	var money_before: int = main.process_model.money
+	var products_before: float = main.built_refinery_model.product_volume_l()
+	main._on_unit_interacted("sales_terminal")
+	_expect(main.lab_analysis_panel.visible and "OFF-SPEC" in main.lab_analysis_panel.result_label.text and "Råoljetanken er tom" in main.lab_analysis_panel.result_label.text, "completed cold Heavy batch opens a truthful OFF-SPEC lab report")
+	_expect("Enter — send" not in main.lab_analysis_panel.result_label.text and "R x2" in main.lab_analysis_panel.result_label.text, "OFF-SPEC modal offers recovery but no dispatch action")
+	var blocked_enter := InputEventKey.new()
+	blocked_enter.keycode = KEY_ENTER
+	blocked_enter.pressed = true
+	main._unhandled_input(blocked_enter)
+	_expect(main.lab_analysis_panel.visible and main.process_model.money == money_before and is_equal_approx(main.built_refinery_model.product_volume_l(), products_before), "Enter cannot dispatch or mutate an OFF-SPEC analysis")
+	var close_event := InputEventKey.new()
+	close_event.keycode = KEY_ESCAPE
+	close_event.pressed = true
+	main._unhandled_input(close_event)
+	_expect(not main.lab_analysis_panel.visible and not main.player.input_blocked and not main.build_controller.input_blocked, "Escape closes OFF-SPEC analysis and restores field controls")
 	main.queue_free()
 
 

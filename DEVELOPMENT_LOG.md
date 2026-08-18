@@ -14,16 +14,16 @@
 
 ## Current Roadmap
 
-1. **Resilient commissioning retries** — remove the progression softlock after
-   repeated off-spec learning attempts without granting free value later.
-2. **Physical diesel sampling** — take a revision-bound sample, analyze it at
-   LAB / SALG, and require a valid result before paid-batch dispatch.
-3. **Explicit single active route** — make the current one-line limitation
+1. **Explicit single active route** — make the current one-line limitation
    understandable before players invest in a second unusable process line.
-4. **Delivery-order variety** — give multiple fractions and crude choices
+2. **Delivery-order variety** — give multiple fractions and crude choices
    distinct order goals rather than one repeated diesel objective.
-5. **First flow/capacity choice** — add one controllable throughput tradeoff
+3. **First flow/capacity choice** — add one controllable throughput tradeoff
    with a clear quality consequence after sampling makes quality playable.
+4. **Maintenance troubleshooting** — introduce one recoverable equipment fault
+   that can be diagnosed from existing alarm and instrument feedback.
+5. **New treatment decision** — consider one actual treatment unit and Sour
+   crude only after the preceding loop is stable and hands-on tested.
 
 ## Completed Work
 
@@ -113,6 +113,22 @@
   - Allowed repeated learning attempts, including across save/load, while the
     first approved sale permanently ends the subsidy and keeps later Standard
     and Heavy deliveries paid.
+- Milestone 6 completed:
+  - Added a physical post-commission diesel sample taken from the active
+    route's product tank while all pumps are stopped.
+  - Bound each transient sample to product-inventory revision, tank ID and
+    contract ID; production, topology changes, loading, disposal, sale and
+    save/load invalidate authorization safely.
+  - Added LAB-101 analysis of actual volume, quality and average process
+    temperature against the loaded Standard or Heavy contract.
+  - Hid exact paid-batch quality in the Area 02 HUD, tank label and inspection
+    until the correct tank's current sample has been analyzed.
+  - Required a current, analyzed and approved sample before post-commission
+    dispatch while preserving the original pilot and first commissioning sale.
+  - Added a small view-only lab modal; approved Enter reuses the authoritative
+    consuming sale, while OFF-SPEC keeps inventory, money and bonus unchanged.
+  - Made running pumps block analysis/readiness even at zero flow, and canceled
+    stale product-disposal confirmation when sampling or opening the lab.
 
 ## Validation
 
@@ -179,6 +195,23 @@
   - the retry entitlement survived save/load;
   - the first approved retry completed commissioning once, and the following
     Standard batch again charged exactly 300 kr.
+- Milestone 6 focused validation:
+  - disconnected tanks and running pumps were rejected for sampling/analysis;
+  - early analysis reported missing volume without consuming product;
+  - new production and topology changes invalidated stale samples;
+  - exact quality remained hidden on disconnected diesel after active analysis;
+  - load preserved product but removed all transient sample authorization;
+  - approved Standard and Heavy samples dispatched once with exact revenue and
+    bonus, while OFF-SPEC Enter changed no material or money.
+- Final Milestone 6 regression with isolated log files:
+  - pilot/economy: 23 checks passed;
+  - process network: 59 checks passed;
+  - building system: 41 checks passed;
+  - built refinery: 152 checks passed;
+  - Main integration: 66 checks passed;
+  - save system: 47 checks passed;
+  - main scene and full headless editor/resource scan passed with no logged
+    parser, resource, runtime, or script errors.
 - Final Milestone 5 regression with isolated log files:
   - pilot/economy: 23 checks passed;
   - process network: 59 checks passed;
@@ -220,6 +253,10 @@
   stale successful command hide a later LOW FLOW alarm.
 - Two failed commissioning attempts could leave only 100 kr and permanently
   strand the player without crude, income, or enough refundable value.
+- Quality was visible continuously, and LAB / SALG analyzed and sold in one
+  interaction, so laboratory work was not an actual player action.
+- Early lab integration could reveal disconnected tank quality, advertise
+  dispatch while a pump ran, or preserve an old disposal confirmation.
 
 ## Bugs Fixed
 
@@ -246,10 +283,12 @@
   active batch and actual process condition.
 - Made pre-commission learning retries repeatably subsidized only after all
   failed material is safely removed; approved commissioning ends the subsidy.
+- Added tank-bound, revision-bound lab results; synchronized pump-stop and
+  disposal safety with analysis and final dispatch.
 
 ## Current Stable State
 
-- Version 0.8.1 is verified stable after the commissioning-recovery fix.
+- Version 0.9.0 is verified stable after the diesel-sampling milestone.
 - The original pilot loop and full player-built loop both pass regression.
 - The first valid Area 02 sale now has a durable achievement and informative
   result, while later paid batches remain repeatable.
@@ -264,6 +303,8 @@
   while still walking into the plant to operate and troubleshoot the valve.
 - Repeated off-spec commissioning mistakes no longer force a new game; the
   player can continue learning without creating post-commission free batches.
+- Paid batches now end in an actual sample → analysis → conditional dispatch
+  loop instead of exposing all quality data and selling in one interaction.
 
 ## Known Issues
 
@@ -297,10 +338,13 @@
 - The completed five-milestone roadmap was reassessed from the actual 0.8.0
   loop. A QA-discovered commissioning softlock moved ahead of the planned lab
   milestone; the next content focus is now physical diesel sampling.
+- Lab state remains transient by design: a loaded game preserves the product
+  but requires the player to take a fresh sample, avoiding save-format churn
+  and stale authorization.
 
 ## Next Best Action
 
-- Add the small paid-batch laboratory loop: take a diesel sample at the active
-  product tank, analyze it at LAB / SALG, and require a current approved result
-  before dispatch. Keep the sample transient and revision-bound so save/load or
-  new production can never reuse stale authorization.
+- Make the one-active-route limitation explicit before the economy lets players
+  invest in a second complete but currently inoperable line. Preserve one
+  topology authority and give a clear player-facing validation message rather
+  than silently selecting the first route.

@@ -10,6 +10,7 @@ const EquipmentCatalogScript = preload("res://scripts/equipment_catalog.gd")
 const BuiltRefineryModelScript = preload("res://scripts/built_refinery_model.gd")
 const SaveSystemScript = preload("res://scripts/save_system.gd")
 const CrudeCatalogScript = preload("res://scripts/crude_contract_catalog.gd")
+const LabAnalysisPanelScript = preload("res://scripts/lab_analysis_panel.gd")
 
 const AUTOSAVE_INTERVAL_SECONDS := 12.0
 const SAVE_DEBOUNCE_SECONDS := 1.0
@@ -43,6 +44,7 @@ var contract_selection_panel: PanelContainer
 var contract_selection_label: Label
 var control_station_panel: PanelContainer
 var control_station_label: Label
+var lab_analysis_panel
 var startup_panel: PanelContainer
 var startup_label: Label
 var notification_time_left := 0.0
@@ -93,6 +95,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if control_station_visible:
 		_handle_control_station_input(event)
+		get_viewport().set_input_as_handled()
+		return
+	if lab_analysis_panel != null and lab_analysis_panel.visible:
+		_handle_lab_analysis_input(event)
 		get_viewport().set_input_as_handled()
 		return
 	if batch_report_visible and event.keycode in [KEY_ENTER, KEY_KP_ENTER, KEY_ESCAPE]:
@@ -458,6 +464,9 @@ func _build_user_interface() -> void:
 	control_station_panel.add_child(control_station_label)
 	canvas.add_child(control_station_panel)
 
+	lab_analysis_panel = LabAnalysisPanelScript.new()
+	canvas.add_child(lab_analysis_panel)
+
 	startup_panel = PanelContainer.new()
 	startup_panel.anchor_left = 0.5
 	startup_panel.anchor_right = 0.5
@@ -517,10 +526,30 @@ func _update_user_interface() -> void:
 		and not batch_report_visible
 		and not contract_selection_visible
 		and not control_station_visible
+		and not lab_analysis_panel.visible
 		and startup_choice_state.is_empty()
 	):
 		if focused.unit_id.begins_with("built_"):
 			prompt_label.text = built_refinery_model.interaction_prompt(focused.unit_id)
+		elif focused.unit_id == "sales_terminal" and built_refinery_model.commissioning_contract_complete:
+			var lab_status: Dictionary = built_refinery_model.lab_dispatch_status()
+			if lab_status.get("sample_current", false):
+				var sample_id: String = String(lab_status.get("sample_id", "dieselprøve"))
+				if lab_status.get("analyzed", false):
+					if lab_status.get("dispatch_ready", false):
+						prompt_label.text = "E — vis analyseresultat / send %s" % sample_id
+					elif lab_status.get("approved", false):
+						prompt_label.text = "E — vis resultat — stopp pumpen"
+					else:
+						prompt_label.text = "E — vis analyseresultat %s" % sample_id
+				else:
+					prompt_label.text = "E — analyser %s" % sample_id
+			else:
+				prompt_label.text = (
+					"LAB / SALG — venter på diesel"
+					if built_refinery_model.product_volume_l() <= 0.001
+					else "LAB — ta prøve ved den aktive dieseltanken"
+				)
 		elif focused.unit_id == "area02_control" and not built_refinery_model.commissioning_contract_complete:
 			prompt_label.text = "LS-201 — LÅST: fullfør oppstarten av Område 02"
 		else:
@@ -539,6 +568,7 @@ func _update_user_interface() -> void:
 		and not batch_report_visible
 		and not contract_selection_visible
 		and not control_station_visible
+		and not lab_analysis_panel.visible
 		and startup_choice_state.is_empty()
 	)
 	hud_label.visible = regular_ui_visible
@@ -567,12 +597,28 @@ func _update_unit_statuses() -> void:
 	])
 	units["diesel_tank"].set_active(process_model.diesel_is_approved(), Color("78e08f"))
 	units["heavy_tank"].set_status("%.0f L" % process_model.heavy_product_l)
-	var sales_ready: bool = (
-		built_refinery_model.diesel_is_approved()
-		if build_mode_unlocked
-		else process_model.diesel_is_approved()
-	)
-	units["sales_terminal"].set_status("KLAR" if sales_ready else "VENTER")
+	var sales_ready: bool = process_model.diesel_is_approved()
+	var sales_status := "KLAR" if sales_ready else "VENTER"
+	if build_mode_unlocked:
+		sales_ready = built_refinery_model.diesel_is_dispatch_ready()
+		if built_refinery_model.commissioning_contract_complete:
+			var lab_status: Dictionary = built_refinery_model.lab_dispatch_status()
+			if built_refinery_model.product_volume_l() <= 0.001:
+				sales_status = "VENTER"
+			elif lab_status.get("sample_current", false) and not lab_status.get("analyzed", false):
+				sales_status = "PRØVE KLAR"
+			elif lab_status.get("analyzed", false):
+				if lab_status.get("dispatch_ready", false):
+					sales_status = "GODKJENT — SEND"
+				elif lab_status.get("approved", false):
+					sales_status = "GODKJENT — STOPP PUMPE"
+				else:
+					sales_status = String(lab_status.get("status", "OFF-SPEC"))
+			else:
+				sales_status = "PRØVE KREVES"
+		else:
+			sales_status = "KLAR" if sales_ready else "VENTER"
+	units["sales_terminal"].set_status(sales_status)
 	units["sales_terminal"].set_active(sales_ready, Color("78e08f"))
 	var control_snapshot: Dictionary = built_refinery_model.control_snapshot()
 	var control_status := "LÅST"
@@ -614,7 +660,7 @@ func _update_unit_statuses() -> void:
 			built_unit.set_active(
 				state["contents"] == "diesel"
 				and active_route.get("products", {}).get("diesel", "") == built_unit.unit_id
-				and built_refinery_model.diesel_is_approved(),
+				and built_refinery_model.diesel_is_dispatch_ready(),
 				Color("78e08f")
 			)
 		elif state.get("type", "") == "pump":
@@ -694,13 +740,20 @@ func _on_unit_interacted(unit_id: String) -> void:
 			message = process_model.cycle_heater()
 		"sales_terminal":
 			if process_model.objective_complete:
-				var sale: Dictionary = built_refinery_model.sell_diesel()
-				if sale["ok"]:
-					process_model.credit(sale["revenue"])
-					discard_confirmation_time_left = 0.0
-					discard_confirmation_revision = -1
-					_show_batch_report(sale["report"], sale["contract_completed_now"])
-				message = sale["message"]
+				if built_refinery_model.commissioning_contract_complete:
+					var analysis: Dictionary = built_refinery_model.analyze_diesel_sample()
+					if analysis["ok"]:
+						_open_lab_analysis(analysis)
+						return
+					message = analysis["message"]
+				else:
+					var sale: Dictionary = built_refinery_model.sell_diesel()
+					if sale["ok"]:
+						process_model.credit(sale["revenue"])
+						discard_confirmation_time_left = 0.0
+						discard_confirmation_revision = -1
+						_show_batch_report(sale["report"], sale["contract_completed_now"])
+					message = sale["message"]
 			else:
 				message = process_model.sell_diesel()
 		"area02_control":
@@ -737,6 +790,9 @@ func _on_unit_interacted(unit_id: String) -> void:
 				)
 				if result["ok"] and result["charge"] > 0:
 					process_model.purchase(result["charge"])
+				if result.get("sample_id", "") != "":
+					discard_confirmation_time_left = 0.0
+					discard_confirmation_revision = -1
 				message = result["message"]
 	_show_notification(message)
 	var changed_persistent_state: bool = (
@@ -906,6 +962,40 @@ func _dismiss_batch_report() -> void:
 	elif remaining_crude > 0.001:
 		message = "Godkjent levering. %.0f L råolje gjenstår i kildetanken." % remaining_crude
 	_show_notification(message, 6.0)
+
+
+func _open_lab_analysis(analysis: Dictionary) -> void:
+	lab_analysis_panel.show_analysis(analysis)
+	notification_time_left = 0.0
+	discard_confirmation_time_left = 0.0
+	discard_confirmation_revision = -1
+	player.set_input_blocked(true)
+	build_controller.set_input_blocked(true)
+
+
+func _close_lab_analysis() -> void:
+	lab_analysis_panel.close_panel()
+	player.set_input_blocked(false)
+	build_controller.set_input_blocked(false)
+
+
+func _handle_lab_analysis_input(event: InputEventKey) -> void:
+	if event.keycode == KEY_ESCAPE:
+		_close_lab_analysis()
+		return
+	if event.keycode not in [KEY_ENTER, KEY_KP_ENTER] or not lab_analysis_panel.can_dispatch():
+		return
+	var sale: Dictionary = built_refinery_model.sell_diesel()
+	if not sale["ok"]:
+		_close_lab_analysis()
+		_show_notification(sale["message"], 6.0)
+		return
+	process_model.credit(sale["revenue"])
+	discard_confirmation_time_left = 0.0
+	discard_confirmation_revision = -1
+	_close_lab_analysis()
+	_show_batch_report(sale["report"], sale["contract_completed_now"])
+	_schedule_save()
 
 
 func _open_contract_selection(source_id: String) -> void:
@@ -1296,6 +1386,7 @@ func _apply_snapshot(snapshot: Dictionary) -> Dictionary:
 	control_station_visible = false
 	control_station_feedback = ""
 	control_station_feedback_is_error = false
+	lab_analysis_panel.close_panel()
 	discard_confirmation_time_left = 0.0
 	discard_confirmation_revision = -1
 	_update_unit_statuses()

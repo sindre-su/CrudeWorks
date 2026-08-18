@@ -29,6 +29,8 @@ var _report_temperature_total := 0.0
 var _report_crude_cost := 0.0
 var _remote_guard_pump_id := ""
 var _remote_guard_trip_message := ""
+var _diesel_sample: Dictionary = {}
+var _sample_sequence := 0
 
 
 func _init(p_network = null) -> void:
@@ -100,6 +102,8 @@ func apply_saved_state(state: Dictionary) -> void:
 	actual_flow_lps = 0.0
 	_remote_guard_pump_id = ""
 	_remote_guard_trip_message = ""
+	_diesel_sample = {}
+	_sample_sequence = 0
 	last_status = "Spill lastet. Alle pumper er stoppet av sikkerhetshensyn."
 
 
@@ -141,6 +145,7 @@ func register_unit(unit_id: String, equipment_type: String, display_name := "") 
 
 
 func unregister_unit(unit_id: String) -> void:
+	_diesel_sample = {}
 	equipment.erase(unit_id)
 	network.unregister_unit(unit_id)
 	actual_flow_lps = 0.0
@@ -150,6 +155,7 @@ func unregister_unit(unit_id: String) -> void:
 func _on_topology_changed() -> void:
 	_stop_all_pumps()
 	_remote_guard_trip_message = ""
+	_diesel_sample = {}
 	last_status = network.validate_configuration()["message"]
 
 
@@ -186,6 +192,8 @@ func interact(unit_id: String, can_pay_for_crude := false) -> Dictionary:
 				if commissioning_contract_complete and can_choose_contract(unit_id)["ok"]:
 					return _result(false, "Velg råoljeleveranse før kildetanken lastes.")
 				return load_crude_batch(unit_id, can_pay_for_crude)
+			if commissioning_contract_complete and _product_role_for_tank(unit_id) == "diesel":
+				return take_diesel_sample(unit_id)
 	return _result(true, inspect_unit(unit_id))
 
 
@@ -220,6 +228,14 @@ func interaction_prompt(unit_id: String) -> String:
 				return "E — inspiser %s råoljetank" % _active_contract_short_name()
 			var product_role: String = _product_role_for_tank(unit_id)
 			if not product_role.is_empty():
+				if commissioning_contract_complete and product_role == "diesel" and state["volume_l"] > 0.001:
+					if _any_pump_running():
+						return "DIESELPRØVE — stopp pumpen først"
+					return (
+						"E — ta ny dieselprøve"
+						if _sample_is_current()
+						else "E — ta dieselprøve"
+					)
 				return "E — inspiser %s-tank" % _contents_name(product_role)
 			return "E — inspiser tank"
 	return "E — inspiser bygd utstyr"
@@ -233,7 +249,9 @@ func discard_products(confirmed := false) -> Dictionary:
 		return _result(false, "Stopp pumpen før produktene kan tømmes.")
 	if not confirmed:
 		var warning := "Trykk R igjen innen 4 sek for å sende %.0f L produkt til sikker avfallshåndtering." % discarded_l
-		if diesel_is_approved():
+		if commissioning_contract_complete and not lab_dispatch_status().get("analyzed", false):
+			warning = "ADVARSEL: Uanalysert diesel blir destruert. Ta prøve, eller trykk R igjen innen 4 sek."
+		elif diesel_is_approved():
 			warning = "ADVARSEL: Godkjent diesel blir destruert. Selg ved LAB / SALG, eller trykk R igjen innen 4 sek."
 		return {
 			"ok": false,
@@ -251,6 +269,7 @@ func discard_products(confirmed := false) -> Dictionary:
 		state["quality_percent"] = 0.0
 	_stop_all_pumps()
 	product_inventory_revision += 1
+	_diesel_sample = {}
 	_reset_report_tracking()
 	_clear_contract_if_empty()
 	if not commissioning_contract_complete and _material_volume_l() <= 0.001:
@@ -319,6 +338,7 @@ func load_crude_batch(
 			contract_cost(selected_id),
 		])
 	var profile := CrudeCatalog.definition(selected_id)
+	_diesel_sample = {}
 	active_contract_id = selected_id
 	active_contract_bonus_available = int(profile["delivery_bonus"]) > 0
 	tank["volume_l"] = BATCH_VOLUME_L
@@ -433,6 +453,85 @@ func tick(delta: float) -> void:
 		last_status = "Batch ferdig. Kontroller dieselkvaliteten ved LAB / SALG."
 
 
+func take_diesel_sample(unit_id: String) -> Dictionary:
+	if not commissioning_contract_complete:
+		return _result(false, "Prøvetaking låses opp etter godkjent oppstart av Område 02.")
+	if _any_pump_running():
+		return _result(false, "Stopp pumpen før dieselprøven tas.")
+	var validation: Dictionary = network.validate_configuration()
+	if not validation["valid"]:
+		return _result(false, validation["message"])
+	var route: Dictionary = validation["route"]
+	if route["products"]["diesel"] != unit_id:
+		return _result(false, "Ta prøven fra dieseltanken i den aktive prosesslinjen.")
+	if not CrudeCatalog.is_valid(active_contract_id):
+		return _result(false, "Ingen aktiv råoljekontrakt er knyttet til produktet.")
+	var tank: Dictionary = equipment[unit_id]
+	if tank["contents"] != "diesel" or tank["volume_l"] <= 0.001:
+		return _result(false, "Ingen diesel tilgjengelig for prøvetaking.")
+	_sample_sequence += 1
+	var average_temperature := 0.0
+	if _report_crude_processed_l > 0.001:
+		average_temperature = _report_temperature_total / _report_crude_processed_l
+	_diesel_sample = {
+		"sample_id": "P-%03d" % _sample_sequence,
+		"revision": product_inventory_revision,
+		"tank_id": unit_id,
+		"contract_id": active_contract_id,
+		"volume_l": float(tank["volume_l"]),
+		"quality_percent": float(tank["quality_percent"]),
+		"average_temperature_c": average_temperature,
+		"analyzed": false,
+	}
+	last_status = "Prøve %s tatt. Lever den til LAB / SALG." % _diesel_sample["sample_id"]
+	return {
+		"ok": true,
+		"message": last_status,
+		"sample_id": _diesel_sample["sample_id"],
+		"charge": 0,
+		"revenue": 0,
+	}
+
+
+func analyze_diesel_sample() -> Dictionary:
+	if _any_pump_running():
+		return _result(false, "Stopp pumpen før dieselprøven analyseres.")
+	var current: Dictionary = _current_sample_result()
+	if not current["ok"]:
+		return current
+	_diesel_sample["analyzed"] = true
+	var analysis := _build_sample_analysis()
+	last_status = analysis["message"]
+	return analysis
+
+
+func lab_dispatch_status() -> Dictionary:
+	var current: Dictionary = _current_sample_result()
+	if not current["ok"]:
+		return current
+	if not bool(_diesel_sample.get("analyzed", false)):
+		return {
+			"ok": false,
+			"sample_current": true,
+			"analyzed": false,
+			"sample_id": _diesel_sample["sample_id"],
+			"dispatch_ready": false,
+			"message": (
+				"Stopp pumpen før prøve %s analyseres." % _diesel_sample["sample_id"]
+				if _any_pump_running()
+				else "Prøve %s er klar for analyse ved LAB / SALG." % _diesel_sample["sample_id"]
+			),
+		}
+	return _build_sample_analysis()
+
+
+func diesel_is_dispatch_ready() -> bool:
+	if not commissioning_contract_complete:
+		return diesel_is_approved()
+	var status := lab_dispatch_status()
+	return status.get("ok", false) and status.get("dispatch_ready", false)
+
+
 func sell_diesel() -> Dictionary:
 	if _any_pump_running():
 		return _result(false, "Stopp pumpen før diesel kontrolleres og selges.")
@@ -442,6 +541,14 @@ func sell_diesel() -> Dictionary:
 	var route: Dictionary = validation["route"]
 	if not CrudeCatalog.is_valid(active_contract_id):
 		return _result(false, "Ingen aktiv råoljekontrakt er knyttet til produktene.")
+	if commissioning_contract_complete:
+		var lab_status := lab_dispatch_status()
+		if not lab_status.get("sample_current", false):
+			return _result(false, lab_status["message"])
+		if not lab_status.get("analyzed", false):
+			return _result(false, "Analyser dieselprøven ved LAB / SALG før utsending.")
+		if not lab_status.get("approved", false):
+			return _result(false, lab_status["message"])
 	var profile := contract_definition()
 	var diesel_tank: Dictionary = equipment[route["products"]["diesel"]]
 	var total_volume: float = diesel_tank["volume_l"] if diesel_tank["contents"] == "diesel" else 0.0
@@ -511,6 +618,7 @@ func sell_diesel() -> Dictionary:
 		state["contents"] = "empty"
 		state["quality_percent"] = 0.0
 	product_inventory_revision += 1
+	_diesel_sample = {}
 	_reset_report_tracking()
 	_clear_contract_if_empty()
 	last_status = "%.0f L bygd diesel godkjent; produktbatch sendt for %d kr." % [total_volume, revenue]
@@ -575,6 +683,36 @@ func objective_text() -> String:
 			"stopp pumpen og " if pump["running"] else "",
 			profile["short_name"], profile["ideal_temperature_c"],
 		]
+	if commissioning_contract_complete:
+		var lab_status := lab_dispatch_status()
+		if lab_status.get("sample_current", false):
+			if not lab_status.get("analyzed", false):
+				return (
+					prefix + "stopp pumpen og lever dieselprøven til LAB / SALG"
+					if pump["running"]
+					else prefix + "lever dieselprøven til LAB / SALG"
+				)
+			if lab_status.get("approved", false):
+				return (
+					prefix + "stopp pumpen før godkjent batch sendes"
+					if not lab_status.get("dispatch_ready", false)
+					else prefix + "send godkjent batch ved LAB / SALG"
+				)
+			return prefix + "prøven er %s — fortsett produksjon eller tøm med R x2" % String(lab_status.get("status", "OFF-SPEC"))
+		var diesel_tank: Dictionary = equipment[route["products"]["diesel"]]
+		var sample_due: bool = (
+			diesel_tank["contents"] == "diesel"
+			and (
+				diesel_tank["volume_l"] >= float(profile["diesel_target_l"])
+				or source["volume_l"] <= 0.001
+			)
+		)
+		if sample_due:
+			return (
+				prefix + "stopp pumpen og ta dieselprøve ved dieseltanken"
+				if pump["running"]
+				else prefix + "ta dieselprøve ved dieseltanken"
+			)
 	if diesel_is_approved():
 		return (
 			prefix + "stopp pumpen og lever godkjent diesel ved LAB / SALG"
@@ -606,7 +744,10 @@ func inspect_unit(unit_id: String) -> String:
 				state["temperature_c"],
 			]
 			if state["contents"] == "diesel":
-				details += ", kvalitet %.1f %%" % state["quality_percent"]
+				if commissioning_contract_complete and not _sample_reveals_tank(unit_id):
+					details += ", kvalitet IKKE ANALYSERT"
+				else:
+					details += ", kvalitet %.1f %%" % state["quality_percent"]
 			return details + "."
 		"pump":
 			return "Pumpe %s, faktisk flow %.1f L/s." % [
@@ -637,7 +778,10 @@ func unit_status(unit_id: String) -> String:
 				contents_label,
 			]
 			if state["contents"] == "diesel":
-				status += "  |  %.1f %%" % state["quality_percent"]
+				if commissioning_contract_complete and not _sample_reveals_tank(unit_id):
+					status += "  |  PRØVE KREVES"
+				else:
+					status += "  |  %.1f %%" % state["quality_percent"]
 			return status
 		"pump":
 			return "%s  |  %.1f L/s" % ["PÅ" if state["running"] else "AV", state["actual_flow_lps"]]
@@ -661,10 +805,14 @@ func summary_text() -> String:
 			diesel_quality = tank["quality_percent"]
 	var quality_text := "VENTER"
 	if diesel_volume > 0.001:
-		quality_text = "%.1f %% — %s" % [
-			diesel_quality,
-			"GODKJENT" if diesel_is_approved() else "OFF-SPEC",
-		]
+		var lab_status := lab_dispatch_status()
+		if commissioning_contract_complete and not lab_status.get("analyzed", false):
+			quality_text = "IKKE ANALYSERT — PRØVE KREVES"
+		else:
+			quality_text = "%.1f %% — %s" % [
+				diesel_quality,
+				"GODKJENT" if diesel_is_approved() else "OFF-SPEC",
+			]
 	var crude_text := "INGEN"
 	var target_text := "—"
 	if CrudeCatalog.is_valid(active_contract_id):
@@ -991,6 +1139,120 @@ func _active_contract_short_name() -> String:
 	if not CrudeCatalog.is_valid(active_contract_id):
 		return ""
 	return CrudeCatalog.definition(active_contract_id)["short_name"]
+
+
+func _sample_is_current() -> bool:
+	return _current_sample_result()["ok"]
+
+
+func _sample_reveals_tank(unit_id: String) -> bool:
+	return (
+		_sample_is_current()
+		and bool(_diesel_sample.get("analyzed", false))
+		and String(_diesel_sample.get("tank_id", "")) == unit_id
+	)
+
+
+func _current_sample_result() -> Dictionary:
+	if _diesel_sample.is_empty():
+		var empty_route: Dictionary = network.find_complete_route()
+		if not empty_route.is_empty():
+			var diesel_tank: Dictionary = equipment[empty_route["products"]["diesel"]]
+			if diesel_tank["contents"] != "diesel" or diesel_tank["volume_l"] <= 0.001:
+				return {
+					"ok": false,
+					"sample_current": false,
+					"analyzed": false,
+					"message": "Ingen diesel tilgjengelig for prøvetaking.",
+				}
+		return {
+			"ok": false,
+			"sample_current": false,
+			"analyzed": false,
+			"message": "Ta en dieselprøve ved dieseltanken før LAB / SALG brukes.",
+		}
+	var route: Dictionary = network.find_complete_route()
+	var current := (
+		not route.is_empty()
+		and int(_diesel_sample.get("revision", -1)) == product_inventory_revision
+		and String(_diesel_sample.get("tank_id", "")) == String(route.get("products", {}).get("diesel", ""))
+		and String(_diesel_sample.get("contract_id", "")) == active_contract_id
+	)
+	if not current:
+		return {
+			"ok": false,
+			"sample_current": false,
+			"analyzed": false,
+			"message": "Prøven er utdatert. Ta en ny prøve ved dieseltanken.",
+		}
+	return {
+		"ok": true,
+		"sample_current": true,
+		"analyzed": bool(_diesel_sample.get("analyzed", false)),
+		"message": "Prøven er gyldig.",
+	}
+
+
+func _build_sample_analysis() -> Dictionary:
+	var profile := contract_definition(String(_diesel_sample["contract_id"]))
+	var volume_l := float(_diesel_sample["volume_l"])
+	var quality := float(_diesel_sample["quality_percent"])
+	var required_volume := float(profile["diesel_target_l"])
+	var required_quality := float(profile["minimum_quality_percent"])
+	var average_temperature := float(_diesel_sample["average_temperature_c"])
+	var approved := volume_l >= required_volume and quality >= required_quality
+	var status := "GODKJENT" if approved else "OFF-SPEC"
+	var deviation := "Kvalitet og volum oppfyller kontrakten."
+	if volume_l < required_volume:
+		var route: Dictionary = network.find_complete_route()
+		var source_has_crude := false
+		if not route.is_empty():
+			var source: Dictionary = equipment[route["source"]]
+			source_has_crude = source["contents"] == "crude" and source["volume_l"] > 0.001
+		if source_has_crude:
+			status = "IKKE KLAR"
+			deviation = "Mangler %.0f L diesel. Fortsett produksjonen og ta en ny prøve." % (required_volume - volume_l)
+		else:
+			status = "OFF-SPEC"
+			deviation = "Mangler %.0f L diesel." % (required_volume - volume_l)
+			if quality < required_quality:
+				deviation += " Kvalitet %.1f %% er under kravet." % quality
+			deviation += " Råoljetanken er tom; behold for inspeksjon eller tøm med R x2."
+	elif quality < required_quality:
+		var temperature_difference: float = average_temperature - float(profile["ideal_temperature_c"])
+		if absf(temperature_difference) >= 0.5:
+			deviation = "%.0f °C %s prosessmålet." % [
+				absf(temperature_difference),
+				"over" if temperature_difference > 0.0 else "under",
+			]
+		else:
+			deviation = "Dieselkvaliteten er under kontraktskravet."
+	var product_revenue := int(round(volume_l * float(profile["diesel_price_per_l"])))
+	var delivery_bonus := int(profile["delivery_bonus"]) if active_contract_bonus_available else 0
+	return {
+		"ok": true,
+		"sample_current": true,
+		"analyzed": true,
+		"approved": approved,
+		"dispatch_ready": approved and not _any_pump_running(),
+		"sample_id": _diesel_sample["sample_id"],
+		"contract_id": _diesel_sample["contract_id"],
+		"contract_name": profile["short_name"],
+		"volume_l": volume_l,
+		"required_volume_l": required_volume,
+		"quality_percent": quality,
+		"required_quality_percent": required_quality,
+		"average_temperature_c": average_temperature,
+		"ideal_temperature_c": float(profile["ideal_temperature_c"]),
+		"status": status,
+		"deviation": deviation,
+		"revenue_preview": product_revenue + delivery_bonus,
+		"message": (
+			"Prøve %s er godkjent for utsending." % _diesel_sample["sample_id"]
+			if approved
+			else "%s — %s" % [status, deviation]
+		),
+	}
 
 
 func _contents_name(contents: String) -> String:

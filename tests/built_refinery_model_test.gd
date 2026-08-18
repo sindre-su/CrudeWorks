@@ -31,6 +31,7 @@ func _run_tests() -> void:
 	_test_heavy_contract_temperature_tradeoff()
 	_test_contract_lifecycle_and_bonus_lock()
 	_test_control_station_telemetry_and_temperature_guard()
+	_test_paid_batch_lab_sampling()
 
 
 func _test_invalid_network_cannot_start() -> void:
@@ -128,6 +129,7 @@ func _test_mass_conserving_ideal_batch_and_sale() -> void:
 	var paid_load: Dictionary = model.load_crude_batch("source", true)
 	model.interact("pump")
 	model.tick(100.0)
+	_take_and_analyze(model)
 	var paid_sale: Dictionary = model.sell_diesel()
 	_expect(paid_load["charge"] == 300 and paid_sale["report"]["crude_cost"] == 300, "paid batch report includes the exact crude cost")
 	_expect(paid_sale["report"]["net_profit"] == 2500, "paid batch report calculates exact net profit")
@@ -283,6 +285,7 @@ func _test_standard_contract_regression() -> void:
 	model.interact("pump")
 	model.tick(100.0)
 	_expect(is_equal_approx(model.equipment["light_tank"]["volume_l"], 300.0) and is_equal_approx(model.equipment["diesel_tank"]["volume_l"], 350.0) and is_equal_approx(model.equipment["heavy_tank"]["volume_l"], 350.0), "paid Standard batch keeps the established 300/350/350 L output")
+	_take_and_analyze(model)
 	var sale: Dictionary = model.sell_diesel()
 	_expect(sale["ok"] and sale["report"]["product_revenue"] == 2800 and sale["report"]["delivery_bonus"] == 0, "Standard sale keeps the established 2 800 kr product revenue without a bonus")
 	_expect(sale["report"]["crude_cost"] == 300 and sale["report"]["net_profit"] == 2500, "Standard report preserves exact paid-batch economics")
@@ -298,7 +301,7 @@ func _test_heavy_contract_temperature_tradeoff() -> void:
 	var ideal_load: Dictionary = ideal.load_crude_batch("source", true, "heavy")
 	_expect(ideal_load["ok"] and ideal_load["charge"] == 180 and ideal.active_contract_bonus_available, "Heavy delivery costs 180 kr and arms one delivery bonus")
 	var no_process_sale: Dictionary = ideal.sell_diesel()
-	_expect(not no_process_sale["ok"] and "Ingen diesel produsert" in no_process_sale["message"] and ideal.active_contract_bonus_available, "unprocessed contract gives truthful guidance without consuming its bonus")
+	_expect(not no_process_sale["ok"] and "Ingen diesel" in no_process_sale["message"] and ideal.active_contract_bonus_available, "unprocessed paid contract reports missing diesel without consuming its bonus")
 	ideal.equipment["heater"]["temperature_c"] = 240.0
 	ideal.tick(0.0)
 	_expect("Senk" in ideal.last_status and "senk" in ideal.objective_text() and "HIGH TEMPERATURE" in ideal.alarm_text(), "overheated Heavy feed gives one consistent cool-down instruction")
@@ -310,6 +313,7 @@ func _test_heavy_contract_temperature_tradeoff() -> void:
 	_expect(is_equal_approx(_total_tank_volume(ideal), 1000.0), "ideal Heavy processing conserves the full 1 000 L batch")
 	_expect(is_equal_approx(ideal.equipment["light_tank"]["volume_l"], 150.0) and is_equal_approx(ideal.equipment["diesel_tank"]["volume_l"], 220.0) and is_equal_approx(ideal.equipment["heavy_tank"]["volume_l"], 630.0), "ideal Heavy processing produces the declared 150/220/630 L outputs")
 	_expect(ideal.diesel_is_approved() and "HIGH TEMPERATURE" not in ideal.alarm_text(), "Heavy diesel is approved at 230 C without a false high-temperature alarm")
+	_take_and_analyze(ideal)
 	var ideal_sale: Dictionary = ideal.sell_diesel()
 	_expect(ideal_sale["ok"] and ideal_sale["report"]["product_revenue"] == 1760 and ideal_sale["report"]["delivery_bonus"] == 1000 and ideal_sale["revenue"] == 2760, "first approved Heavy delivery pays exact product revenue plus its one-time bonus")
 	_expect(ideal_sale["report"]["crude_cost"] == 180 and ideal_sale["report"]["net_profit"] == 2580, "Heavy report calculates exact cost and net profit")
@@ -326,6 +330,9 @@ func _test_heavy_contract_temperature_tradeoff() -> void:
 	cold.interact("pump")
 	cold.tick(100.0)
 	_expect(is_equal_approx(cold.equipment["diesel_tank"]["volume_l"], 180.0) and is_equal_approx(cold.equipment["diesel_tank"]["quality_percent"], 64.0), "Heavy crude run at the Standard setting yields only 180 L diesel at 64 percent quality")
+	var cold_sample: Dictionary = cold.take_diesel_sample("diesel_tank")
+	var cold_analysis: Dictionary = cold.analyze_diesel_sample()
+	_expect(cold_sample["ok"] and cold_analysis["status"] == "OFF-SPEC" and "Råoljetanken er tom" in cold_analysis["deviation"] and not cold_analysis["approved"], "completed Heavy off-spec result never asks for impossible further production")
 	var rejected: Dictionary = cold.sell_diesel()
 	_expect(not rejected["ok"] and rejected["revenue"] == 0 and cold.active_contract_bonus_available, "off-spec Heavy product earns no money and cannot consume its pending contract state")
 
@@ -350,6 +357,7 @@ func _test_contract_lifecycle_and_bonus_lock() -> void:
 	model.interact("pump")
 	model.tick(100.0)
 	_expect(not model.can_choose_contract("source")["ok"], "stored Heavy products block contract switching after source depletion")
+	_take_and_analyze(model)
 	model.sell_diesel()
 	_expect(model.can_choose_contract("source")["ok"] and model.active_contract_id.is_empty(), "successful dispatch clears the finished contract and enables the next choice")
 
@@ -398,6 +406,76 @@ func _test_control_station_telemetry_and_temperature_guard() -> void:
 	model.network.disconnect_ports("valve", "output", "heater", "input")
 	var invalid_snapshot: Dictionary = model.control_snapshot()
 	_expect(not invalid_snapshot["valid"] and not model.remote_toggle_route_pump()["ok"], "invalid topology disables LS-201 control with the graph's readable error")
+
+
+func _test_paid_batch_lab_sampling() -> void:
+	var model = _complete_model()
+	model.commissioning_batch_available = false
+	model.commissioning_contract_complete = true
+	model.load_crude_batch("source", true, "standard")
+	model.equipment["heater"]["temperature_c"] = 200.0
+	model.equipment["heater"]["setpoint_c"] = 200.0
+	model.interact("valve")
+	model.interact("pump")
+	model.tick(20.0)
+	_expect(not model.take_diesel_sample("diesel_tank")["ok"], "diesel sampling is blocked while any process pump is running")
+	model.interact("pump")
+	model.register_unit("spare_sample_tank", "tank", "T-299")
+	model.equipment["spare_sample_tank"]["contents"] = "diesel"
+	model.equipment["spare_sample_tank"]["volume_l"] = 500.0
+	model.equipment["spare_sample_tank"]["quality_percent"] = 42.0
+	_expect(not model.take_diesel_sample("spare_sample_tank")["ok"], "disconnected diesel cannot be sampled for the active contract")
+	var sample: Dictionary = model.take_diesel_sample("diesel_tank")
+	_expect(sample["ok"] and sample["sample_id"] == "P-001", "stopped active-route diesel tank produces a numbered physical sample")
+	_expect("IKKE ANALYSERT" in model.summary_text() and "PRØVE KREVES" in model.unit_status("diesel_tank"), "exact paid-batch quality remains hidden before laboratory analysis")
+	_expect(not model.sell_diesel()["ok"] and "Analyser" in model.sell_diesel()["message"], "a current but unanalyzed sample cannot authorize dispatch")
+	var early_analysis: Dictionary = model.analyze_diesel_sample()
+	_expect(early_analysis["ok"] and early_analysis["status"] == "IKKE KLAR" and not early_analysis["approved"], "lab analysis reports the exact missing-volume condition without dispatch")
+	_expect("100.0 %" in model.summary_text() and "IKKE KLAR" in model.objective_text(), "analyzed sample reveals quality while retaining the failed volume result")
+	_expect("42.0 %" not in model.unit_status("spare_sample_tank") and "42.0 %" not in model.inspect_unit("spare_sample_tank"), "active-route analysis never reveals disconnected diesel quality")
+	var inventory_before_failed_sale: float = model.product_volume_l()
+	_expect(not model.sell_diesel()["ok"] and is_equal_approx(model.product_volume_l(), inventory_before_failed_sale), "failed analyzed sample consumes no product or contract value")
+
+	model.interact("pump")
+	model.tick(1.0)
+	model.interact("pump")
+	var stale: Dictionary = model.lab_dispatch_status()
+	_expect(not stale["sample_current"] and "utdatert" in stale["message"], "new production invalidates the old sample through the inventory revision")
+	_expect(not model.sell_diesel()["ok"], "stale sample cannot authorize sale after inventory changes")
+	var replacement_sample: Dictionary = model.take_diesel_sample("diesel_tank")
+	_expect(replacement_sample["ok"] and replacement_sample["sample_id"] == "P-002", "player can always replace a stale sample without a softlock")
+	model.network.disconnect_ports("valve", "output", "heater", "input")
+	_expect(not model.analyze_diesel_sample()["ok"], "topology changes invalidate a carried sample before analysis")
+	model.network.try_connect("valve", "output", "heater", "input")
+	model.take_diesel_sample("diesel_tank")
+	model.analyze_diesel_sample()
+	var saved_state: Dictionary = model.save_state()
+	var restored = _complete_model()
+	restored.apply_saved_state(saved_state)
+	_expect(not restored.lab_dispatch_status()["sample_current"], "save/load preserves product but never restores transient lab authorization")
+
+	model.interact("pump")
+	model.tick(100.0)
+	var final_sample: Dictionary = model.take_diesel_sample("diesel_tank")
+	var final_analysis: Dictionary = model.analyze_diesel_sample()
+	_expect(final_sample["ok"] and final_analysis["approved"] and final_analysis["revenue_preview"] == 2800, "complete Standard batch produces a current approved analysis with exact revenue preview")
+	model.interact("valve")
+	model.interact("pump")
+	var running_status: Dictionary = model.lab_dispatch_status()
+	_expect(running_status["approved"] and not running_status["dispatch_ready"] and not model.diesel_is_dispatch_ready(), "analyzed batch cannot advertise dispatch while a closed-valve pump is commanded on")
+	_expect(not model.analyze_diesel_sample()["ok"], "LAB refuses analysis while any pump is running, even at zero actual flow")
+	model.interact("pump")
+	_expect(model.diesel_is_dispatch_ready(), "stopping the pump restores dispatch readiness without invalidating unchanged product")
+	var successful_sale: Dictionary = model.sell_diesel()
+	_expect(successful_sale["ok"] and successful_sale["revenue"] == 2800 and is_equal_approx(model.product_volume_l(), 0.0), "approved current sample dispatches the existing product batch exactly once")
+	_expect(not model.sell_diesel()["ok"] and model.successful_sales == 1, "consumed sample and inventory cannot be dispatched twice")
+
+
+func _take_and_analyze(model) -> Dictionary:
+	var sample: Dictionary = model.take_diesel_sample("diesel_tank")
+	if not sample["ok"]:
+		return sample
+	return model.analyze_diesel_sample()
 
 
 func _complete_model():

@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.8.1 – LS-201 lokalstasjon**
+**Prototypeversjon: 0.9 – dieselprøve og laboratorieanalyse**
 
 En liten 3D-prototype der spilleren driver et forenklet pilotraffineri. Første mål
 er å behandle 1 000 liter råolje og selge minst 200 liter diesel med 90 % eller
@@ -35,6 +35,8 @@ Den første komplette «vertical slice»-en inneholder:
 - trygg automatisk migrering av eldre 0.6-lagringer til Standard-råolje
 - LS-201 lokalstasjon med live nivå-, temperatur- og flowinstrumenter
 - fjernstyrt pumpe og temperaturmål med temperaturvern ved fjernstart
+- fysisk dieselprøve fra aktiv produkttank før betalte batcher kan sendes
+- LAB-101-analyse med volum, kvalitet, prosessavvik og trygg utsending
 
 Alle objekter er foreløpig bygget av Godots primitive 3D-former. Det gjør at vi
 kan teste gameplay før vi bruker tid på modeller og grafikk.
@@ -86,7 +88,7 @@ batch som Standard-råolje uten å gi en ny batch eller bonus.
 | Ctrl eller C | Hold inne for å huke |
 | E | Bruk eller inspiser utstyr |
 | R | Pilot: ny batch. Område 02: trykk to ganger for sikker produkttømming |
-| Enter | Lukk batchrapport |
+| Enter | Send godkjent labbatch eller lukk batchrapport |
 | 1 / 2 | Velg Standard eller Tung råolje når leveransevinduet er åpent |
 | 1 / 2 | LS-201: start/stopp pumpe eller endre temperaturmål |
 | Esc | Frigjør musepekeren |
@@ -156,6 +158,17 @@ Råoljetypen låses til batchen. En ny type kan først velges når alle bygde ta
 er tomme og pumpen er stoppet. Batchrapporten viser valgt råolje, faktisk
 snittemperatur, temperaturmål, dieselsalg, eventuell bonus, kostnad og resultat.
 
+Den første Område 02-oppstarten bruker fortsatt den enkle direktekontrollen ved
+`LAB / SALG`. For senere betalte batcher må spilleren stoppe pumpen og trykke
+`E` på dieseltanken i den aktive linjen for å ta en prøve. Før analyse vises
+produktkvaliteten som `IKKE ANALYSERT`; en prøve fra en frakoblet tank kan ikke
+brukes. Ved `LAB / SALG` viser LAB-101 faktisk dieselvolum og kvalitet mot
+kontraktskravet, samt gjennomsnittlig prosesstemperatur mot målet.
+
+En godkjent, fortsatt gyldig prøve kan sendes med `Enter`. OFF-SPEC-produkt
+beholdes og gir ingen inntekt. Ny produksjon, endret rørnett, tømming, salg eller
+lasting gjør prøven ugyldig, og save/load krever alltid en ny fysisk prøve.
+
 Etter den første godkjente Område 02-leveransen låses **LS-201** opp på
 vestsiden av byggeområdet. Lokalstasjonen viser den aktive linjens kildenivå,
 temperatur, faktisk flow, dieselvolum, pumpe og ventil i sanntid. Tast `1`
@@ -185,6 +198,7 @@ CrudeWorks/
     ├── crude_contract_catalog.gd
     ├── equipment_catalog.gd
     ├── interactive_unit.gd
+    ├── lab_analysis_panel.gd
     ├── main.gd
     ├── player.gd
     ├── process_model.gd
