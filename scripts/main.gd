@@ -41,12 +41,17 @@ var batch_report_panel: PanelContainer
 var batch_report_label: Label
 var contract_selection_panel: PanelContainer
 var contract_selection_label: Label
+var control_station_panel: PanelContainer
+var control_station_label: Label
 var startup_panel: PanelContainer
 var startup_label: Label
 var notification_time_left := 0.0
 var batch_report_visible := false
 var contract_selection_visible := false
 var contract_selection_source_id := ""
+var control_station_visible := false
+var control_station_feedback := ""
+var control_station_feedback_is_error := false
 var discard_confirmation_time_left := 0.0
 var discard_confirmation_revision := -1
 var startup_choice_state := ""
@@ -84,6 +89,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if contract_selection_visible:
 		_handle_contract_selection_input(event)
+		get_viewport().set_input_as_handled()
+		return
+	if control_station_visible:
+		_handle_control_station_input(event)
 		get_viewport().set_input_as_handled()
 		return
 	if batch_report_visible and event.keycode in [KEY_ENTER, KEY_KP_ENTER, KEY_ESCAPE]:
@@ -237,6 +246,12 @@ func _build_process_area() -> void:
 		Vector3(1.5, 2.2, 1.4), Color("295c7a")
 	)
 	units[terminal.unit_id] = terminal
+
+	var control_station = _create_box_unit(
+		"area02_control", "LS-201 LOKALSTASJON", Vector3(-16.0, 1.1, 13.0),
+		Vector3(1.6, 2.2, 1.2), Color("263943")
+	)
+	units[control_station.unit_id] = control_station
 
 	_create_pipe(Vector3(-10.0, 0.7, 0.0), Vector3(-8.9, 0.7, 0.0), "feed", Color("6c3b24"))
 	_create_pipe(Vector3(-6.9, 0.7, 0.0), Vector3(-6.15, 0.7, 0.0), "feed", Color("6c3b24"))
@@ -423,6 +438,26 @@ func _build_user_interface() -> void:
 	contract_selection_panel.add_child(contract_selection_label)
 	canvas.add_child(contract_selection_panel)
 
+	control_station_panel = PanelContainer.new()
+	control_station_panel.anchor_left = 0.5
+	control_station_panel.anchor_right = 0.5
+	control_station_panel.anchor_top = 0.5
+	control_station_panel.anchor_bottom = 0.5
+	control_station_panel.offset_left = -390.0
+	control_station_panel.offset_right = 390.0
+	control_station_panel.offset_top = -300.0
+	control_station_panel.offset_bottom = 300.0
+	control_station_panel.visible = false
+	control_station_label = Label.new()
+	control_station_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	control_station_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	control_station_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	control_station_label.add_theme_font_size_override("font_size", 20)
+	control_station_label.add_theme_color_override("font_color", Color("c9f4ff"))
+	control_station_label.add_theme_constant_override("line_spacing", 3)
+	control_station_panel.add_child(control_station_label)
+	canvas.add_child(control_station_panel)
+
 	startup_panel = PanelContainer.new()
 	startup_panel.anchor_left = 0.5
 	startup_panel.anchor_right = 0.5
@@ -481,22 +516,29 @@ func _update_user_interface() -> void:
 		and not build_controller.active
 		and not batch_report_visible
 		and not contract_selection_visible
+		and not control_station_visible
 		and startup_choice_state.is_empty()
 	):
 		if focused.unit_id.begins_with("built_"):
 			prompt_label.text = built_refinery_model.interaction_prompt(focused.unit_id)
+		elif focused.unit_id == "area02_control" and not built_refinery_model.commissioning_contract_complete:
+			prompt_label.text = "LS-201 — LÅST: fullfør oppstarten av Område 02"
 		else:
 			prompt_label.text = focused.interaction_prompt()
 	notification_label.visible = notification_time_left > 0.0
 	completion_panel.visible = process_model.objective_complete and not build_mode_unlocked
 	batch_report_panel.visible = batch_report_visible and not build_controller.active
 	contract_selection_panel.visible = contract_selection_visible and not build_controller.active
+	control_station_panel.visible = control_station_visible and not build_controller.active
+	if control_station_visible:
+		_update_control_station_text()
 	startup_panel.visible = not startup_choice_state.is_empty()
 	var operation_ui_visible: bool = not build_controller.active
 	var regular_ui_visible: bool = (
 		operation_ui_visible
 		and not batch_report_visible
 		and not contract_selection_visible
+		and not control_station_visible
 		and startup_choice_state.is_empty()
 	)
 	hud_label.visible = regular_ui_visible
@@ -532,6 +574,31 @@ func _update_unit_statuses() -> void:
 	)
 	units["sales_terminal"].set_status("KLAR" if sales_ready else "VENTER")
 	units["sales_terminal"].set_active(sales_ready, Color("78e08f"))
+	var control_snapshot: Dictionary = built_refinery_model.control_snapshot()
+	var control_status := "LÅST"
+	var control_alarm := false
+	if control_snapshot.get("unlocked", false):
+		if control_snapshot.get("valid", false):
+			control_alarm = (
+				not String(control_snapshot.get("alarm", "")).is_empty()
+				or not String(control_snapshot.get("temperature_trip_message", "")).is_empty()
+			)
+			control_status = (
+				"ALARM"
+				if control_alarm
+				else (
+					"VENTER — RÅOLJE"
+					if float(control_snapshot.get("ideal_temperature_c", 0.0)) <= 0.0
+					else "KLAR  |  %.1f L/s" % float(control_snapshot["actual_flow_lps"])
+				)
+			)
+		else:
+			control_status = "VENTER — NETTVERK"
+	units["area02_control"].set_status(control_status)
+	units["area02_control"].set_active(
+		control_station_visible or control_alarm,
+		Color("ff6b5f") if control_alarm else Color("75ddff")
+	)
 	var active_route: Dictionary = built_refinery_model.network.find_complete_route()
 	for entry in build_controller.registered_units:
 		var built_unit = entry["node"]
@@ -636,6 +703,12 @@ func _on_unit_interacted(unit_id: String) -> void:
 				message = sale["message"]
 			else:
 				message = process_model.sell_diesel()
+		"area02_control":
+			if not built_refinery_model.commissioning_contract_complete:
+				message = "LS-201 låses opp etter første godkjente Område 02-batch."
+			else:
+				_open_control_station()
+				return
 		"raw_tank":
 			message = "Råolje: %.0f liter, %.1f °C." % [
 				process_model.crude_volume_l,
@@ -807,6 +880,7 @@ func _show_batch_report(report: Dictionary, completed_now: bool) -> void:
 		+ ("Kontraktbonus        %7d kr\n" % int(report.get("delivery_bonus", 0)) if int(report.get("delivery_bonus", 0)) > 0 else "")
 		+ "Råoljekostnad         %7d kr\n" % report["crude_cost"]
 		+ "Resultat              %s\n\n" % net_text
+		+ ("NYTT: LS-201 lokalstasjon låst opp på vestsiden av byggeområdet.\n\n" if completed_now else "")
 		+ "Enter — fortsett"
 	)
 	batch_report_visible = true
@@ -825,10 +899,12 @@ func _dismiss_batch_report() -> void:
 		if source["contents"] == "crude":
 			remaining_crude = source["volume_l"]
 	var message := "Godkjent levering. Velg neste råolje ved kildetanken."
-	if remaining_crude > 0.001:
+	if built_refinery_model.successful_sales == 1:
+		message = "LS-201 LÅST OPP på vestsiden av byggeområdet."
+		if remaining_crude > 0.001:
+			message += " %.0f L råolje gjenstår." % remaining_crude
+	elif remaining_crude > 0.001:
 		message = "Godkjent levering. %.0f L råolje gjenstår i kildetanken." % remaining_crude
-	elif built_refinery_model.successful_sales == 1:
-		message = "Område 02 er godkjent. Velg neste råolje ved kildetanken."
 	_show_notification(message, 6.0)
 
 
@@ -893,6 +969,115 @@ func _close_contract_selection() -> void:
 	contract_selection_source_id = ""
 	player.set_input_blocked(false)
 	build_controller.set_input_blocked(false)
+
+
+func _open_control_station() -> void:
+	control_station_visible = true
+	control_station_feedback = ""
+	control_station_feedback_is_error = false
+	notification_time_left = 0.0
+	player.set_input_blocked(true)
+	build_controller.set_input_blocked(true)
+	_update_control_station_text()
+
+
+func _close_control_station() -> void:
+	control_station_visible = false
+	control_station_feedback = ""
+	control_station_feedback_is_error = false
+	player.set_input_blocked(false)
+	build_controller.set_input_blocked(false)
+
+
+func _handle_control_station_input(event: InputEventKey) -> void:
+	if event.keycode == KEY_ESCAPE:
+		_close_control_station()
+		return
+	var result := {}
+	if event.keycode == KEY_1:
+		result = built_refinery_model.remote_toggle_route_pump()
+	elif event.keycode == KEY_2:
+		result = built_refinery_model.remote_cycle_route_heater()
+	else:
+		return
+	control_station_feedback = result["message"]
+	control_station_feedback_is_error = not result["ok"]
+	if result["ok"]:
+		_schedule_save()
+	_update_control_station_text()
+
+
+func _update_control_station_text() -> void:
+	var snapshot: Dictionary = built_refinery_model.control_snapshot()
+	if not snapshot.get("valid", false):
+		control_station_label.text = (
+			"LS-201 — LOKALSTASJON\n\n"
+			+ "NETTVERK UFULLSTENDIG\n%s\n\n" % snapshot.get("message", "Ingen gyldig prosesslinje.")
+			+ "Esc — lukk"
+		)
+		return
+	var temperature_state := "VENTER"
+	if snapshot["ideal_temperature_c"] > 0.0:
+		var safe_range := CrudeCatalogScript.approved_temperature_range(
+			built_refinery_model.active_contract_id
+		)
+		if snapshot["heater_temperature_c"] < safe_range.x:
+			temperature_state = "LAV"
+		elif snapshot["heater_temperature_c"] > safe_range.y:
+			temperature_state = "HØY"
+		else:
+			temperature_state = "KLAR"
+	var flow_state := "STOPP"
+	if snapshot["pump_running"] and snapshot["actual_flow_lps"] <= 0.01:
+		flow_state = "LOW FLOW"
+	elif snapshot["actual_flow_lps"] > 0.01:
+		flow_state = "NORMAL"
+	var process_message: String = String(snapshot.get("temperature_trip_message", ""))
+	if process_message.is_empty() and control_station_feedback_is_error:
+		process_message = control_station_feedback
+	if process_message.is_empty():
+		process_message = String(snapshot.get("alarm", ""))
+	if process_message.is_empty():
+		process_message = String(snapshot.get("status", ""))
+	if process_message.is_empty():
+		process_message = control_station_feedback
+	var crude_heading := "Ingen aktiv råolje  |  driftsmål —"
+	if snapshot["ideal_temperature_c"] > 0.0:
+		crude_heading = "%s råolje  |  driftsmål %.0f °C" % [
+			snapshot["crude_name"], snapshot["ideal_temperature_c"],
+		]
+	var guard_state := "VENTER PÅ RÅOLJE"
+	if not String(snapshot.get("temperature_trip_message", "")).is_empty():
+		guard_state = "UTLØST"
+	elif snapshot["temperature_guard_active"]:
+		guard_state = "AKTIV"
+	elif snapshot["pump_running"]:
+		guard_state = "IKKE AKTIV — FELTSTART"
+	elif snapshot["ideal_temperature_c"] > 0.0:
+		guard_state = "ARMERES VED FJERNSTART"
+	control_station_label.text = (
+		"LS-201 — LOKALSTASJON\n"
+		+ crude_heading + "\n\n"
+		+ "LT-201 NIVÅ, KILDE     %4.0f / %4.0f L    %3.0f %%\n" % [
+			snapshot["source_volume_l"], snapshot["source_capacity_l"],
+			snapshot["source_level_percent"],
+		]
+		+ "TT-201 TEMPERATUR      %4.0f °C / mål %3.0f °C    %s\n" % [
+			snapshot["heater_temperature_c"], snapshot["heater_setpoint_c"], temperature_state,
+		]
+		+ "FT-201 FLOW            %5.1f L/s             %s\n" % [
+			snapshot["actual_flow_lps"], flow_state,
+		]
+		+ "LT-202 NIVÅ, DIESEL    %4.0f / 1000 L\n\n" % snapshot["diesel_volume_l"]
+		+ "P-201 PUMPE            %s\n" % ("PÅ" if snapshot["pump_running"] else "AV")
+		+ "V-201 VENTIL           %s — FELT\n" % ("ÅPEN" if snapshot["valve_open"] else "STENGT")
+		+ "TEMPERATURVERN         %s\n\n" % guard_state
+		+ process_message + "\n\n"
+		+ "1 — start/stopp pumpe\n"
+		+ "2 — endre temperaturmål\n"
+		+ "Ventilen betjenes ute i anlegget\n"
+		+ "Esc — lukk"
+	)
 
 
 func _initialize_persistence() -> void:
@@ -1108,6 +1293,9 @@ func _apply_snapshot(snapshot: Dictionary) -> Dictionary:
 	batch_report_visible = false
 	contract_selection_visible = false
 	contract_selection_source_id = ""
+	control_station_visible = false
+	control_station_feedback = ""
+	control_station_feedback_is_error = false
 	discard_confirmation_time_left = 0.0
 	discard_confirmation_revision = -1
 	_update_unit_statuses()

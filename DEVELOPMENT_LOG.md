@@ -93,6 +93,19 @@
     the active feed's temperature and quality requirements.
   - Upgraded persistence to format 2 and added strict format-1 migration to a
     Standard contract without a free batch or retroactive delivery bonus.
+- Milestone 5 completed:
+  - Added the fixed LS-201 local control station on the west side of Area 02,
+    unlocked only after the player completes the refinery manually once.
+  - Added active-route telemetry for source level, heater temperature and
+    target, actual flow, product levels, pump command and manual-valve state.
+  - Added remote start/stop for the active-route pump and remote cycling of the
+    existing heater target without introducing a second process-state owner.
+  - Added a remote-start temperature permissive and trip which uses the loaded
+    Standard or Heavy contract range and stops before unsafe material transfer.
+  - Kept field-start behavior unchanged and the manual valve field-only, so
+    closed-valve LOW FLOW remains an intentional troubleshooting lesson.
+  - Added a live modal panel, truthful idle/guard/alarm feedback, save-safe
+    transient state, and an explicit unlock location in the batch report.
 
 ## Validation
 
@@ -144,6 +157,23 @@
   - save system: 45 checks passed;
   - main scene and full headless editor/resource scan passed with no logged
     parser, resource, runtime, or script errors.
+- Milestone 5 focused validation:
+  - LS-201 telemetry matched exact route state before, during and after flow;
+  - a closed manual valve held flow and mass at zero after remote pump start;
+  - remote temperature protection blocked cold starts and tripped before an
+    out-of-range tick could transfer material;
+  - spare equipment and invalid topology could not be controlled remotely;
+  - the live panel blocked field/build input and preserved modal state as
+    transient across saves.
+- Final Milestone 5 regression with isolated log files:
+  - pilot/economy: 23 checks passed;
+  - process network: 59 checks passed;
+  - building system: 41 checks passed;
+  - built refinery: 116 checks passed;
+  - Main integration: 53 checks passed;
+  - save system: 46 checks passed;
+  - main scene and full headless editor/resource scan passed with no logged
+    parser, resource, runtime, or script errors.
 
 ## Bugs Found
 
@@ -172,6 +202,8 @@
 - Early contract UI drafts could describe an overheated Heavy batch as ready,
   advertise a new purchase while old products remained, or show a fictitious
   0 °C process average before any production.
+- Early LS-201 feedback showed a fictitious 0 °C target while idle and let a
+  stale successful command hide a later LOW FLOW alarm.
 
 ## Bugs Fixed
 
@@ -194,10 +226,12 @@
   transactions and material-empty switching rules across disconnected tanks.
 - Made high/low temperature guidance, source prompts, empty-process sales and
   report-dismiss messages agree with the actual contract and inventory state.
+- Made LS-201 idle state, remote-guard mode and alarm priority agree with the
+  active batch and actual process condition.
 
 ## Current Stable State
 
-- Version 0.7.0 is verified stable after Milestone 4.
+- Version 0.8.0 is verified stable after Milestone 5.
 - The original pilot loop and full player-built loop both pass regression.
 - The first valid Area 02 sale now has a durable achievement and informative
   result, while later paid batches remain repeatable.
@@ -207,6 +241,9 @@
   the same mass, process conditions, economy and construction on next launch.
 - After commissioning, the same refinery now supports two economically and
   operationally distinct feed choices instead of repeating one 200 °C recipe.
+- After proving manual operation, the player can monitor the active route from
+  LS-201 and use limited remote control with a feed-aware temperature trip,
+  while still walking into the plant to operate and troubleshoot the valve.
 
 ## Known Issues
 
@@ -240,6 +277,8 @@
 
 ## Next Best Action
 
-- Add starter instrumentation and limited automation so the player can monitor
-  temperature, flow and tank level from a compact control point after proving
-  the manual refinery loop.
+- Perform a hands-on 1280 x 720 playthrough focused on port targeting,
+  local-station readability and the walking distance between source, valve,
+  terminal and LS-201. Then reassess whether the next vertical improvement
+  should deepen laboratory sampling/troubleshooting or add a second operating
+  objective; do not expand automation until the current controls feel good.

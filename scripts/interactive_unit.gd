@@ -77,5 +77,7 @@ func interaction_prompt() -> String:
 			return "E — endre temperaturmål"
 		"sales_terminal":
 			return "E — analyser og selg diesel"
+		"area02_control":
+			return "E — åpne LS-201 lokalstasjon"
 		_:
 			return "E — inspiser %s" % display_name

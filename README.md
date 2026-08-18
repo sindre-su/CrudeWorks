@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.7 – råoljekontrakter**
+**Prototypeversjon: 0.8 – LS-201 lokalstasjon**
 
 En liten 3D-prototype der spilleren driver et forenklet pilotraffineri. Første mål
 er å behandle 1 000 liter råolje og selge minst 200 liter diesel med 90 % eller
@@ -33,6 +33,8 @@ Den første komplette «vertical slice»-en inneholder:
 - valg mellom Standard og Tung råolje etter oppstartskontrakten
 - råoljespesifikke temperaturmål, fraksjoner, kvalitet og kontraktøkonomi
 - trygg automatisk migrering av eldre 0.6-lagringer til Standard-råolje
+- LS-201 lokalstasjon med live nivå-, temperatur- og flowinstrumenter
+- fjernstyrt pumpe og temperaturmål med temperaturvern ved fjernstart
 
 Alle objekter er foreløpig bygget av Godots primitive 3D-former. Det gjør at vi
 kan teste gameplay før vi bruker tid på modeller og grafikk.
@@ -86,6 +88,7 @@ batch som Standard-råolje uten å gi en ny batch eller bonus.
 | R | Pilot: ny batch. Område 02: trykk to ganger for sikker produkttømming |
 | Enter | Lukk batchrapport |
 | 1 / 2 | Velg Standard eller Tung råolje når leveransevinduet er åpent |
+| 1 / 2 | LS-201: start/stopp pumpe eller endre temperaturmål |
 | Esc | Frigjør musepekeren |
 
 ### Byggemodus
@@ -152,6 +155,15 @@ Etter godkjent oppstart åpner `E` på en tom kildetank leveransevalget:
 Råoljetypen låses til batchen. En ny type kan først velges når alle bygde tanker
 er tomme og pumpen er stoppet. Batchrapporten viser valgt råolje, faktisk
 snittemperatur, temperaturmål, dieselsalg, eventuell bonus, kostnad og resultat.
+
+Etter den første godkjente Område 02-leveransen låses **LS-201** opp på
+vestsiden av byggeområdet. Lokalstasjonen viser den aktive linjens kildenivå,
+temperatur, faktisk flow, dieselvolum, pumpe og ventil i sanntid. Tast `1`
+fjernstarter eller stopper pumpen, mens `2` endrer varmeenhetens temperaturmål.
+Ved fjernstart sperres en kald eller overopphetet prosess, og temperaturvernet
+stopper pumpen før mer materiale behandles dersom temperaturen forlater det
+godkjente området. Ventilen er fortsatt feltbetjent, slik at `LOW FLOW` må
+diagnostiseres og rettes ute i anlegget.
 
 Hvis en batch blir off-spec, forklarer
 terminalen at `R` kan sende bygde produkter til sikker avfallshåndtering uten

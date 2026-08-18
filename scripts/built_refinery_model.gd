@@ -27,6 +27,8 @@ var last_status := "Bygg og valider prosesslinjen."
 var _report_crude_processed_l := 0.0
 var _report_temperature_total := 0.0
 var _report_crude_cost := 0.0
+var _remote_guard_pump_id := ""
+var _remote_guard_trip_message := ""
 
 
 func _init(p_network = null) -> void:
@@ -96,6 +98,8 @@ func apply_saved_state(state: Dictionary) -> void:
 			"column":
 				target["processed_total_l"] = float(saved["processed_total_l"])
 	actual_flow_lps = 0.0
+	_remote_guard_pump_id = ""
+	_remote_guard_trip_message = ""
 	last_status = "Spill lastet. Alle pumper er stoppet av sikkerhetshensyn."
 
 
@@ -145,6 +149,7 @@ func unregister_unit(unit_id: String) -> void:
 
 func _on_topology_changed() -> void:
 	_stop_all_pumps()
+	_remote_guard_trip_message = ""
 	last_status = network.validate_configuration()["message"]
 
 
@@ -166,7 +171,12 @@ func interact(unit_id: String, can_pay_for_crude := false) -> Dictionary:
 		return _result(false, "Ukjent bygd utstyr.")
 	match equipment[unit_id]["type"]:
 		"pump":
-			return _toggle_pump(unit_id)
+			var pump_result := _toggle_pump(unit_id)
+			if pump_result["ok"]:
+				_remote_guard_trip_message = ""
+				if not equipment[unit_id]["running"]:
+					_remote_guard_pump_id = ""
+			return pump_result
 		"valve":
 			return _toggle_valve(unit_id)
 		"heater":
@@ -345,6 +355,20 @@ func tick(delta: float) -> void:
 	var valve: Dictionary = equipment[route["valve"]]
 	var heater: Dictionary = equipment[route["heater"]]
 	var profile := contract_definition()
+	if pump["running"] and _remote_guard_pump_id == route["pump"]:
+		var safe_range := CrudeCatalog.approved_temperature_range(active_contract_id)
+		if (
+			not CrudeCatalog.is_valid(active_contract_id)
+			or heater["temperature_c"] < safe_range.x
+			or heater["temperature_c"] > safe_range.y
+		):
+			pump["running"] = false
+			pump["actual_flow_lps"] = 0.0
+			actual_flow_lps = 0.0
+			_remote_guard_pump_id = ""
+			_remote_guard_trip_message = "PUMPE STOPPET AV TEMPERATURVERN — TT-201 %.0f °C." % heater["temperature_c"]
+			last_status = _remote_guard_trip_message
+			return
 	if not pump["running"]:
 		if source["volume_l"] <= 0.001 or source["contents"] != "crude":
 			last_status = (
@@ -367,6 +391,7 @@ func tick(delta: float) -> void:
 		return
 	if source["volume_l"] <= 0.001 or source["contents"] != "crude":
 		pump["running"] = false
+		_remote_guard_pump_id = ""
 		last_status = "LOW FLOW — råoljetanken er tom."
 		return
 	if not CrudeCatalog.is_valid(active_contract_id):
@@ -402,6 +427,7 @@ func tick(delta: float) -> void:
 		pump["running"] = false
 		pump["actual_flow_lps"] = 0.0
 		actual_flow_lps = 0.0
+		_remote_guard_pump_id = ""
 		last_status = "Batch ferdig. Kontroller dieselkvaliteten ved LAB / SALG."
 
 
@@ -658,6 +684,98 @@ func alarm_text() -> String:
 	return _process_alarm_text()
 
 
+func control_snapshot() -> Dictionary:
+	if not commissioning_contract_complete:
+		return {
+			"unlocked": false,
+			"valid": false,
+			"message": "Fullfør oppstarten av Område 02 for å låse opp LS-201.",
+		}
+	var validation: Dictionary = network.validate_configuration()
+	if not validation["valid"]:
+		return {
+			"unlocked": true,
+			"valid": false,
+			"message": validation["message"],
+		}
+	var route: Dictionary = validation["route"]
+	var source: Dictionary = equipment[route["source"]]
+	var pump: Dictionary = equipment[route["pump"]]
+	var valve: Dictionary = equipment[route["valve"]]
+	var heater: Dictionary = equipment[route["heater"]]
+	var products: Dictionary = route["products"]
+	var light_tank: Dictionary = equipment[products["light"]]
+	var diesel_tank: Dictionary = equipment[products["diesel"]]
+	var heavy_tank: Dictionary = equipment[products["heavy"]]
+	var profile := contract_definition()
+	return {
+		"unlocked": true,
+		"valid": true,
+		"crude_name": profile["short_name"] if CrudeCatalog.is_valid(active_contract_id) else "INGEN",
+		"ideal_temperature_c": float(profile["ideal_temperature_c"]) if CrudeCatalog.is_valid(active_contract_id) else 0.0,
+		"source_volume_l": float(source["volume_l"]),
+		"source_capacity_l": float(source["capacity_l"]),
+		"source_level_percent": 100.0 * float(source["volume_l"]) / float(source["capacity_l"]),
+		"heater_temperature_c": float(heater["temperature_c"]),
+		"heater_setpoint_c": float(heater["setpoint_c"]),
+		"pump_running": bool(pump["running"]),
+		"actual_flow_lps": float(pump["actual_flow_lps"]),
+		"valve_open": bool(valve["open"]),
+		"light_volume_l": float(light_tank["volume_l"]),
+		"diesel_volume_l": float(diesel_tank["volume_l"]),
+		"diesel_quality_percent": float(diesel_tank["quality_percent"]),
+		"heavy_volume_l": float(heavy_tank["volume_l"]),
+		"temperature_guard_active": _remote_guard_pump_id == route["pump"],
+		"temperature_trip_message": _remote_guard_trip_message,
+		"alarm": alarm_text(),
+		"status": last_status,
+	}
+
+
+func remote_toggle_route_pump() -> Dictionary:
+	if not commissioning_contract_complete:
+		return _result(false, "LS-201 låses opp etter første godkjente Område 02-batch.")
+	var validation: Dictionary = network.validate_configuration()
+	if not validation["valid"]:
+		return _result(false, validation["message"])
+	var route: Dictionary = validation["route"]
+	var pump: Dictionary = equipment[route["pump"]]
+	if pump["running"]:
+		var stop_result := _toggle_pump(route["pump"])
+		_remote_guard_pump_id = ""
+		return stop_result
+	if not CrudeCatalog.is_valid(active_contract_id):
+		return _result(false, "START SPERRET — last råolje før fjernstart brukes.")
+	var source: Dictionary = equipment[route["source"]]
+	if source["contents"] != "crude" or source["volume_l"] <= 0.001:
+		return _result(false, "START SPERRET — LT-201 viser tom kildetank.")
+	var heater: Dictionary = equipment[route["heater"]]
+	var profile := contract_definition()
+	var safe_range := CrudeCatalog.approved_temperature_range(active_contract_id)
+	if heater["temperature_c"] < safe_range.x or heater["temperature_c"] > safe_range.y:
+		last_status = "START SPERRET — TT-201 %.0f °C; %s krever %.0f–%.0f °C." % [
+			heater["temperature_c"], profile["short_name"], safe_range.x, safe_range.y,
+		]
+		return _result(false, last_status)
+	var start_result := _toggle_pump(route["pump"])
+	if start_result["ok"]:
+		_remote_guard_pump_id = route["pump"]
+		_remote_guard_trip_message = ""
+	return start_result
+
+
+func remote_cycle_route_heater() -> Dictionary:
+	if not commissioning_contract_complete:
+		return _result(false, "LS-201 låses opp etter første godkjente Område 02-batch.")
+	var validation: Dictionary = network.validate_configuration()
+	if not validation["valid"]:
+		return _result(false, validation["message"])
+	var result := _cycle_heater(validation["route"]["heater"])
+	if result["ok"]:
+		_remote_guard_trip_message = ""
+	return result
+
+
 func active_connection_keys() -> Dictionary:
 	var route: Dictionary = network.find_complete_route()
 	if route.is_empty():
@@ -738,6 +856,7 @@ func _stop_all_pumps() -> void:
 			state["running"] = false
 			state["actual_flow_lps"] = 0.0
 	actual_flow_lps = 0.0
+	_remote_guard_pump_id = ""
 
 
 func _process_alarm_text() -> String:
@@ -855,6 +974,7 @@ func _clear_contract_if_empty() -> void:
 		return
 	active_contract_id = ""
 	active_contract_bonus_available = false
+	_remote_guard_trip_message = ""
 
 
 func _material_volume_l() -> float:

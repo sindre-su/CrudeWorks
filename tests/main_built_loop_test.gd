@@ -31,6 +31,8 @@ func _run_test() -> void:
 	var validation: Dictionary = main.built_refinery_model.network.validate_configuration()
 	_expect(validation["valid"], "Main placement and connection hooks create a valid refinery route")
 	_expect(main.build_controller.connections.size() == 7, "Main route creates seven logical and visual connections")
+	main._on_unit_interacted("area02_control")
+	_expect(not main.control_station_visible and "låses opp" in main.notification_label.text, "LS-201 remains locked until the built refinery is commissioned manually")
 
 	var source = _unit(main, "built_tank_1")
 	var valve = _unit(main, "built_valve_3")
@@ -62,6 +64,7 @@ func _run_test() -> void:
 	_expect(main.batch_report_visible, "successful built sale opens a persistent batch report")
 	_expect(main.player.input_blocked and main.build_controller.input_blocked, "batch report blocks movement, interaction and build controls")
 	_expect("Råolje behandlet" in main.batch_report_label.text and "Resultat" in main.batch_report_label.text, "batch report explains process yield and economy")
+	_expect("LS-201 lokalstasjon" in main.batch_report_label.text, "first commissioning report clearly unlocks the local control station")
 	_expect("OMRÅDE 02 FULLFØRT" in main.built_refinery_model.objective_text(), "objective changes after commissioning completion")
 	_expect(not main.built_refinery_model.diesel_is_approved(), "Main-integrated sale consumes approved diesel")
 	main._update_unit_statuses()
@@ -73,6 +76,23 @@ func _run_test() -> void:
 	dismiss_event.pressed = true
 	main._unhandled_input(dismiss_event)
 	_expect(not main.batch_report_visible and not main.player.input_blocked and not main.build_controller.input_blocked, "Enter dismisses the report and restores gameplay controls")
+	main._on_unit_interacted("area02_control")
+	_expect(main.control_station_visible and main.player.input_blocked and main.build_controller.input_blocked, "unlocked LS-201 opens a live modal and blocks field/build controls")
+	main._update_user_interface()
+	_expect("LT-201 NIVÅ" in main.control_station_label.text and "TT-201 TEMPERATUR" in main.control_station_label.text and "FT-201 FLOW" in main.control_station_label.text, "LS-201 presents explicit level, temperature and flow instruments with units")
+	_expect("Ingen aktiv råolje" in main.control_station_label.text and "VENTER PÅ RÅOLJE" in main.control_station_label.text, "idle LS-201 clearly waits for crude instead of advertising a zero-degree target")
+	main._update_unit_statuses()
+	_expect("VENTER — RÅOLJE" in main.units["area02_control"].status_label.text, "idle LS-201 world status points the player toward the next delivery")
+	var empty_remote_start := InputEventKey.new()
+	empty_remote_start.keycode = KEY_1
+	empty_remote_start.pressed = true
+	main._unhandled_input(empty_remote_start)
+	_expect(main.control_station_visible and "START SPERRET" in main.control_station_feedback, "LS-201 keeps the panel open and explains an empty-source remote start rejection")
+	var close_control_event := InputEventKey.new()
+	close_control_event.keycode = KEY_ESCAPE
+	close_control_event.pressed = true
+	main._unhandled_input(close_control_event)
+	_expect(not main.control_station_visible and not main.player.input_blocked and not main.build_controller.input_blocked, "Escape closes LS-201 without issuing another process command")
 	main._on_unit_interacted(source.unit_id)
 	_expect(main.contract_selection_visible and main.player.input_blocked and main.build_controller.input_blocked, "empty commissioned source opens a modal crude-delivery choice")
 	var money_before_cancel: int = main.process_model.money
@@ -157,9 +177,36 @@ func _test_heavy_contract_through_main() -> void:
 	var pump = _unit(main, "built_pump_2")
 	main.built_refinery_model.equipment[heater.unit_id]["temperature_c"] = 230.0
 	main.built_refinery_model.equipment[heater.unit_id]["setpoint_c"] = 230.0
+	main._on_unit_interacted("area02_control")
+	var remote_start := InputEventKey.new()
+	remote_start.keycode = KEY_1
+	remote_start.pressed = true
+	main._unhandled_input(remote_start)
+	_expect(main.built_refinery_model.equipment[pump.unit_id]["running"], "Main Heavy batch can start its active-route pump from LS-201")
+	main.built_refinery_model.tick(1.0)
+	main._update_user_interface()
+	_expect("LOW FLOW" in main.control_station_label.text and not ("P-201 er startet" in main.control_station_label.text), "a live LOW FLOW alarm outranks stale successful-command feedback")
+	var close_for_valve := InputEventKey.new()
+	close_for_valve.keycode = KEY_ESCAPE
+	close_for_valve.pressed = true
+	main._unhandled_input(close_for_valve)
 	main._on_unit_interacted(valve.unit_id)
-	main._on_unit_interacted(pump.unit_id)
+	main._on_unit_interacted("area02_control")
+	var light_tank_state: Dictionary = main.built_refinery_model.equipment["built_tank_6"]
+	light_tank_state["contents"] = "light"
+	light_tank_state["volume_l"] = light_tank_state["capacity_l"]
+	main.built_refinery_model.tick(1.0)
+	main._update_user_interface()
+	_expect("er full" in main.control_station_label.text and not ("P-201 er startet" in main.control_station_label.text), "current tank-full status outranks cached remote-start feedback")
+	light_tank_state["contents"] = "empty"
+	light_tank_state["volume_l"] = 0.0
 	main.built_refinery_model.tick(100.0)
+	main._update_user_interface()
+	_expect("220 / 1000 L" in main.control_station_label.text, "LS-201 live diesel level reaches the exact Heavy yield")
+	var close_station := InputEventKey.new()
+	close_station.keycode = KEY_ESCAPE
+	close_station.pressed = true
+	main._unhandled_input(close_station)
 	main._on_unit_interacted("sales_terminal")
 	_expect(main.process_model.money == 3580, "Main Heavy sale credits 1 760 kr product revenue and one 1 000 kr bonus")
 	_expect("BATCH GODKJENT — TUNG" in main.batch_report_label.text and "Kontraktbonus" in main.batch_report_label.text, "Heavy batch report names the feed and explains its bonus")

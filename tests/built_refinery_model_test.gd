@@ -30,6 +30,7 @@ func _run_tests() -> void:
 	_test_standard_contract_regression()
 	_test_heavy_contract_temperature_tradeoff()
 	_test_contract_lifecycle_and_bonus_lock()
+	_test_control_station_telemetry_and_temperature_guard()
 
 
 func _test_invalid_network_cannot_start() -> void:
@@ -335,6 +336,52 @@ func _test_contract_lifecycle_and_bonus_lock() -> void:
 	_expect(not model.can_choose_contract("source")["ok"], "stored Heavy products block contract switching after source depletion")
 	model.sell_diesel()
 	_expect(model.can_choose_contract("source")["ok"] and model.active_contract_id.is_empty(), "successful dispatch clears the finished contract and enables the next choice")
+
+
+func _test_control_station_telemetry_and_temperature_guard() -> void:
+	var model = _complete_model()
+	var locked_snapshot: Dictionary = model.control_snapshot()
+	_expect(not locked_snapshot["unlocked"] and not model.remote_toggle_route_pump()["ok"] and not model.remote_cycle_route_heater()["ok"], "LS-201 telemetry and remote commands stay locked before manual commissioning")
+	model.commissioning_batch_available = false
+	model.commissioning_contract_complete = true
+	model.load_crude_batch("source", true, "standard")
+	var initial: Dictionary = model.control_snapshot()
+	_expect(initial["valid"] and is_equal_approx(initial["source_volume_l"], 1000.0) and is_equal_approx(initial["source_level_percent"], 100.0), "LS-201 source level is derived exactly from the active route tank")
+	_expect(not initial["pump_running"] and not initial["valve_open"] and is_equal_approx(initial["actual_flow_lps"], 0.0), "LS-201 distinguishes pump command, manual valve and actual flow")
+	var mass_before_blocked_start := _total_tank_volume(model)
+	var cold_start: Dictionary = model.remote_toggle_route_pump()
+	_expect(not cold_start["ok"] and "START SPERRET" in cold_start["message"] and not model.equipment["pump"]["running"], "temperature guard blocks a cold remote pump start without changing command state")
+	_expect(is_equal_approx(_total_tank_volume(model), mass_before_blocked_start), "blocked remote start cannot move or create material")
+	model.equipment["heater"]["temperature_c"] = 200.0
+	model.equipment["heater"]["setpoint_c"] = 200.0
+	_expect(model.remote_toggle_route_pump()["ok"], "safe remote pump start uses the active route pump")
+	model.tick(1.0)
+	var low_flow: Dictionary = model.control_snapshot()
+	_expect(low_flow["pump_running"] and is_equal_approx(low_flow["actual_flow_lps"], 0.0) and "LOW FLOW" in low_flow["alarm"], "remote start cannot bypass the closed manual valve or its LOW FLOW lesson")
+	_expect(is_equal_approx(_total_tank_volume(model), mass_before_blocked_start), "remote LOW FLOW leaves every tank volume unchanged")
+	model.interact("valve")
+	model.tick(1.0)
+	var flowing: Dictionary = model.control_snapshot()
+	_expect(is_equal_approx(flowing["source_volume_l"], 990.0) and is_equal_approx(flowing["actual_flow_lps"], 10.0), "live LS-201 telemetry follows actual source loss and flow")
+	_expect(is_equal_approx(flowing["light_volume_l"], 3.0) and is_equal_approx(flowing["diesel_volume_l"], 3.5) and is_equal_approx(flowing["heavy_volume_l"], 3.5), "live product instruments match the exact mass-conserving split")
+	_expect(model.remote_toggle_route_pump()["ok"] and not model.equipment["pump"]["running"] and is_equal_approx(model.actual_flow_lps, 0.0), "remote stop clears commanded and actual flow immediately")
+	model.register_unit("spare_heater_control", "heater", "H-299")
+	var spare_target: float = model.equipment["spare_heater_control"]["setpoint_c"]
+	var route_target_before: float = model.equipment["heater"]["setpoint_c"]
+	_expect(model.remote_cycle_route_heater()["ok"] and model.equipment["heater"]["setpoint_c"] != route_target_before and is_equal_approx(model.equipment["spare_heater_control"]["setpoint_c"], spare_target), "remote heater control affects only the active route heater")
+	model.equipment["heater"]["temperature_c"] = 200.0
+	model.equipment["heater"]["setpoint_c"] = 200.0
+	model.remote_toggle_route_pump()
+	var mass_before_trip := _total_tank_volume(model)
+	model.equipment["heater"]["temperature_c"] = 220.0
+	model.equipment["heater"]["setpoint_c"] = 220.0
+	model.tick(1.0)
+	var tripped: Dictionary = model.control_snapshot()
+	_expect(not tripped["pump_running"] and "PUMPE STOPPET AV TEMPERATURVERN" in tripped["temperature_trip_message"], "remote temperature guard trips the pump before unsafe processing")
+	_expect(is_equal_approx(_total_tank_volume(model), mass_before_trip), "temperature trip occurs before another material transfer")
+	model.network.disconnect_ports("valve", "output", "heater", "input")
+	var invalid_snapshot: Dictionary = model.control_snapshot()
+	_expect(not invalid_snapshot["valid"] and not model.remote_toggle_route_pump()["ok"], "invalid topology disables LS-201 control with the graph's readable error")
 
 
 func _complete_model():
