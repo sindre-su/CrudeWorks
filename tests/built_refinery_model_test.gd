@@ -38,6 +38,7 @@ func _run_tests() -> void:
 	_test_off_route_product_blocks_dispatch()
 	_test_adjustable_pump_flow_and_quality_tradeoff()
 	_test_recoverable_pump_filter_fault()
+	_test_sour_crude_requires_treatment()
 
 
 func _test_invalid_network_cannot_start() -> void:
@@ -203,6 +204,48 @@ func _test_recoverable_pump_filter_fault() -> void:
 	model.interact("pump")
 	model.tick(1.0)
 	_expect(is_equal_approx(model.actual_flow_lps, 15.0), "repair restores the selected pump capacity without resetting the batch")
+
+
+func _test_sour_crude_requires_treatment() -> void:
+	var untreated = _complete_model()
+	untreated.commissioning_batch_available = false
+	untreated.commissioning_contract_complete = true
+	_expect(untreated.load_crude_batch("source", true, "sour")["charge"] == 120, "Sour crude is a controlled lower-cost feedstock purchase")
+	untreated.equipment["heater"]["temperature_c"] = 200.0
+	untreated.equipment["heater"]["setpoint_c"] = 200.0
+	untreated.interact("valve")
+	untreated.interact("pump")
+	untreated.tick(100.0)
+	_expect(is_equal_approx(untreated.equipment["diesel_tank"]["volume_l"], 350.0), "untreated Sour crude preserves the established mass-conserving fraction volume")
+	_expect(is_equal_approx(untreated.equipment["diesel_tank"]["sulfur_ppm"], 500.0), "direct Sour diesel retains its high sulfur state")
+	var untreated_sample: Dictionary = untreated.take_diesel_sample("diesel_tank")
+	var untreated_lab: Dictionary = untreated.analyze_diesel_sample()
+	_expect(untreated_sample["ok"] and not untreated_lab["approved"] and "Dieselbehandling kreves" in untreated_lab["deviation"], "LAB rejects untreated Sour diesel with a clear treatment requirement")
+	_expect(not untreated.sell_diesel()["ok"], "untreated Sour diesel cannot bypass LAB approval or dispatch")
+
+	var treated = _treated_model()
+	treated.commissioning_batch_available = false
+	treated.commissioning_contract_complete = true
+	treated.load_crude_batch("source", true, "sour")
+	treated.equipment["heater"]["temperature_c"] = 200.0
+	treated.equipment["heater"]["setpoint_c"] = 200.0
+	treated.interact("valve")
+	treated.interact("treatment")
+	treated.interact("pump")
+	var mass_before := _total_tank_volume(treated)
+	treated.tick(100.0)
+	_expect(is_equal_approx(_total_tank_volume(treated), mass_before), "active diesel treatment preserves the Sour batch mass balance")
+	_expect(is_equal_approx(treated.equipment["diesel_tank"]["sulfur_ppm"], 10.0), "active treatment reduces Sour diesel sulfur to the approved simplified state")
+	_expect(is_equal_approx(treated.equipment["treatment"]["processed_total_l"], 350.0), "treatment records exactly the diesel fraction it processes")
+	var treated_sample: Dictionary = treated.take_diesel_sample("diesel_tank")
+	var treated_lab: Dictionary = treated.analyze_diesel_sample()
+	_expect(treated_sample["ok"] and treated_lab["approved"], "treated Sour diesel becomes sample-approved at LAB-101")
+	var sale: Dictionary = treated.sell_diesel()
+	_expect(sale["ok"] and sale["revenue"] == 2800 and is_equal_approx(treated.equipment["diesel_tank"]["volume_l"], 0.0), "treated Sour delivery sells once and consumes its authorized inventory")
+	var saved: Dictionary = treated.save_state()
+	var restored = _treated_model()
+	restored.apply_saved_state(saved)
+	_expect(restored.equipment["treatment"]["running"] and is_equal_approx(restored.equipment["diesel_tank"]["sulfur_ppm"], 0.0), "treatment operating state and treated inventory quality survive save/load safely")
 
 
 func _test_mass_conserving_ideal_batch_and_sale() -> void:
@@ -715,6 +758,15 @@ func _complete_model():
 	model.network.try_connect("column", "light", "light_tank", "input")
 	model.network.try_connect("column", "diesel", "diesel_tank", "input")
 	model.network.try_connect("column", "heavy", "heavy_tank", "input")
+	return model
+
+
+func _treated_model():
+	var model = _complete_model()
+	model.register_unit("treatment", "treatment", "HT-201")
+	model.network.disconnect_ports("column", "diesel", "diesel_tank", "input")
+	model.network.try_connect("column", "diesel", "treatment", "input")
+	model.network.try_connect("treatment", "output", "diesel_tank", "input")
 	return model
 
 

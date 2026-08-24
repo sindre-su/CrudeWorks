@@ -23,6 +23,7 @@ func _run_tests() -> void:
 	_test_removal_cleanup()
 	_test_actionable_missing_connection()
 	_test_second_complete_route_is_rejected()
+	_test_optional_diesel_treatment_route()
 
 
 func _test_valid_topology() -> void:
@@ -32,6 +33,17 @@ func _test_valid_topology() -> void:
 	_expect(network.connection_count() == 7, "complete refinery uses seven directed connections including the manual valve")
 	_expect(validation["route"]["valve"] == "valve", "complete route exposes the required manual valve")
 	_expect(validation["route"]["products"].size() == 3, "route resolves three distinct product tanks")
+
+
+func _test_optional_diesel_treatment_route() -> void:
+	var network = _complete_network()
+	_register(network, "treatment", "treatment", "HT-201")
+	_expect(network.disconnect_ports("column", "diesel", "diesel_tank", "input"), "direct diesel branch can be rerouted through treatment")
+	_expect(network.try_connect("column", "diesel", "treatment", "input")["ok"], "column diesel outlet accepts the treatment input")
+	_expect(network.try_connect("treatment", "output", "diesel_tank", "input")["ok"], "treatment outlet accepts the final diesel tank")
+	var validation: Dictionary = network.validate_configuration()
+	_expect(validation["valid"] and validation["route"]["treatment"] == "treatment", "a treatment branch is a valid single refinery route")
+	_expect(network.connection_count() == 8, "treatment route adds one directed connection without duplicating a product path")
 
 
 func _test_direction_and_order() -> void:

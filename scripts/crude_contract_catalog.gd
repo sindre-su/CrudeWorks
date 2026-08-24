@@ -2,7 +2,7 @@ class_name CrudeContractCatalog
 extends RefCounted
 
 const DEFAULT_ID := "standard"
-const ORDER := ["standard", "heavy"]
+const ORDER := ["standard", "heavy", "sour"]
 
 
 static func definition(contract_id: String) -> Dictionary:
@@ -16,6 +16,8 @@ static func definition(contract_id: String) -> Dictionary:
 				"purchase_cost": 300,
 				"ideal_temperature_c": 200.0,
 				"minimum_quality_percent": 90.0,
+				"maximum_sulfur_ppm": 50.0,
+				"diesel_sulfur_ppm": 10.0,
 				"diesel_target_l": 200.0,
 				"delivery_product": "diesel",
 				"delivery_product_name": "Diesel",
@@ -34,6 +36,8 @@ static func definition(contract_id: String) -> Dictionary:
 				"purchase_cost": 180,
 				"ideal_temperature_c": 230.0,
 				"minimum_quality_percent": 90.0,
+				"maximum_sulfur_ppm": 50.0,
+				"diesel_sulfur_ppm": 10.0,
 				"diesel_target_l": 200.0,
 				"delivery_product": "heavy",
 				"delivery_product_name": "Tung fraksjon",
@@ -42,6 +46,26 @@ static func definition(contract_id: String) -> Dictionary:
 				"delivery_bonus": 1000,
 				"quality_penalty_per_degree": 1.2,
 				"description": "mål 230 °C • tungfraksjon ≥ 600 L • diesel ≥ 200 L / 90 %",
+			}
+		"sour":
+			return {
+				"id": "sour",
+				"display_name": "Sour råolje",
+				"short_name": "SOUR",
+				"order_name": "SOUR DIESELLEVERANSE",
+				"purchase_cost": 120,
+				"ideal_temperature_c": 200.0,
+				"minimum_quality_percent": 90.0,
+				"maximum_sulfur_ppm": 50.0,
+				"diesel_sulfur_ppm": 500.0,
+				"diesel_target_l": 200.0,
+				"delivery_product": "diesel",
+				"delivery_product_name": "Diesel",
+				"delivery_target_l": 200.0,
+				"diesel_price_per_l": 8.0,
+				"delivery_bonus": 0,
+				"quality_penalty_per_degree": 1.15,
+				"description": "120 kr • mål 200 °C • krever dieselbehandling før utsending",
 			}
 	return {}
 
@@ -63,7 +87,7 @@ static func fractions_for_temperature(contract_id: String, temperature_c: float)
 		if temperature_c <= 250.0:
 			return Vector3(0.28, 0.20, 0.52)
 		return Vector3(0.40, 0.15, 0.45)
-	# Standard is exactly the proven v0.6 curve.
+	# Standard and Sour use the proven v0.6 curve; Sour differs by specification.
 	if temperature_c < 170.0:
 		return Vector3(0.08, 0.12, 0.80)
 	if temperature_c < 185.0:

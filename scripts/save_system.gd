@@ -385,6 +385,8 @@ static func _validate_equipment_state(state: Dictionary) -> Dictionary:
 				return _result(false, "En lagret tank har ugyldig temperatur eller kvalitet.")
 			if not _in_range(state["crude_cost_per_l"], 0.0, 1000.0):
 				return _result(false, "En lagret tank har ugyldig råoljekost.")
+			if state.has("sulfur_ppm") and (not _finite_number(state["sulfur_ppm"]) or not _in_range(state["sulfur_ppm"], 0.0, 1000000.0)):
+				return _result(false, "En lagret tank har ugyldig svovelinnhold.")
 		"pump":
 			if state.has("flow_setpoint_lps"):
 				if not _finite_number(state["flow_setpoint_lps"]):
@@ -412,6 +414,9 @@ static func _validate_equipment_state(state: Dictionary) -> Dictionary:
 		"column":
 			if not _finite_number(state.get("processed_total_l")) or float(state["processed_total_l"]) < 0.0:
 				return _result(false, "En lagret kolonne har ugyldig prosessteller.")
+		"treatment":
+			if typeof(state.get("running")) != TYPE_BOOL or not _finite_number(state.get("processed_total_l")) or float(state["processed_total_l"]) < 0.0:
+				return _result(false, "En lagret dieselbehandler har ugyldig tilstand.")
 		_:
 			return _result(false, "Ukjent lagret utstyrstype.")
 	return _result(true, "Utstyrstilstanden er gyldig.")

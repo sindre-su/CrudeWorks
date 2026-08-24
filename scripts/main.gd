@@ -686,6 +686,8 @@ func _update_unit_statuses() -> void:
 				and active_route.get("column", "") == built_unit.unit_id,
 				Color("75ddff")
 			)
+		elif state.get("type", "") == "treatment":
+			built_unit.set_active(state["running"], Color("7fc8ff"))
 
 
 func _update_process_visuals(delta: float) -> void:
@@ -1047,6 +1049,7 @@ func _open_contract_selection(source_id: String) -> void:
 func _update_contract_selection_text(error_text := "") -> void:
 	var standard := CrudeCatalogScript.definition("standard")
 	var heavy := CrudeCatalogScript.definition("heavy")
+	var sour := CrudeCatalogScript.definition("sour")
 	contract_selection_label.text = (
 		"LEVERINGSORDRE — VELG 1 000 L\nPenger: %d kr\n\n" % process_model.money
 		+ "1 %s / %s — %d kr\n  %s\n\n" % [
@@ -1055,8 +1058,11 @@ func _update_contract_selection_text(error_text := "") -> void:
 		+ "2 %s / %s — %d kr\n  %s • bonus +%d kr\n\n" % [
 			heavy["order_name"], heavy["short_name"], heavy["purchase_cost"], heavy["description"], heavy["delivery_bonus"],
 		]
+		+ "3 %s / %s — %d kr\n  %s\n\n" % [
+			sour["order_name"], sour["short_name"], sour["purchase_cost"], sour["description"],
+		]
 		+ (error_text + "\n\n" if not error_text.is_empty() else "")
-		+ "1 / 2 — kjøp og last    Esc — avbryt"
+		+ "1 / 2 / 3 — kjøp og last    Esc — avbryt"
 	)
 
 
@@ -1068,6 +1074,8 @@ func _handle_contract_selection_input(event: InputEventKey) -> void:
 		_select_contract("standard")
 	elif event.keycode == KEY_2:
 		_select_contract("heavy")
+	elif event.keycode == KEY_3:
+		_select_contract("sour")
 
 
 func _select_contract(contract_id: String) -> void:

@@ -157,6 +157,9 @@ func validate_configuration() -> Dictionary:
 		if outgoing_edge(column_id, product_port).is_empty():
 			var label: String = Catalog.port_definition("column", product_port)["label"]
 			return _validation_result("Kolonnens %s-utløp trenger en produkttank." % label)
+	var diesel_edge := outgoing_edge(column_id, "diesel")
+	if _unit_type(diesel_edge["to_unit"]) == "treatment" and outgoing_edge(diesel_edge["to_unit"], "output").is_empty():
+		return _validation_result("Dieselbehandlerens utløp trenger en dieseltank.")
 	return _validation_result("Prosesslinjen er ikke komplett.")
 
 
@@ -186,12 +189,25 @@ func find_complete_routes() -> Array[Dictionary]:
 		var column_id: String = heater_edge["to_unit"]
 		var products := {}
 		var complete := true
+		var treatment_id := ""
 		for product_port in ["light", "diesel", "heavy"]:
 			var product_edge := outgoing_edge(column_id, product_port)
-			if product_edge.is_empty() or _unit_type(product_edge["to_unit"]) != "tank":
+			if product_edge.is_empty():
 				complete = false
 				break
-			products[product_port] = product_edge["to_unit"]
+			var destination_type := _unit_type(product_edge["to_unit"])
+			if product_port == "diesel" and destination_type == "treatment":
+				treatment_id = product_edge["to_unit"]
+				var treatment_edge := outgoing_edge(treatment_id, "output")
+				if treatment_edge.is_empty() or _unit_type(treatment_edge["to_unit"]) != "tank":
+					complete = false
+					break
+				products[product_port] = treatment_edge["to_unit"]
+			elif destination_type == "tank":
+				products[product_port] = product_edge["to_unit"]
+			else:
+				complete = false
+				break
 		if complete:
 			routes.append({
 				"source": source_id,
@@ -199,6 +215,7 @@ func find_complete_routes() -> Array[Dictionary]:
 				"valve": valve_id,
 				"heater": heater_id,
 				"column": column_id,
+				"treatment": treatment_id,
 				"products": products,
 			})
 	return routes

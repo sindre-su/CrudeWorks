@@ -184,4 +184,6 @@ func interaction_prompt() -> String:
 			return "E — endre temperaturmål"
 		"column":
 			return "E — inspiser destillasjon"
+		"treatment":
+			return "E — start/stopp dieselbehandler"
 	return "E — inspiser bygd utstyr"

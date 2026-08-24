@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.12 – første vedlikeholdsfeil**
+**Prototypeversjon: 0.13 – Sour råolje og dieselbehandling**
 
 En liten 3D-prototype der spilleren driver et forenklet pilotraffineri. Første mål
 er å behandle 1 000 liter råolje og selge minst 200 liter diesel med 90 % eller
@@ -45,6 +45,8 @@ Den første komplette «vertical slice»-en inneholder:
   avveiing mellom produksjonstid og temperaturmargin
 - første vedlikeholdshendelse: vedvarende høy flow kan gi en diagnostiserbar
   filterrestriksjon som må undersøkes og repareres i felt
+- Sour råolje med høy svovelstatus og en byggbar dieselbehandler som gjør
+  off-spec diesel salgbar uten å endre materialmengden
 
 Alle objekter er foreløpig bygget av Godots primitive 3D-former. Det gjør at vi
 kan teste gameplay før vi bruker tid på modeller og grafikk.
@@ -99,7 +101,7 @@ batch som Standard-råolje uten å gi en ny batch eller bonus.
 | F | Område 02: undersøk eller rens en pumpe med driftsavvik |
 | R | Pilot: ny batch. Område 02: trykk to ganger for sikker produkttømming |
 | Enter | Send godkjent labbatch eller lukk batchrapport |
-| 1 / 2 | Velg Standard eller Tung råolje når leveransevinduet er åpent |
+| 1 / 2 / 3 | Velg Standard, Tung eller Sour råolje når leveransevinduet er åpent |
 | 1 / 2 / 3 | LS-201: start/stopp pumpe, endre temperaturmål eller flowmål |
 | Esc | Frigjør musepekeren |
 
@@ -111,7 +113,7 @@ Byggemodus låses opp når den første dieselbatchen er solgt.
 | --- | --- |
 | B | Åpne eller lukke byggemodus |
 | 1–4 | Velg tank, pumpe, varmeenhet eller destillasjonskolonne |
-| 5 | Velg manuell ventil |
+| 5 / 6 | Velg manuell ventil eller dieselbehandler |
 | Q / E | Roter forhåndsvisningen |
 | Venstreklikk | Plasser eller bekreft valgt handling |
 | X | Bytt til fjerningsmodus; fjerning gir full refusjon |

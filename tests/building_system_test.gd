@@ -31,6 +31,11 @@ func _run_tests() -> void:
 	controller._input(valve_key)
 	_expect(controller.selected_type == "valve", "key 5 selects the new manual valve without changing keys 1-4")
 	_expect(controller.ghost.has_node("PreviewInputPort") and controller.ghost.has_node("PreviewOutputPort"), "manual-valve preview exposes readable IN and OUT ports")
+	var treatment_key := InputEventKey.new()
+	treatment_key.keycode = KEY_6
+	treatment_key.pressed = true
+	controller._input(treatment_key)
+	_expect(controller.selected_type == "treatment", "key 6 selects the diesel treatment unit")
 	controller.set_build_mode(false)
 
 	_test_catalog()
@@ -46,7 +51,7 @@ func _run_tests() -> void:
 
 
 func _test_catalog() -> void:
-	_expect(Catalog.ORDER.size() == 5, "catalog exposes five starter machine types including the valve")
+	_expect(Catalog.ORDER.size() == 6, "catalog exposes the diesel treatment unit alongside the starter machines")
 	for equipment_type in Catalog.ORDER:
 		var definition: Dictionary = Catalog.definition(equipment_type)
 		_expect(not definition.is_empty(), "%s has a catalog definition" % equipment_type)
@@ -65,6 +70,10 @@ func _test_units_and_footprints(world: Node3D) -> void:
 	world.add_child(column)
 	_expect(column.ports_of_kind("output").size() == 3, "distillation column exposes three labelled product outlets")
 	_expect(column.get_port("diesel") != null, "column exposes a dedicated diesel outlet")
+	var treatment = BuildableUnitScript.new()
+	treatment.configure_buildable("treatment", 11)
+	world.add_child(treatment)
+	_expect(is_instance_valid(treatment.input_port) and is_instance_valid(treatment.output_port), "diesel treatment exposes readable IN and OUT ports")
 	var valve = BuildableUnitScript.new()
 	valve.configure_buildable("valve", 10)
 	world.add_child(valve)

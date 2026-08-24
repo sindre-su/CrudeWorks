@@ -7,8 +7,8 @@
 - `scripts/process_model.gd`: fixed pilot-plant process, economy and original
   training progression.
 - `scripts/built_refinery_model.gd`: Area 02 material, operating state,
-  contracts, quality, lab authorization, dispatch, first recoverable pump fault
-  and process simulation.
+  contracts, sulfur-aware quality, lab authorization, dispatch, first
+  recoverable pump fault and process simulation.
 - `scripts/process_network.gd`: authoritative directed topology. It validates
   ports, equipment order, cycles and the single complete Area 02 route.
 - `scripts/build_controller.gd`: placement, rotation, pipe selection and visual
@@ -25,7 +25,8 @@
 Pilot: heat -> open valve -> start pump -> distill -> sell diesel -> unlock.
 
 Area 02: build -> validate one route -> load contract -> heat -> open manual
-valve -> pump -> fractions -> sample -> lab -> conditional dispatch.
+valve -> pump -> fractions -> optional diesel treatment -> sample -> lab ->
+conditional dispatch.
 
 ## Test map
 

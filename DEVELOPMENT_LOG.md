@@ -178,6 +178,13 @@
   - Repair changes no material, money, contract or quality state. The one-time
     fault state survives save/load while normal load safety still forces pumps
     off; legacy saves receive a clean no-fault default.
+- Sour-treatment milestone completed:
+  - Added Sour raw oil as a low-cost feed whose diesel remains high in
+    simplified sulfur even at the correct process temperature.
+  - Added HT-201, a buildable diesel treatment unit with a real optional route:
+    column diesel OUT → treatment IN → diesel tank.
+  - Treatment keeps diesel mass-conserving while lowering sulfur to LAB-101's
+    contract specification; direct Standard and Heavy routes remain unchanged.
 
 ## Validation
 
@@ -375,7 +382,7 @@
 
 ## Current Stable State
 
-- Version 0.12.0 is verified stable after the first maintenance milestone.
+- Version 0.13.0 is verified stable after the Sour-treatment milestone.
 - The original pilot loop and full player-built loop both pass regression.
 - The first valid Area 02 sale now has a durable achievement and informative
   result, while later paid batches remain repeatable.
@@ -402,6 +409,8 @@
   changing material balance or the selected target; the player must inspect the
   pump, stop it and use field service to restore capacity. Loading preserves the
   fault but stops the pump safely.
+- Sour crude is now a genuine refinery-capability choice: its cheaper diesel
+  is only sellable after the player builds, connects and starts HT-201.
 
 ## Known Issues
 

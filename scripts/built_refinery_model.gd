@@ -13,6 +13,7 @@ const PUMP_MAX_FLOW_LPS := 15.0
 const PUMP_FLOW_STEPS := [5.0, 10.0, 15.0]
 const FILTER_RESTRICTION_FACTOR := 0.35
 const FIRST_FILTER_FAULT_AFTER_L := 300.0
+const TREATED_DIESEL_SULFUR_PPM := 10.0
 const DIESEL_TARGET_L := 200.0
 const APPROVED_QUALITY_PERCENT := 90.0
 const DIESEL_PRICE_PER_L := 8.0
@@ -50,7 +51,7 @@ func save_state() -> Dictionary:
 		var saved_state := {"type": state["type"]}
 		match state["type"]:
 			"tank":
-				for field in ["volume_l", "contents", "temperature_c", "quality_percent", "crude_cost_per_l"]:
+				for field in ["volume_l", "contents", "temperature_c", "quality_percent", "sulfur_ppm", "crude_cost_per_l"]:
 					saved_state[field] = state[field]
 			"valve":
 				saved_state["open"] = state["open"]
@@ -62,6 +63,9 @@ func save_state() -> Dictionary:
 				saved_state["setpoint_c"] = state["setpoint_c"]
 				saved_state["temperature_c"] = state["temperature_c"]
 			"column":
+				saved_state["processed_total_l"] = state["processed_total_l"]
+			"treatment":
+				saved_state["running"] = state["running"]
 				saved_state["processed_total_l"] = state["processed_total_l"]
 		saved_equipment[unit_id] = saved_state
 	return {
@@ -101,8 +105,8 @@ func apply_saved_state(state: Dictionary) -> void:
 		var saved: Dictionary = saved_equipment[unit_id]
 		match target["type"]:
 			"tank":
-				for field in ["volume_l", "contents", "temperature_c", "quality_percent", "crude_cost_per_l"]:
-					target[field] = saved[field]
+				for field in ["volume_l", "contents", "temperature_c", "quality_percent", "sulfur_ppm", "crude_cost_per_l"]:
+					target[field] = saved.get(field, 0.0 if field == "sulfur_ppm" else target[field])
 			"pump":
 				target["running"] = false
 				target["actual_flow_lps"] = 0.0
@@ -121,6 +125,9 @@ func apply_saved_state(state: Dictionary) -> void:
 				target["temperature_c"] = float(saved["temperature_c"])
 			"column":
 				target["processed_total_l"] = float(saved["processed_total_l"])
+			"treatment":
+				target["running"] = bool(saved.get("running", false))
+				target["processed_total_l"] = float(saved.get("processed_total_l", 0.0))
 	actual_flow_lps = 0.0
 	_remote_guard_pump_id = ""
 	_remote_guard_trip_message = ""
@@ -145,6 +152,7 @@ func register_unit(unit_id: String, equipment_type: String, display_name := "") 
 				"contents": "empty",
 				"temperature_c": AMBIENT_TEMPERATURE_C,
 				"quality_percent": 0.0,
+				"sulfur_ppm": 0.0,
 				"crude_cost_per_l": 0.0,
 			})
 		"pump":
@@ -167,6 +175,8 @@ func register_unit(unit_id: String, equipment_type: String, display_name := "") 
 			})
 		"column":
 			state["processed_total_l"] = 0.0
+		"treatment":
+			state.merge({"running": false, "processed_total_l": 0.0})
 	equipment[unit_id] = state
 	return {"ok": true, "message": "%s er klar for tilkobling." % state["name"]}
 
@@ -194,6 +204,8 @@ func can_remove(unit_id: String) -> Dictionary:
 		return _result(false, "Tøm %s før den fjernes." % state["name"])
 	if state["type"] == "pump" and state["running"]:
 		return _result(false, "Stopp %s før den fjernes." % state["name"])
+	if state["type"] == "treatment" and state["running"]:
+		return _result(false, "Stopp %s før den fjernes." % state["name"])
 	if _any_pump_running() or actual_flow_lps > 0.01:
 		return _result(false, "Stopp prosessen før utstyr fjernes.")
 	return _result(true, "%s kan fjernes." % state["name"])
@@ -214,6 +226,8 @@ func interact(unit_id: String, can_pay_for_crude := false) -> Dictionary:
 			return _toggle_valve(unit_id)
 		"heater":
 			return _cycle_heater(unit_id)
+		"treatment":
+			return _toggle_treatment(unit_id)
 		"tank":
 			if _is_route_source(unit_id) and equipment[unit_id]["volume_l"] <= 0.001:
 				if commissioning_contract_complete and can_choose_contract(unit_id)["ok"]:
@@ -247,6 +261,8 @@ func interaction_prompt(unit_id: String) -> String:
 			]
 		"heater":
 			return "E — endre temperaturmål"
+		"treatment":
+			return "E — %s dieselbehandler" % ("stopp" if state["running"] else "start")
 		"column":
 			return "E — inspiser destillasjon"
 		"tank":
@@ -303,6 +319,7 @@ func discard_products(confirmed := false) -> Dictionary:
 		state["volume_l"] = 0.0
 		state["contents"] = "empty"
 		state["quality_percent"] = 0.0
+		state["sulfur_ppm"] = 0.0
 	_stop_all_pumps()
 	product_inventory_revision += 1
 	_diesel_sample = {}
@@ -387,6 +404,7 @@ func load_crude_batch(
 	tank["contents"] = "crude"
 	tank["temperature_c"] = AMBIENT_TEMPERATURE_C
 	tank["quality_percent"] = 0.0
+	tank["sulfur_ppm"] = 0.0
 	tank["crude_cost_per_l"] = float(charge) / BATCH_VOLUME_L
 	last_status = "1 000 L %s lastet. Varm mot ca. %.0f °C." % [
 		profile["short_name"], profile["ideal_temperature_c"],
@@ -418,6 +436,7 @@ func tick(delta: float) -> void:
 	var source: Dictionary = equipment[route["source"]]
 	var valve: Dictionary = equipment[route["valve"]]
 	var heater: Dictionary = equipment[route["heater"]]
+	var treatment: Dictionary = equipment[route["treatment"]] if not String(route.get("treatment", "")).is_empty() else {}
 	var profile := contract_definition()
 	if pump["running"] and _remote_guard_pump_id == route["pump"]:
 		var safe_range := CrudeCatalog.approved_temperature_range(
@@ -472,6 +491,9 @@ func tick(delta: float) -> void:
 		return
 	if not valve["open"]:
 		last_status = "Kontroller utstyret mellom pumpen og varmeenheten."
+		return
+	if not treatment.is_empty() and not treatment["running"]:
+		last_status = "DIESELBEHANDLING STOPPET — start %s før sour diesel kan gå til tank." % treatment["name"]
 		return
 
 	var fractions := fractions_for_temperature(heater["temperature_c"], active_contract_id)
@@ -545,6 +567,7 @@ func take_diesel_sample(unit_id: String) -> Dictionary:
 		"contract_id": active_contract_id,
 		"volume_l": float(tank["volume_l"]),
 		"quality_percent": float(tank["quality_percent"]),
+		"sulfur_ppm": float(tank.get("sulfur_ppm", 0.0)),
 		"average_temperature_c": average_temperature,
 		"average_flow_lps": average_flow,
 		"analyzed": false,
@@ -699,6 +722,7 @@ func sell_diesel() -> Dictionary:
 		state["volume_l"] = 0.0
 		state["contents"] = "empty"
 		state["quality_percent"] = 0.0
+		state["sulfur_ppm"] = 0.0
 	product_inventory_revision += 1
 	_diesel_sample = {}
 	_reset_report_tracking()
@@ -725,6 +749,7 @@ func diesel_is_approved() -> bool:
 	return (
 		total_volume >= float(profile["diesel_target_l"])
 		and tank["quality_percent"] >= float(profile["minimum_quality_percent"])
+		and float(tank.get("sulfur_ppm", 0.0)) <= float(profile.get("maximum_sulfur_ppm", INF))
 		and float(delivery["volume_l"]) + 0.01 >= float(delivery["target_l"])
 		and _off_route_product_message(route).is_empty()
 	)
@@ -859,6 +884,8 @@ func inspect_unit(unit_id: String) -> String:
 			return "Varme %.0f °C, mål %.0f °C." % [state["temperature_c"], state["setpoint_c"]]
 		"column":
 			return "Destillasjon: %.0f L totalt prosessert." % state["processed_total_l"]
+		"treatment":
+			return "Dieselbehandler %s, %.0f L behandlet." % ["PÅ" if state["running"] else "AV", state["processed_total_l"]]
 	return "Bygd prosessutstyr."
 
 
@@ -895,6 +922,8 @@ func unit_status(unit_id: String) -> String:
 			return "%.0f °C  |  mål %.0f °C" % [state["temperature_c"], state["setpoint_c"]]
 		"column":
 			return "%.0f L prosessert" % state["processed_total_l"]
+		"treatment":
+			return "%s  |  %.0f L behandlet" % ["PÅ" if state["running"] else "AV", state["processed_total_l"]]
 	return "KLAR"
 
 
@@ -1144,11 +1173,16 @@ func active_connection_keys() -> Dictionary:
 	_add_connection_key(keys, route["valve"], "output", route["heater"], "input")
 	_add_connection_key(keys, route["heater"], "output", route["column"], "input")
 	for product_name in ["light", "diesel", "heavy"]:
+		var diesel_destination: String = route["products"][product_name]
+		if product_name == "diesel" and not String(route.get("treatment", "")).is_empty():
+			_add_connection_key(keys, route["column"], "diesel", route["treatment"], "input")
+			_add_connection_key(keys, route["treatment"], "output", diesel_destination, "input")
+			continue
 		_add_connection_key(
 			keys,
 			route["column"],
 			product_name,
-			route["products"][product_name],
+			diesel_destination,
 			"input"
 		)
 	return keys
@@ -1182,6 +1216,13 @@ func _toggle_valve(unit_id: String) -> Dictionary:
 	var valve: Dictionary = equipment[unit_id]
 	valve["open"] = not valve["open"]
 	last_status = "%s er %s." % [valve["name"], "åpen" if valve["open"] else "stengt"]
+	return _result(true, last_status)
+
+
+func _toggle_treatment(unit_id: String) -> Dictionary:
+	var treatment: Dictionary = equipment[unit_id]
+	treatment["running"] = not treatment["running"]
+	last_status = "%s er %s." % [treatment["name"], "startet" if treatment["running"] else "stoppet"]
 	return _result(true, last_status)
 
 
@@ -1262,6 +1303,10 @@ func _process_input(
 	_report_crude_cost += input_l * float(source.get("crude_cost_per_l", 0.0))
 	source["volume_l"] -= input_l
 	var diesel_quality := _diesel_quality(temperature_c, flow_lps)
+	var diesel_sulfur: float = float(CrudeCatalog.definition(active_contract_id).get("diesel_sulfur_ppm", 0.0))
+	if not String(route.get("treatment", "")).is_empty():
+		diesel_sulfur = TREATED_DIESEL_SULFUR_PPM
+		equipment[route["treatment"]]["processed_total_l"] += input_l * fractions.y
 	for product_name in ["light", "diesel", "heavy"]:
 		var product_l := input_l * _fraction_value(fractions, product_name)
 		var tank: Dictionary = equipment[route["products"][product_name]]
@@ -1269,6 +1314,9 @@ func _process_input(
 			var quality_total: float = tank["quality_percent"] * tank["volume_l"]
 			quality_total += diesel_quality * product_l
 			tank["quality_percent"] = quality_total / (tank["volume_l"] + product_l)
+			var sulfur_total: float = tank.get("sulfur_ppm", 0.0) * tank["volume_l"]
+			sulfur_total += diesel_sulfur * product_l
+			tank["sulfur_ppm"] = sulfur_total / (tank["volume_l"] + product_l)
 		tank["volume_l"] += product_l
 		tank["contents"] = product_name
 		tank["temperature_c"] = temperature_c
@@ -1469,8 +1517,10 @@ func _build_sample_analysis() -> Dictionary:
 	var profile := contract_definition(String(_diesel_sample["contract_id"]))
 	var volume_l := float(_diesel_sample["volume_l"])
 	var quality := float(_diesel_sample["quality_percent"])
+	var sulfur_ppm := float(_diesel_sample.get("sulfur_ppm", 0.0))
 	var required_volume := float(profile["diesel_target_l"])
 	var required_quality := float(profile["minimum_quality_percent"])
+	var maximum_sulfur := float(profile.get("maximum_sulfur_ppm", INF))
 	var average_temperature := float(_diesel_sample["average_temperature_c"])
 	var average_flow := float(_diesel_sample.get("average_flow_lps", PUMP_CAPACITY_LPS))
 	var route: Dictionary = network.find_complete_route()
@@ -1478,8 +1528,9 @@ func _build_sample_analysis() -> Dictionary:
 	var delivery_ready := float(delivery["volume_l"]) + 0.01 >= float(delivery["target_l"])
 	var sample_volume_ready := volume_l + 0.01 >= required_volume
 	var quality_ready := quality >= required_quality
+	var sulfur_ready := sulfur_ppm <= maximum_sulfur
 	var off_route_message := _off_route_product_message(route)
-	var approved := sample_volume_ready and delivery_ready and quality_ready and off_route_message.is_empty()
+	var approved := sample_volume_ready and delivery_ready and quality_ready and sulfur_ready and off_route_message.is_empty()
 	var status := "GODKJENT" if approved else "OFF-SPEC"
 	var deviation := "Dieselprøven og leveringsmålet oppfyller kontrakten."
 	var source: Dictionary = equipment[route["source"]]
@@ -1514,6 +1565,10 @@ func _build_sample_analysis() -> Dictionary:
 				quality_deviation += " ved høy flow; høy flow reduserte temperaturmarginen"
 		status = "OFF-SPEC"
 		deviation = quality_deviation + "." if missing.is_empty() and off_route_message.is_empty() else deviation + " " + quality_deviation + "."
+	if not sulfur_ready:
+		status = "OFF-SPEC"
+		var sulfur_deviation := "Svovel %.0f ppm er over kravet på %.0f ppm. Dieselbehandling kreves" % [sulfur_ppm, maximum_sulfur]
+		deviation = sulfur_deviation + "." if deviation == "Dieselprøven og leveringsmålet oppfyller kontrakten." else deviation + " " + sulfur_deviation + "."
 	var product_revenue := int(round(volume_l * float(profile["diesel_price_per_l"])))
 	var delivery_bonus := int(profile["delivery_bonus"]) if active_contract_bonus_available else 0
 	return {
@@ -1537,6 +1592,9 @@ func _build_sample_analysis() -> Dictionary:
 		"quality_ready": quality_ready,
 		"quality_percent": quality,
 		"required_quality_percent": required_quality,
+		"sulfur_ppm": sulfur_ppm,
+		"maximum_sulfur_ppm": maximum_sulfur,
+		"sulfur_ready": sulfur_ready,
 		"average_temperature_c": average_temperature,
 		"average_flow_lps": average_flow,
 		"ideal_temperature_c": float(profile["ideal_temperature_c"]),
