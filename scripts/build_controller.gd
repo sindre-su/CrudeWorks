@@ -27,6 +27,7 @@ var ghost_valid := false
 var registered_units: Array[Dictionary] = []
 var connections: Array[Dictionary] = []
 var connection_source
+var connection_candidate_ports: Array = []
 var process_network
 var network_feedback := "Koble en råoljetank OUT til pumpens IN."
 var input_blocked := false
@@ -127,6 +128,7 @@ func _set_unit_ports_visible(value: bool) -> void:
 
 
 func remove_registered_unit(unit) -> void:
+	_clear_connection_candidates()
 	_clear_connection_if_source(unit)
 	process_network.unregister_unit(unit.unit_id)
 	for index in range(connections.size() - 1, -1, -1):
@@ -247,6 +249,7 @@ func _handle_connection_selection() -> void:
 			return
 		connection_source = port
 		connection_source.set_highlight(true)
+		_update_connection_candidates()
 		notification_requested.emit("%s valgt. Koble til en blå IN-port." % _port_display_name(port))
 		return
 	if port.port_kind != "input":
@@ -405,9 +408,39 @@ func _disconnect_port(port) -> bool:
 
 
 func _clear_connection_source() -> void:
+	_clear_connection_candidates()
 	if is_instance_valid(connection_source):
 		connection_source.set_highlight(false)
 	connection_source = null
+
+
+func _update_connection_candidates() -> void:
+	_clear_connection_candidates()
+	if not is_instance_valid(connection_source):
+		return
+	for entry in registered_units:
+		var unit = entry["node"]
+		if not is_instance_valid(unit):
+			continue
+		for port in unit.ports.values():
+			if port.port_kind != "input":
+				continue
+			var validation: Dictionary = process_network.can_connect(
+				connection_source.owner_unit_id,
+				connection_source.port_id,
+				port.owner_unit_id,
+				port.port_id
+			)
+			if validation["ok"]:
+				port.set_highlight(true)
+				connection_candidate_ports.append(port)
+
+
+func _clear_connection_candidates() -> void:
+	for port in connection_candidate_ports:
+		if is_instance_valid(port):
+			port.set_highlight(false)
+	connection_candidate_ports.clear()
 
 
 func _clear_connection_if_source(unit) -> void:

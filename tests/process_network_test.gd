@@ -18,6 +18,7 @@ func _init() -> void:
 func _run_tests() -> void:
 	_test_valid_topology()
 	_test_direction_and_order()
+	_test_readonly_connection_candidates()
 	_test_occupied_ports_and_duplicates()
 	_test_cycle_rejection()
 	_test_removal_cleanup()
@@ -179,6 +180,27 @@ func _test_direction_and_order() -> void:
 	_expect(network.connection_count() == 0, "rejected connections do not mutate the graph")
 
 
+func _test_readonly_connection_candidates() -> void:
+	var network = ProcessNetworkScript.new()
+	_register(network, "source", "tank", "T-201")
+	_register(network, "pump", "pump", "P-201")
+	_register(network, "column", "column", "D-201")
+	_register(network, "header", "header", "FH-201")
+	_register(network, "treatment", "treatment", "HT-201")
+	_register(network, "vdu", "vacuum_distillation", "VDU-301")
+	_register(network, "vgo_tank", "tank", "VT-202")
+	_register(network, "fcc", "catalytic_cracking", "FCC-401")
+	_register(network, "gasoline_tank", "tank", "FT-401")
+	_expect(network.can_connect("source", "output", "pump", "input")["ok"], "read-only candidate check accepts a valid available OUT-to-IN edge")
+	_expect(not network.can_connect("pump", "input", "source", "input")["ok"] and not network.can_connect("source", "output", "column", "input")["ok"], "candidate check excludes reversed ports and invalid process order")
+	_expect(network.can_connect("source", "output", "header", "input")["ok"] and network.can_connect("column", "diesel", "treatment", "input")["ok"], "candidate check preserves header and treatment-compatible inputs")
+	_expect(network.can_connect("vdu", "vgo", "vgo_tank", "input")["ok"] and network.tank_intended_material("vgo_tank").is_empty(), "typed VDU candidate discovery is material-aware and does not assign tank intent")
+	_expect(network.can_connect("fcc", "gasoline", "gasoline_tank", "input")["ok"] and network.tank_intended_material("gasoline_tank").is_empty(), "typed FCC candidate discovery is material-aware and does not assign tank intent")
+	_expect(network.connection_count() == 0, "candidate discovery never mutates graph connections")
+	network.try_connect("source", "output", "pump", "input")
+	_expect(not network.can_connect("source", "output", "column", "input")["ok"] and not network.can_connect("source", "output", "pump", "input")["ok"], "candidate check excludes occupied outputs and inputs")
+
+
 func _test_occupied_ports_and_duplicates() -> void:
 	var network = ProcessNetworkScript.new()
 	_register(network, "source_a", "tank", "T-201")
@@ -205,6 +227,7 @@ func _test_cycle_rejection() -> void:
 	_expect(network.try_connect("column", "light", "tank", "input")["ok"], "cycle fixture connects column to tank")
 	var cycle: Dictionary = network.try_connect("tank", "output", "pump", "input")
 	_expect(not cycle["ok"], "connection that closes a directed cycle is rejected")
+	_expect(not network.can_connect("tank", "output", "pump", "input")["ok"], "cycle-closing input is excluded from read-only candidates")
 	_expect("løkke" in cycle["message"], "cycle rejection gives player-readable feedback")
 	_expect(network.connection_count() == 4, "cycle rejection is atomic")
 

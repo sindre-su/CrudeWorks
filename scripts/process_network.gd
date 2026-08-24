@@ -43,7 +43,7 @@ func has_unit(unit_id: String) -> bool:
 	return units.has(unit_id)
 
 
-func try_connect(
+func can_connect(
 	from_unit_id: String,
 	from_port_id: String,
 	to_unit_id: String,
@@ -88,13 +88,31 @@ func try_connect(
 	if _would_create_cycle(from_unit_id, to_unit_id):
 		return _result(false, "Denne koblingen ville laget en ulovlig prosessløkke.")
 
-	var new_edge := {
+	return _result(true, "%s %s kan kobles til %s IN." % [
+		_unit_name(from_unit_id),
+		from_port["label"],
+		_unit_name(to_unit_id),
+	])
+
+
+func try_connect(
+	from_unit_id: String,
+	from_port_id: String,
+	to_unit_id: String,
+	to_port_id: String
+) -> Dictionary:
+	var validation := can_connect(from_unit_id, from_port_id, to_unit_id, to_port_id)
+	if not validation["ok"]:
+		return validation
+	var from_type: String = units[from_unit_id]["type"]
+	var to_type: String = units[to_unit_id]["type"]
+	var from_port := Catalog.port_definition(from_type, from_port_id)
+	connections.append({
 		"from_unit": from_unit_id,
 		"from_port": from_port_id,
 		"to_unit": to_unit_id,
 		"to_port": to_port_id,
-	}
-	connections.append(new_edge)
+	})
 	# The typed secondary-process outlets mark their empty destination tanks.
 	# tank here lets a normal player-built route become discoverable without a
 	# separate configuration menu.

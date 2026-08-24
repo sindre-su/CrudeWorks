@@ -805,3 +805,15 @@
 - Validation: focused beacon coverage plus the full regression gate passed.
   Human QA still needs to confirm beacon visibility and colour distinction at
   normal first-person viewing distance.
+
+## v0.24.5 — Guided Process Connections
+
+- Selecting an OUT port in construction mode now highlights only legal,
+  currently available IN ports. The player still chooses and connects the pipe
+  physically; no connection is created automatically.
+- Extracted the existing connection checks into a read-only network preflight
+  reused by real connection creation. Candidate discovery therefore cannot
+  create pipes, assign typed tank intent or schedule a topology change.
+- Validation: focused graph/build coverage plus the full regression gate passed.
+  Human QA still needs to confirm the candidate highlights reduce aiming effort
+  without visual clutter at 1280×720.

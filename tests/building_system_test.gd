@@ -194,6 +194,12 @@ func _test_placement_and_connections(world: Node3D, controller) -> void:
 	var stopped_rotor_angle: float = pump.pump_rotor.rotation.z
 	pump._process(0.5)
 	_expect(is_equal_approx(pump.pump_rotor.rotation.z, stopped_rotor_angle), "stopped pump leaves its rotor stationary")
+	controller.connection_source = tank.output_port
+	tank.output_port.set_highlight(true)
+	controller._update_connection_candidates()
+	_expect(pump.input_port.highlighted and tank.output_port.highlighted and controller.process_network.connection_count() == 0 and controller.connections.is_empty(), "selecting an OUT highlights only its legal IN candidate without creating a graph or visual pipe")
+	controller._clear_connection_source()
+	_expect(not pump.input_port.highlighted and not tank.output_port.highlighted and controller.connection_candidate_ports.is_empty(), "cancelling a selected OUT clears temporary candidate and source highlights")
 	var result: Dictionary = controller._connect_ports(tank.output_port, pump.input_port)
 	_expect(result["ok"], "controller accepts a valid tank-to-pump connection")
 	_expect(controller.connections.size() == 1, "OUT-to-IN connection creates one pipe record")

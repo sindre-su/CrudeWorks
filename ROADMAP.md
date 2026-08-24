@@ -2,7 +2,7 @@
 
 ## Current baseline
 
-Version 0.24.4 has a tested pilot plant and a substantial Area 02 refinery
+Version 0.24.5 has a tested pilot plant and a substantial Area 02 refinery
 slice: free building, directed process networks, multiple independent trains,
 shared-feed/product routing, Standard/Heavy/Sour crude, diesel treatment,
 quality/LAB dispatch, VDU-301, FCC-401, electrical capacity, controls, alarms,
