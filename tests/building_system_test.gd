@@ -181,6 +181,11 @@ func _test_placement_and_connections(world: Node3D, controller) -> void:
 	world.add_child(pump)
 	controller.register_unit(pump)
 	_expect(is_instance_valid(pump.pump_rotor), "built pump has a local physical rotor")
+	_expect(is_instance_valid(pump.alarm_beacon) and not pump.alarm_beacon.visible and pump.alarm_severity.is_empty(), "built equipment begins with a separate cleared local alarm beacon")
+	pump.set_alarm_severity("medium")
+	_expect(pump.alarm_beacon.visible and pump.alarm_severity == "MEDIUM", "local alarm beacon exposes derived severity without changing pump operation")
+	pump.set_alarm_severity("")
+	_expect(not pump.alarm_beacon.visible and pump.alarm_severity.is_empty(), "clearing derived severity hides the local alarm beacon")
 	pump.set_pump_operating(true)
 	var rotor_angle_before: float = pump.pump_rotor.rotation.z
 	pump._process(0.5)

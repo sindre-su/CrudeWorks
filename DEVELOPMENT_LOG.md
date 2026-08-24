@@ -793,3 +793,15 @@
 - Validation: focused VDU/FCC guard coverage plus the full regression gate
   passed. Human QA still needs to assess whether the field status copy is clear
   at normal viewing distance.
+
+## v0.24.4 — Local Operator Alarm Beacons
+
+- Added a small independent emissive beacon to each player-built unit. It
+  reflects the highest existing route-scoped operator alarm without replacing
+  normal pump, valve, tank or rotor operating feedback.
+- LOW FLOW now identifies the affected pump in-world, HIGH TEMPERATURE the
+  heater, and HIGH LEVEL/TANK FULL the relevant product tank. Repairing or
+  clearing the underlying condition clears the beacon automatically.
+- Validation: focused beacon coverage plus the full regression gate passed.
+  Human QA still needs to confirm beacon visibility and colour distinction at
+  normal first-person viewing distance.

@@ -72,6 +72,7 @@ func configure_buildable(type: String, serial_number: int) -> void:
 		data["color"],
 		size.y * 0.5 + 0.72
 	)
+	create_alarm_beacon(Vector3(0.0, size.y * 0.5 + 0.22, 0.0))
 	add_to_group("player_built")
 	_create_ports()
 	if equipment_type == "tank":

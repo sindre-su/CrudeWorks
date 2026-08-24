@@ -6,6 +6,9 @@ var display_name := ""
 var mesh_instance: MeshInstance3D
 var status_label: Label3D
 var material: StandardMaterial3D
+var alarm_beacon: MeshInstance3D
+var alarm_beacon_material: StandardMaterial3D
+var alarm_severity := ""
 
 
 func configure(
@@ -55,6 +58,39 @@ func set_active(active: bool, active_color := Color(0.2, 1.0, 0.45)) -> void:
 	material.emission_enabled = active
 	material.emission = active_color if active else Color.BLACK
 	material.emission_energy_multiplier = 0.45 if active else 0.0
+
+
+func create_alarm_beacon(position_3d: Vector3) -> void:
+	alarm_beacon = MeshInstance3D.new()
+	var beacon_mesh := SphereMesh.new()
+	beacon_mesh.radius = 0.13
+	beacon_mesh.height = 0.26
+	beacon_mesh.radial_segments = 16
+	alarm_beacon.mesh = beacon_mesh
+	alarm_beacon.position = position_3d
+	alarm_beacon_material = StandardMaterial3D.new()
+	alarm_beacon_material.albedo_color = Color("ffca3a")
+	alarm_beacon_material.emission_enabled = true
+	alarm_beacon.material_override = alarm_beacon_material
+	alarm_beacon.visible = false
+	add_child(alarm_beacon)
+
+
+func set_alarm_severity(severity: String) -> void:
+	alarm_severity = severity.to_upper()
+	if not is_instance_valid(alarm_beacon):
+		return
+	var colors := {
+		"LOW": Color("ffca3a"),
+		"MEDIUM": Color("ff7a3d"),
+		"HIGH": Color("ff4d4d"),
+	}
+	alarm_beacon.visible = colors.has(alarm_severity)
+	if alarm_beacon.visible:
+		var color: Color = colors[alarm_severity]
+		alarm_beacon_material.albedo_color = color
+		alarm_beacon_material.emission = color
+		alarm_beacon_material.emission_energy_multiplier = 2.0
 
 
 func make_transparent(alpha: float) -> void:

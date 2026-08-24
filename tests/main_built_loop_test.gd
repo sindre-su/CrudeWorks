@@ -63,13 +63,18 @@ func _run_test() -> void:
 	main._update_user_interface()
 	_expect(is_equal_approx(main.built_refinery_model.equipment[source.unit_id]["volume_l"], source_before_low_flow) and "LOW FLOW" in main.alarm_label.text, "closed built valve creates a visible LOW FLOW alarm without consuming crude")
 	main._update_unit_statuses()
+	_expect(pump.alarm_severity == "MEDIUM" and pump.alarm_beacon.visible and valve.alarm_severity.is_empty(), "route-local LOW FLOW marks only the affected built pump, not adjacent Train A equipment")
 	_expect("STENGT" in valve.status_label.text and is_equal_approx(valve.valve_handle.rotation.y, deg_to_rad(90.0)), "closed valve world status and handle agree")
 	main._on_unit_interacted(valve.unit_id)
+	main.built_refinery_model.equipment[heater.unit_id]["temperature_c"] = 300.0
 	main._update_unit_statuses()
+	_expect(heater.alarm_severity == "HIGH" and heater.alarm_beacon.visible, "existing HIGH TEMPERATURE marks the route heater with the highest local severity")
+	main.built_refinery_model.equipment[heater.unit_id]["temperature_c"] = 200.0
 	_expect("ÅPEN" in valve.status_label.text and is_equal_approx(valve.valve_handle.rotation.y, 0.0), "opening valve updates world status and handle")
 	main.built_refinery_model.tick(100.0)
 	_expect(main.built_refinery_model.diesel_is_approved(), "Main-integrated refinery produces approved diesel")
 	main._update_unit_statuses()
+	_expect(pump.alarm_severity.is_empty() and heater.alarm_severity.is_empty(), "restored route conditions clear derived pump and heater beacons automatically")
 	_expect("KLAR" in main.units["sales_terminal"].status_label.text, "terminal becomes ready for approved built diesel")
 
 	main._on_unit_interacted("sales_terminal")
@@ -243,10 +248,14 @@ func _test_heavy_contract_through_main() -> void:
 	main.built_refinery_model.tick(1.0)
 	main._update_user_interface()
 	_expect("TANK FULL" in main.control_station_label.text and not ("P-201 er startet" in main.control_station_label.text), "current tank-full alarm outranks cached remote-start feedback")
+	main._update_unit_statuses()
+	_expect(_unit(main, "built_tank_6").alarm_severity == "MEDIUM" and _unit(main, "built_tank_7").alarm_severity.is_empty(), "existing TANK FULL marks only its affected product tank")
 	light_tank_state["contents"] = "empty"
 	light_tank_state["volume_l"] = 0.0
 	main.built_refinery_model.tick(100.0)
 	main._update_user_interface()
+	main._update_unit_statuses()
+	_expect(_unit(main, "built_tank_6").alarm_severity.is_empty(), "clearing the product-level alarm hides its tank beacon automatically")
 	_expect("220/1000 L" in main.control_station_label.text, "operations console live diesel storage reaches the exact Heavy yield")
 	var close_station := InputEventKey.new()
 	close_station.keycode = KEY_ESCAPE

@@ -712,11 +712,13 @@ func _update_unit_statuses() -> void:
 		Color("ff6b5f") if control_alarm else Color("75ddff")
 	)
 	var active_route: Dictionary = built_refinery_model.active_runtime_route()
+	var built_alarm_severities := _built_alarm_severities()
 	for entry in build_controller.registered_units:
 		var built_unit = entry["node"]
 		if not is_instance_valid(built_unit):
 			continue
 		built_unit.set_status(built_refinery_model.unit_status(built_unit.unit_id))
+		built_unit.set_alarm_severity(String(built_alarm_severities.get(built_unit.unit_id, "")))
 		var state: Dictionary = built_refinery_model.equipment.get(built_unit.unit_id, {})
 		if state.get("type", "") == "tank":
 			built_unit.set_tank_fill(
@@ -756,6 +758,21 @@ func _update_unit_statuses() -> void:
 			built_unit.set_active("RUTE " in built_refinery_model.unit_status(built_unit.unit_id), Color("ffc975"))
 		elif state.get("type", "") == "power_unit":
 			built_unit.set_active(true, Color("f6cf63"))
+
+
+func _built_alarm_severities() -> Dictionary:
+	var severities := {}
+	for alarm in built_refinery_model.operator_alarms():
+		var unit_id := String(alarm.get("equipment_id", ""))
+		var severity := String(alarm.get("severity", "")).to_upper()
+		if unit_id.is_empty() or _alarm_severity_rank(severity) <= _alarm_severity_rank(String(severities.get(unit_id, ""))):
+			continue
+		severities[unit_id] = severity
+	return severities
+
+
+func _alarm_severity_rank(severity: String) -> int:
+	return {"LOW": 1, "MEDIUM": 2, "HIGH": 3}.get(severity.to_upper(), 0)
 
 
 func _update_process_visuals(delta: float) -> void:
