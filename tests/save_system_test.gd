@@ -5,6 +5,7 @@ const SaveSystemScript = preload("res://scripts/save_system.gd")
 
 const TEST_PATH := "user://crudeworks_save_system_test.json"
 const LEGACY_PATH := "user://crudeworks_save_system_legacy_test.json"
+const AUTOSAVE_STRESS_PATH := "user://crudeworks_area02_autosave_stress_test.json"
 
 var failures := 0
 
@@ -20,6 +21,7 @@ func _run_tests() -> void:
 	_test_schema_validation(snapshot, source_main)
 	_test_optional_delivery_report_validation(snapshot)
 	_test_disk_round_trip(snapshot)
+	await _test_area02_autosave_stress()
 	_test_v1_to_v2_contract_migration(snapshot)
 	await _test_startup_continue(snapshot)
 	await _test_main_round_trip(snapshot, source_main)
@@ -197,6 +199,62 @@ func _test_disk_round_trip(snapshot: Dictionary) -> void:
 	_expect(recovered["ok"] and recovered["recovered_from_backup"], "corrupt primary file recovers the last valid backup")
 	_expect(SaveSystemScript.write_snapshot(TEST_PATH, snapshot)["ok"], "valid snapshot safely replaces the recovered primary")
 	_expect(FileAccess.file_exists(TEST_PATH + ".bak"), "successful replacement retains one last-known-good backup")
+
+
+func _test_area02_autosave_stress() -> void:
+	var main = MainScene.instantiate()
+	main.persistence_enabled = false
+	root.add_child(main)
+	await process_frame
+	main.process_model.money = 3000
+	main.process_model.objective_complete = true
+	main._process(0.0)
+	_place_full_refinery(main)
+	_connect_full_refinery(main)
+	main.save_path = AUTOSAVE_STRESS_PATH
+	main.persistence_enabled = true
+	main.persistence_ready = true
+	main.autosave_time_left = 0.0
+	var source = main.build_controller.registered_unit_by_id("built_tank_1")
+	var heater = main.build_controller.registered_unit_by_id("built_heater_4")
+	var valve = main.build_controller.registered_unit_by_id("built_valve_3")
+	var pump = main.build_controller.registered_unit_by_id("built_pump_2")
+	main._on_unit_interacted(source.unit_id)
+	main._on_unit_interacted(heater.unit_id)
+	main._on_unit_interacted(heater.unit_id)
+	main._process(10.0)
+	main._on_unit_interacted(valve.unit_id)
+	main._on_unit_interacted(pump.unit_id)
+	for checkpoint in range(4):
+		main.autosave_time_left = 0.0
+		main._process(10.0)
+		var saved: Dictionary = SaveSystemScript.read_snapshot(AUTOSAVE_STRESS_PATH)
+		_expect(saved["ok"], "first Area 02 batch autosave %d writes a valid recoverable snapshot: %s" % [checkpoint + 1, saved.get("message", "")])
+	var source_volume: float = main.built_refinery_model.equipment[source.unit_id]["volume_l"]
+	_expect(is_equal_approx(source_volume, 600.0), "autosave stress reaches the reported mid-batch range with exactly 400 L processed")
+	for checkpoint in range(6):
+		main.autosave_time_left = 0.0
+		main._process(10.0)
+		_expect(SaveSystemScript.read_snapshot(AUTOSAVE_STRESS_PATH)["ok"], "continued first-batch autosave %d remains valid" % [checkpoint + 5])
+	main._on_unit_interacted("sales_terminal")
+	var dismiss_event := InputEventKey.new()
+	dismiss_event.keycode = KEY_ENTER
+	dismiss_event.pressed = true
+	main._unhandled_input(dismiss_event)
+	main._on_unit_interacted("built_tank_8")
+	var final_save: Dictionary = main._write_save(false)
+	_expect(final_save["ok"], "post-dispatch Area 02 save succeeds after the Heavy Residue tank interaction: %s" % final_save.get("message", ""))
+	var final_read: Dictionary = SaveSystemScript.read_snapshot(AUTOSAVE_STRESS_PATH)
+	_expect(final_read["ok"] and final_read["data"]["built_refinery"]["equipment"]["built_tank_8"]["volume_l"] <= 0.001, "saved post-dispatch state preserves consumed Heavy Residue without duplicating it")
+	var restored = MainScene.instantiate()
+	restored.persistence_enabled = false
+	root.add_child(restored)
+	await process_frame
+	var restore_result: Dictionary = restored._apply_snapshot(final_read.get("data", {}))
+	_expect(restore_result["ok"], "fresh Main restores the stress-tested Area 02 snapshot atomically")
+	main.persistence_enabled = false
+	main.queue_free()
+	restored.queue_free()
 
 
 func _test_v1_to_v2_contract_migration(snapshot: Dictionary) -> void:
@@ -427,7 +485,7 @@ func _total_tank_volume(main) -> float:
 
 
 func _cleanup_test_files() -> void:
-	for base_path in [TEST_PATH, LEGACY_PATH]:
+	for base_path in [TEST_PATH, LEGACY_PATH, AUTOSAVE_STRESS_PATH]:
 		for suffix in ["", ".tmp", ".bak", ".corrupt", ".previous", ".bak.previous", ".corrupt.previous"]:
 			var path: String = base_path + String(suffix)
 			if FileAccess.file_exists(path):

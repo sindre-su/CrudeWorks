@@ -8,7 +8,7 @@ const BuiltRefineryModelScript = preload("res://scripts/built_refinery_model.gd"
 
 const FORMAT_VERSION := 2
 const DEFAULT_PATH := "user://crudeworks_save.json"
-const BUILD_BOUNDS := Rect2(-14.0, 10.5, 28.0, 20.0)
+const BUILD_BOUNDS := Rect2(-20.0, 10.5, 40.0, 28.0)
 const MAX_UNITS := 128
 const MAX_CONNECTIONS := 256
 const MAX_BUILD_SERIAL := 1000000
@@ -25,7 +25,15 @@ static func write_snapshot(path: String, snapshot: Dictionary) -> Dictionary:
 		return _result(false, "Kunne ikke opprette midlertidig lagringsfil.")
 	file.store_string(JSON.stringify(snapshot, "  "))
 	file.flush()
+	var write_error := file.get_error()
 	file.close()
+	if write_error != OK:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(temporary_path))
+		return _result(false, "Kunne ikke skrive den midlertidige lagringen.")
+	var temporary_validation := _read_and_validate(temporary_path)
+	if not temporary_validation["ok"]:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(temporary_path))
+		return _result(false, "Den midlertidige lagringen kunne ikke valideres.")
 
 	var absolute_path := ProjectSettings.globalize_path(path)
 	var absolute_temporary := ProjectSettings.globalize_path(temporary_path)
@@ -548,7 +556,7 @@ static func _validate_player(state: Dictionary) -> Dictionary:
 	if not _valid_vector(state.get("position"), 3) or not _finite_number(state.get("rotation_y")):
 		return _result(false, "Spillerposisjonen er ugyldig.")
 	var position: Array = state["position"]
-	if not _in_range(position[0], -30.0, 30.0) or not _in_range(position[1], -5.0, 20.0) or not _in_range(position[2], -20.0, 45.0):
+	if not _in_range(position[0], -28.0, 28.0) or not _in_range(position[1], -5.0, 20.0) or not _in_range(position[2], -20.0, 46.0):
 		return _result(false, "Spillerposisjonen er utenfor spillområdet.")
 	return _result(true, "Spillerposisjonen er gyldig.")
 

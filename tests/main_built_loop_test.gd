@@ -14,6 +14,18 @@ func _run_test() -> void:
 	main.persistence_enabled = false
 	root.add_child(main)
 	await process_frame
+	_expect(
+		main.objective_label.autowrap_mode == TextServer.AUTOWRAP_WORD_SMART
+		and main.alarm_label.autowrap_mode == TextServer.AUTOWRAP_WORD_SMART
+		and main.objective_label.offset_bottom <= main.hud_label.position.y
+		and main.alarm_label.offset_bottom <= main.hud_label.position.y,
+		"1280x720 top objective/alarm band wraps text and stays above the HUD"
+	)
+	_expect(
+		main.notification_label.autowrap_mode == TextServer.AUTOWRAP_WORD_SMART
+		and main.notification_label.offset_bottom <= main.prompt_label.offset_top,
+		"1280x720 notifications and contextual prompts use separate wrapping bottom bands"
+	)
 
 	main.process_model.money = ProcessModel.PILOT_CONTRACT_MINIMUM_REVENUE
 	main.process_model.objective_complete = true
@@ -76,20 +88,23 @@ func _run_test() -> void:
 	dismiss_event.pressed = true
 	main._unhandled_input(dismiss_event)
 	_expect(not main.batch_report_visible and not main.player.input_blocked and not main.build_controller.input_blocked, "Enter dismisses the report and restores gameplay controls")
+	var heavy_tank = _unit(main, "built_tank_8")
+	main._on_unit_interacted(heavy_tank.unit_id)
+	_expect(
+		is_equal_approx(main.built_refinery_model.equipment[heavy_tank.unit_id]["volume_l"], 0.0)
+		and main.process_model.money == 3900
+		and "Tung rest sendt" in main.notification_label.text,
+		"E on a Heavy Residue tank dispatches that tank once without assuming a crude-purchase charge"
+	)
 	main._on_secondary_unit_interacted(heater.unit_id)
 	_expect(main.built_refinery_model.equipment[heater.unit_id]["control_mode"] == "auto" and "TIC-201 AUTO" in main.notification_label.text, "commissioned player can enable physical TIC-201 AUTO on the existing heater")
 	main._on_unit_interacted("sales_terminal")
-	_expect(main.product_dispatch_visible and "NAPHTHALEVERANSE" in main.product_dispatch_label.text and "TUNGRESTLEVERANSE" in main.product_dispatch_label.text, "terminal opens distinct non-diesel product orders after the LAB-controlled diesel delivery")
+	_expect(main.product_dispatch_visible and "NAPHTHALEVERANSE" in main.product_dispatch_label.text and is_equal_approx(main.built_refinery_model.equipment[heavy_tank.unit_id]["volume_l"], 0.0), "terminal remains usable for the remaining Naphtha after direct Heavy Residue dispatch")
 	var naphtha_event := InputEventKey.new()
 	naphtha_event.keycode = KEY_1
 	naphtha_event.pressed = true
 	main._unhandled_input(naphtha_event)
-	main._on_unit_interacted("sales_terminal")
-	var residue_event := InputEventKey.new()
-	residue_event.keycode = KEY_2
-	residue_event.pressed = true
-	main._unhandled_input(residue_event)
-	_expect(is_equal_approx(main.built_refinery_model.product_volume_l(), 0.0) and main.process_model.money == 5400, "Naphtha and residue orders clear only their stored products and credit distinct revenue")
+	_expect(is_equal_approx(main.built_refinery_model.product_volume_l(), 0.0) and main.process_model.money == 5400, "Naphtha terminal dispatch plus direct Heavy Residue dispatch clear only their stored products and credit distinct revenue")
 	main._on_unit_interacted("area02_control")
 	_expect(main.control_station_visible and main.player.input_blocked and main.build_controller.input_blocked, "unlocked LS-201 opens a live modal and blocks field/build controls")
 	main._update_user_interface()

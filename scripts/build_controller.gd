@@ -11,7 +11,7 @@ const ProcessNetworkScript = preload("res://scripts/process_network.gd")
 const FlowVisualScript = preload("res://scripts/flow_visual.gd")
 
 const GRID_SIZE := 1.0
-const BUILD_BOUNDS := Rect2(-14.0, 10.5, 28.0, 20.0)
+const BUILD_BOUNDS := Rect2(-20.0, 10.5, 40.0, 28.0)
 
 var player
 var unlocked := false

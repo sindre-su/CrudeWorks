@@ -153,7 +153,11 @@ func _test_placement_and_connections(world: Node3D, controller) -> void:
 		"separated equipment placement is accepted"
 	)
 	_expect(
-		not controller._position_is_valid(Vector3(15.0, 1.0, 20.0), Vector2(2.0, 2.0)),
+		controller._position_is_valid(Vector3(17.0, 1.0, 20.0), Vector2(2.0, 2.0)),
+		"expanded Area 02 accepts equipment in the new outward build space"
+	)
+	_expect(
+		not controller._position_is_valid(Vector3(21.0, 1.0, 20.0), Vector2(2.0, 2.0)),
 		"placement outside build bounds is rejected"
 	)
 

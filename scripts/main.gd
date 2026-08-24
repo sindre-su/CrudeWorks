@@ -165,8 +165,8 @@ func _build_environment() -> void:
 
 	_create_static_box(
 		"Ground",
-		Vector3(0.0, -0.2, 10.0),
-		Vector3(36.0, 0.4, 50.0),
+		Vector3(0.0, -0.2, 13.5),
+		Vector3(54.0, 0.4, 63.0),
 		Color("55656a")
 	)
 	_create_static_box(
@@ -177,8 +177,8 @@ func _build_environment() -> void:
 	)
 	_create_static_box(
 		"BuildPad",
-		Vector3(0.0, 0.04, 20.5),
-		Vector3(30.0, 0.14, 22.0),
+		Vector3(0.0, 0.04, 24.5),
+		Vector3(44.0, 0.14, 30.0),
 		Color("6f7b79")
 	)
 	build_area_label = _create_world_label(
@@ -192,6 +192,20 @@ func _build_environment() -> void:
 		_create_visual_box(
 			Vector3(stripe_x, 0.11, 0.0),
 			Vector3(0.16, 0.04, 13.0),
+			Color("f2c94c")
+		)
+	# The larger pad has its own edge markers, so its usable construction area
+	# remains readable without moving any established Area 02 equipment.
+	for stripe_x in [-21.8, 21.8]:
+		_create_visual_box(
+			Vector3(stripe_x, 0.12, 24.5),
+			Vector3(0.16, 0.04, 30.0),
+			Color("f2c94c")
+		)
+	for stripe_z in [9.7, 39.3]:
+		_create_visual_box(
+			Vector3(0.0, 0.12, stripe_z),
+			Vector3(44.0, 0.04, 0.16),
 			Color("f2c94c")
 		)
 
@@ -301,8 +315,9 @@ func _build_user_interface() -> void:
 	add_child(canvas)
 
 	hud_label = Label.new()
-	hud_label.position = Vector2(22.0, 22.0)
+	hud_label.position = Vector2(22.0, 185.0)
 	hud_label.size = Vector2(430.0, 290.0)
+	hud_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hud_label.add_theme_font_size_override("font_size", 19)
 	hud_label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.85))
 	hud_label.add_theme_constant_override("outline_size", 7)
@@ -311,11 +326,13 @@ func _build_user_interface() -> void:
 	objective_label = Label.new()
 	objective_label.anchor_left = 0.5
 	objective_label.anchor_right = 0.5
-	objective_label.offset_left = -330.0
-	objective_label.offset_right = 330.0
+	objective_label.offset_left = -320.0
+	objective_label.offset_right = 320.0
 	objective_label.offset_top = 18.0
-	objective_label.offset_bottom = 82.0
+	objective_label.offset_bottom = 88.0
 	objective_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	objective_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	objective_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	objective_label.add_theme_font_size_override("font_size", 22)
 	objective_label.add_theme_color_override("font_color", Color("fff3bd"))
 	objective_label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.9))
@@ -327,9 +344,11 @@ func _build_user_interface() -> void:
 	alarm_label.anchor_right = 0.5
 	alarm_label.offset_left = -360.0
 	alarm_label.offset_right = 360.0
-	alarm_label.offset_top = 95.0
-	alarm_label.offset_bottom = 175.0
+	alarm_label.offset_top = 94.0
+	alarm_label.offset_bottom = 166.0
 	alarm_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	alarm_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	alarm_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	alarm_label.add_theme_font_size_override("font_size", 21)
 	alarm_label.add_theme_color_override("font_color", Color("ff6b5f"))
 	alarm_label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.9))
@@ -341,9 +360,10 @@ func _build_user_interface() -> void:
 	help_label.anchor_right = 1.0
 	help_label.offset_left = -275.0
 	help_label.offset_right = -22.0
-	help_label.offset_top = 22.0
-	help_label.offset_bottom = 205.0
+	help_label.offset_top = 185.0
+	help_label.offset_bottom = 390.0
 	help_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	help_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	help_label.text = "WASD  Gå\nMus  Se\nShift  Løp\nSpace  Hopp\nCtrl / C  Huk\nE  Bruk utstyr\nR  Start batch på nytt\nEsc  Frigjør mus"
 	help_label.add_theme_font_size_override("font_size", 16)
 	help_label.add_theme_color_override("font_outline_color", Color.BLACK)
@@ -372,9 +392,11 @@ func _build_user_interface() -> void:
 	prompt_label.anchor_bottom = 1.0
 	prompt_label.offset_left = -320.0
 	prompt_label.offset_right = 320.0
-	prompt_label.offset_top = -110.0
-	prompt_label.offset_bottom = -68.0
+	prompt_label.offset_top = -120.0
+	prompt_label.offset_bottom = -62.0
 	prompt_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	prompt_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	prompt_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	prompt_label.add_theme_font_size_override("font_size", 22)
 	prompt_label.add_theme_color_override("font_color", Color("fff3bd"))
 	prompt_label.add_theme_color_override("font_outline_color", Color.BLACK)
@@ -388,9 +410,11 @@ func _build_user_interface() -> void:
 	notification_label.anchor_bottom = 1.0
 	notification_label.offset_left = -400.0
 	notification_label.offset_right = 400.0
-	notification_label.offset_top = -165.0
-	notification_label.offset_bottom = -125.0
+	notification_label.offset_top = -195.0
+	notification_label.offset_bottom = -135.0
 	notification_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	notification_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	notification_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	notification_label.add_theme_font_size_override("font_size", 20)
 	notification_label.add_theme_color_override("font_outline_color", Color.BLACK)
 	notification_label.add_theme_constant_override("outline_size", 8)
@@ -847,8 +871,9 @@ func _on_unit_interacted(unit_id: String) -> void:
 					unit_id,
 					process_model.can_afford(BuiltRefineryModelScript.CRUDE_BATCH_COST)
 				)
-				if result["ok"] and result["charge"] > 0:
-					process_model.purchase(result["charge"])
+				var charge: int = int(result.get("charge", 0))
+				if result["ok"] and charge > 0:
+					process_model.purchase(charge)
 				if result["ok"] and int(result.get("revenue", 0)) > 0:
 					process_model.credit(int(result["revenue"]))
 				if result.get("sample_id", "") != "":
@@ -1525,7 +1550,7 @@ func _write_save(show_feedback: bool) -> Dictionary:
 		if show_feedback:
 			_show_notification("LAGRET", 1.2)
 	else:
-		_show_notification("Kunne ikke lagre. Fremgangen er ikke lagret.", 10.0)
+		_show_notification("Kunne ikke lagre: %s" % String(result.get("message", "ukjent feil")), 10.0)
 	return result
 
 

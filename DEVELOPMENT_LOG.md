@@ -680,3 +680,30 @@
 - Validation: focused building/refinery/Main/save coverage plus full Godot
   regression, headless main/editor scans and `git diff --check` pending final
   checkpoint. Deferred: human 1280×720 interaction test.
+
+## v0.22.1 — Stabilization, Save Reliability and Area 02 Expansion
+
+- Preserved the existing player save and backup while investigating the reported
+  first-batch save failure. The retained save validated successfully, and a new
+  repeated autosave stress path now writes, reads and restores a commissioning
+  batch at 100 L intervals, including the reported 400 L point.
+- Hardened atomic saves: the temporary file is checked for write errors and
+  fully validated before it can replace the previous primary/backup pair. Save
+  feedback now includes the specific safe failure reason.
+- Fixed a captured runtime crash when using `E` on a Heavy Residue tank. Product
+  dispatch results do not include a crude-purchase `charge`; Main now treats it
+  as an optional field and credits only the returned product revenue.
+- Reworked the 1280×720 HUD hierarchy: yellow objective and alarms occupy a
+  dedicated top band; HUD/help are below it; prompt and notification text wrap
+  in separated bottom bands.
+- Expanded Area 02 from 560 m² to 1,120 m². Ground, build pad, boundary markers,
+  placement bounds and save-position validation now agree; existing coordinates
+  remain valid.
+- Added regressions for direct Heavy Residue tank dispatch, repeated first-batch
+  autosaves through 400 L and atomic restoration, plus construction in the new
+  Area 02 space.
+
+## Next Best Work
+
+- Perform the deferred human 1280×720 playtest: confirm the new HUD spacing,
+  expanded build-pad readability and long modal text in the actual running game.

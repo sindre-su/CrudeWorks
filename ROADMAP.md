@@ -2,7 +2,7 @@
 
 ## Current stable baseline
 
-Version 0.22 has a tested pilot plant and multiple independent player-built
+Version 0.22.1 has a tested pilot plant and multiple independent player-built
 Area 02 refinery trains. The built loop covers construction, directed pipes, valve troubleshooting,
 Sour-diesel treatment, physical diesel sampling, LAB-101, LS-201, 5/10/15 L/s
 pump targets and separate Naphtha/heavy-residue deliveries.
@@ -38,11 +38,16 @@ utility provides 100 kW; buildable PU-101 Power Units add 100 kW each. Pumps,
 HT-201 and the VDU auxiliary load consume capacity only while operating, so new
 starts are rejected safely when the available capacity is insufficient.
 
+Area 02 construction space is now approximately twice its original footprint.
+The original pilot plant and starter positions remain unchanged; the added pad
+space supports larger layouts without introducing a new process system.
+
 ## Current priority
 
 **Hands-on 1280 x 720 usability pass.** Verify VDU and PU-101 placement,
-build-menu readability, valve readability, power feedback and terminal layout
-in the running game. Headless tests cannot replace this check.
+build-menu readability, valve readability, power feedback, the expanded Area 02
+boundary and terminal layout in the running game. Headless tests cannot replace
+this check.
 
 ## Architecture preparation
 
