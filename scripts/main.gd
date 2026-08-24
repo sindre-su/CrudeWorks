@@ -42,6 +42,8 @@ var batch_report_panel: PanelContainer
 var batch_report_label: Label
 var contract_selection_panel: PanelContainer
 var contract_selection_label: Label
+var product_dispatch_panel: PanelContainer
+var product_dispatch_label: Label
 var control_station_panel: PanelContainer
 var control_station_label: Label
 var lab_analysis_panel
@@ -51,6 +53,7 @@ var notification_time_left := 0.0
 var batch_report_visible := false
 var contract_selection_visible := false
 var contract_selection_source_id := ""
+var product_dispatch_visible := false
 var control_station_visible := false
 var control_station_feedback := ""
 var control_station_feedback_is_error := false
@@ -91,6 +94,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if contract_selection_visible:
 		_handle_contract_selection_input(event)
+		get_viewport().set_input_as_handled()
+		return
+	if product_dispatch_visible:
+		_handle_product_dispatch_input(event)
 		get_viewport().set_input_as_handled()
 		return
 	if control_station_visible:
@@ -446,6 +453,25 @@ func _build_user_interface() -> void:
 	contract_selection_panel.add_child(contract_selection_label)
 	canvas.add_child(contract_selection_panel)
 
+	product_dispatch_panel = PanelContainer.new()
+	product_dispatch_panel.anchor_left = 0.5
+	product_dispatch_panel.anchor_right = 0.5
+	product_dispatch_panel.anchor_top = 0.5
+	product_dispatch_panel.anchor_bottom = 0.5
+	product_dispatch_panel.offset_left = -330.0
+	product_dispatch_panel.offset_right = 330.0
+	product_dispatch_panel.offset_top = -195.0
+	product_dispatch_panel.offset_bottom = 195.0
+	product_dispatch_panel.visible = false
+	product_dispatch_label = Label.new()
+	product_dispatch_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	product_dispatch_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	product_dispatch_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	product_dispatch_label.add_theme_font_size_override("font_size", 22)
+	product_dispatch_label.add_theme_color_override("font_color", Color("d9f4ff"))
+	product_dispatch_panel.add_child(product_dispatch_label)
+	canvas.add_child(product_dispatch_panel)
+
 	control_station_panel = PanelContainer.new()
 	control_station_panel.anchor_left = 0.5
 	control_station_panel.anchor_right = 0.5
@@ -531,6 +557,7 @@ func _update_user_interface() -> void:
 		and not build_controller.active
 		and not batch_report_visible
 		and not contract_selection_visible
+		and not product_dispatch_visible
 		and not control_station_visible
 		and not lab_analysis_panel.visible
 		and startup_choice_state.is_empty()
@@ -550,6 +577,8 @@ func _update_user_interface() -> void:
 						prompt_label.text = "E — vis analyseresultat %s" % sample_id
 				else:
 					prompt_label.text = "E — analyser %s" % sample_id
+			elif _has_dispatchable_product_order() and not _active_diesel_available():
+				prompt_label.text = "E — åpne produktleveranser"
 			else:
 				prompt_label.text = (
 					"LAB / SALG — venter på diesel"
@@ -564,6 +593,7 @@ func _update_user_interface() -> void:
 	completion_panel.visible = process_model.objective_complete and not build_mode_unlocked
 	batch_report_panel.visible = batch_report_visible and not build_controller.active
 	contract_selection_panel.visible = contract_selection_visible and not build_controller.active
+	product_dispatch_panel.visible = product_dispatch_visible and not build_controller.active
 	control_station_panel.visible = control_station_visible and not build_controller.active
 	if control_station_visible:
 		_update_control_station_text()
@@ -573,6 +603,7 @@ func _update_user_interface() -> void:
 		operation_ui_visible
 		and not batch_report_visible
 		and not contract_selection_visible
+		and not product_dispatch_visible
 		and not control_station_visible
 		and not lab_analysis_panel.visible
 		and startup_choice_state.is_empty()
@@ -740,6 +771,8 @@ func _set_liquid_level(tank_id: String, fill_ratio: float) -> void:
 
 
 func _on_unit_interacted(unit_id: String) -> void:
+	if batch_report_visible or contract_selection_visible or product_dispatch_visible or control_station_visible or (lab_analysis_panel != null and lab_analysis_panel.visible):
+		return
 	var message := ""
 	var pilot_state_before: Dictionary = process_model.save_state()
 	var built_state_before: Dictionary = built_refinery_model.save_state()
@@ -753,11 +786,18 @@ func _on_unit_interacted(unit_id: String) -> void:
 		"sales_terminal":
 			if process_model.objective_complete:
 				if built_refinery_model.commissioning_contract_complete:
-					var analysis: Dictionary = built_refinery_model.analyze_diesel_sample()
-					if analysis["ok"]:
-						_open_lab_analysis(analysis)
+					var lab_status: Dictionary = built_refinery_model.lab_dispatch_status()
+					if lab_status.get("sample_current", false):
+						var analysis: Dictionary = built_refinery_model.analyze_diesel_sample()
+						if analysis["ok"]:
+							_open_lab_analysis(analysis)
+							return
+						message = analysis["message"]
+					elif _has_dispatchable_product_order() and not _active_diesel_available():
+						_open_product_dispatch()
 						return
-					message = analysis["message"]
+					else:
+						message = lab_status["message"]
 				else:
 					var sale: Dictionary = built_refinery_model.sell_diesel()
 					if sale["ok"]:
@@ -1102,6 +1142,75 @@ func _select_contract(contract_id: String) -> void:
 func _close_contract_selection() -> void:
 	contract_selection_visible = false
 	contract_selection_source_id = ""
+	player.set_input_blocked(false)
+	build_controller.set_input_blocked(false)
+
+
+func _has_dispatchable_product_order() -> bool:
+	for order in built_refinery_model.available_product_orders():
+		if order.get("ready", false):
+			return true
+	return false
+
+
+func _active_diesel_available() -> bool:
+	var route: Dictionary = built_refinery_model.network.find_complete_route()
+	if route.is_empty():
+		return false
+	var tank: Dictionary = built_refinery_model.equipment[route["products"]["diesel"]]
+	return tank["contents"] == "diesel" and float(tank["volume_l"]) > 0.001
+
+
+func _open_product_dispatch() -> void:
+	product_dispatch_visible = true
+	notification_time_left = 0.0
+	_update_product_dispatch_text()
+	player.set_input_blocked(true)
+	build_controller.set_input_blocked(true)
+
+
+func _update_product_dispatch_text(error_text := "") -> void:
+	var orders: Array[Dictionary] = built_refinery_model.available_product_orders()
+	var rows: Array[String] = []
+	for index in orders.size():
+		var order: Dictionary = orders[index]
+		var state := "KLAR" if order["ready"] else "MANGLER %.0f L" % maxf(0.0, float(order["target_l"]) - float(order["volume_l"]))
+		rows.append("%d %s\n  %.0f / %.0f L • %d kr • %s" % [
+			index + 1, order["order_name"], order["volume_l"], order["target_l"],
+			order["revenue_preview"], state,
+		])
+	product_dispatch_label.text = (
+		"PRODUKTLEVERANSER\n\n"
+		+ "\n\n".join(rows)
+		+ ("\n\n" + error_text if not error_text.is_empty() else "")
+		+ "\n\n1 / 2 — send produkt    Esc — avbryt"
+	)
+
+
+func _handle_product_dispatch_input(event: InputEventKey) -> void:
+	if event.keycode == KEY_ESCAPE:
+		_close_product_dispatch()
+		_show_notification("Produktleveranse avbrutt.")
+		return
+	var product_id := ""
+	if event.keycode == KEY_1:
+		product_id = "light"
+	elif event.keycode == KEY_2:
+		product_id = "heavy"
+	if product_id.is_empty():
+		return
+	var result: Dictionary = built_refinery_model.dispatch_product(product_id)
+	if not result["ok"]:
+		_update_product_dispatch_text(result["message"])
+		return
+	process_model.credit(result["revenue"])
+	_close_product_dispatch()
+	_show_notification(result["message"], 6.0)
+	_schedule_save()
+
+
+func _close_product_dispatch() -> void:
+	product_dispatch_visible = false
 	player.set_input_blocked(false)
 	build_controller.set_input_blocked(false)
 

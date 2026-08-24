@@ -27,6 +27,20 @@
 
 ## Completed Work
 
+- Milestone 10 completed:
+  - Added fixed, catalog-driven Naphtha and heavy-residue deliveries to the
+    existing Area 02 contract economy; no market simulation or second pricing
+    system was introduced.
+  - Renamed player-facing light/heavy inventory to Naphtha and Tung rest.
+  - Diesel dispatch still requires the existing physical sample and LAB-101.
+    It now consumes only its authorized diesel inventory; Heavy's established
+    delivery also consumes its ordered heavy fraction.
+  - Added a small LAB / SALG product-delivery modal for the remaining Naphtha
+    and Tung rest, with volume requirement, price preview and one atomic
+    inventory-consuming dispatch per product.
+  - Preserved Sour crude: only Sour diesel needs HT-201; its Naphtha and Tung
+    rest remain normal product outputs.
+
 - Phase 1 repository, architecture, gameplay, QA, test, scene, and economy
   review completed without changing implementation code.
 - Milestone 1 completed:
@@ -382,7 +396,7 @@
 
 ## Current Stable State
 
-- Version 0.13.0 is verified stable after the Sour-treatment milestone.
+- Version 0.14.0 is verified stable after the multi-product economy milestone.
 - The original pilot loop and full player-built loop both pass regression.
 - The first valid Area 02 sale now has a durable achievement and informative
   result, while later paid batches remain repeatable.
@@ -411,6 +425,10 @@
   fault but stops the pump safely.
 - Sour crude is now a genuine refinery-capability choice: its cheaper diesel
   is only sellable after the player builds, connects and starts HT-201.
+- A processed barrel now leaves separate Naphtha, diesel and heavy-residue
+  inventories. Diesel remains LAB-controlled, while stored by-products must be
+  delivered through their own finite-volume product orders before the next feed
+  can be chosen.
 
 ## Known Issues
 
@@ -460,5 +478,5 @@
 
 ## Next Best Action
 
-- Add one recoverable maintenance fault that can be diagnosed with the existing
-  LOW FLOW, tank, valve and LS-201 feedback before adding another crude type.
+- Perform the deferred hands-on 1280 x 720 playtest, then balance the new
+  Naphtha/heavy-residue values and storage pressure from actual player runs.

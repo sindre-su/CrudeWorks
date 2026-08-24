@@ -2,23 +2,24 @@
 
 ## Current stable baseline
 
-Version 0.13 has a tested pilot plant and one player-built Area 02 refinery
+Version 0.14 has a tested pilot plant and one player-built Area 02 refinery
 line. The built loop covers construction, directed pipes, valve troubleshooting,
-Standard/Heavy deliveries, physical diesel sampling, LAB-101, LS-201 and
-5/10/15 L/s pump targets.
+Sour-diesel treatment, physical diesel sampling, LAB-101, LS-201, 5/10/15 L/s
+pump targets and separate Naphtha/heavy-residue deliveries.
 
 ## Current priority
 
 **Hands-on 1280 x 720 usability pass.** Verify port aiming, valve readability,
-alarm visibility, treatment readability and modal layout in the running game.
+alarm visibility, treatment readability, product-delivery modal layout and
+terminal feedback in the running game.
 Headless tests cannot replace this check.
 
 ## Next milestones
 
 1. Hands-on 1280 x 720 interaction pass: verify port aiming, valve readability,
    alarm visibility and modal layout in the running game.
-2. Product-value expansion after Sour-treatment orders and storage choices have
-   playtested.
+2. Playtest product-value balance and storage pressure before adding a new
+   conversion process or refinery line.
 
 ## Task context rules
 

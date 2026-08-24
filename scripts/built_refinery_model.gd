@@ -717,7 +717,12 @@ func sell_diesel() -> Dictionary:
 	successful_sales += 1
 	active_contract_bonus_available = false
 	last_batch_report = report.duplicate(true)
-	for product_name in ["light", "diesel", "heavy"]:
+	# The primary contract pays for diesel quality and, for Heavy, its ordered
+	# residue. Other fractions remain in storage for their own delivery orders.
+	var consumed_products := {"diesel": true}
+	if delivery["product"] != "diesel":
+		consumed_products[delivery["product"]] = true
+	for product_name in consumed_products:
 		var state: Dictionary = equipment[route["products"][product_name]]
 		state["volume_l"] = 0.0
 		state["contents"] = "empty"
@@ -735,6 +740,62 @@ func sell_diesel() -> Dictionary:
 		"sold_volume_l": total_volume,
 		"report": report,
 		"contract_completed_now": contract_completed_now,
+	}
+
+
+func available_product_orders() -> Array[Dictionary]:
+	var validation: Dictionary = network.validate_configuration()
+	if not validation["valid"] or _any_pump_running():
+		return []
+	var route: Dictionary = validation["route"]
+	var orders: Array[Dictionary] = []
+	for product_id in CrudeCatalog.PRODUCT_ORDER:
+		var order := CrudeCatalog.product_order_definition(product_id)
+		var tank: Dictionary = equipment[route["products"][product_id]]
+		var volume_l := float(tank["volume_l"]) if tank["contents"] == product_id else 0.0
+		order["volume_l"] = volume_l
+		order["ready"] = volume_l + 0.01 >= float(order["target_l"])
+		order["revenue_preview"] = int(round(volume_l * float(order["price_per_l"])))
+		orders.append(order)
+	return orders
+
+
+func dispatch_product(product_id: String) -> Dictionary:
+	if _any_pump_running():
+		return _result(false, "Stopp pumpen før produktleveransen sendes.")
+	var order := CrudeCatalog.product_order_definition(product_id)
+	if order.is_empty():
+		return _result(false, "Denne produktleveransen finnes ikke.")
+	var validation: Dictionary = network.validate_configuration()
+	if not validation["valid"]:
+		return _result(false, validation["message"])
+	var route: Dictionary = validation["route"]
+	var off_route_message := _off_route_product_message(route)
+	if not off_route_message.is_empty():
+		return _result(false, off_route_message)
+	var tank: Dictionary = equipment[route["products"][product_id]]
+	var volume_l := float(tank["volume_l"]) if tank["contents"] == product_id else 0.0
+	if volume_l + 0.01 < float(order["target_l"]):
+		return _result(false, "%s krever %.0f L; tanken har %.0f L." % [
+			order["order_name"], order["target_l"], volume_l,
+		])
+	var revenue := int(round(volume_l * float(order["price_per_l"])))
+	tank["volume_l"] = 0.0
+	tank["contents"] = "empty"
+	tank["quality_percent"] = 0.0
+	tank["sulfur_ppm"] = 0.0
+	product_inventory_revision += 1
+	_diesel_sample = {}
+	successful_sales += 1
+	_clear_contract_if_empty()
+	last_status = "%s sendt: %.0f L for %d kr." % [order["product_name"], volume_l, revenue]
+	return {
+		"ok": true,
+		"message": last_status,
+		"revenue": revenue,
+		"product_id": product_id,
+		"product_name": order["product_name"],
+		"sold_volume_l": volume_l,
 	}
 
 
@@ -1613,9 +1674,9 @@ func _contents_name(contents: String) -> String:
 	return {
 		"empty": "TOM",
 		"crude": "RÅOLJE",
-		"light": "LETT",
+		"light": "NAPHTHA",
 		"diesel": "DIESEL",
-		"heavy": "TUNG",
+		"heavy": "TUNG REST",
 	}.get(contents, contents.to_upper())
 
 

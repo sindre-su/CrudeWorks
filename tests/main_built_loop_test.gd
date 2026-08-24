@@ -68,7 +68,7 @@ func _run_test() -> void:
 	_expect("OMRÅDE 02 FULLFØRT" in main.built_refinery_model.objective_text(), "objective changes after commissioning completion")
 	_expect(not main.built_refinery_model.diesel_is_approved(), "Main-integrated sale consumes approved diesel")
 	main._update_unit_statuses()
-	_expect("VENTER" in main.units["sales_terminal"].status_label.text, "terminal returns to waiting after inventory is sold")
+	_expect("PRØVE KREVES" in main.units["sales_terminal"].status_label.text, "terminal keeps diesel LAB state distinct while product inventory remains")
 	main._on_unit_interacted("sales_terminal")
 	_expect(main.process_model.money == 3200, "repeated terminal interaction cannot duplicate built-sale revenue")
 	var dismiss_event := InputEventKey.new()
@@ -76,6 +76,18 @@ func _run_test() -> void:
 	dismiss_event.pressed = true
 	main._unhandled_input(dismiss_event)
 	_expect(not main.batch_report_visible and not main.player.input_blocked and not main.build_controller.input_blocked, "Enter dismisses the report and restores gameplay controls")
+	main._on_unit_interacted("sales_terminal")
+	_expect(main.product_dispatch_visible and "NAPHTHALEVERANSE" in main.product_dispatch_label.text and "TUNGRESTLEVERANSE" in main.product_dispatch_label.text, "terminal opens distinct non-diesel product orders after the LAB-controlled diesel delivery")
+	var naphtha_event := InputEventKey.new()
+	naphtha_event.keycode = KEY_1
+	naphtha_event.pressed = true
+	main._unhandled_input(naphtha_event)
+	main._on_unit_interacted("sales_terminal")
+	var residue_event := InputEventKey.new()
+	residue_event.keycode = KEY_2
+	residue_event.pressed = true
+	main._unhandled_input(residue_event)
+	_expect(is_equal_approx(main.built_refinery_model.product_volume_l(), 0.0) and main.process_model.money == 5400, "Naphtha and residue orders clear only their stored products and credit distinct revenue")
 	main._on_unit_interacted("area02_control")
 	_expect(main.control_station_visible and main.player.input_blocked and main.build_controller.input_blocked, "unlocked LS-201 opens a live modal and blocks field/build controls")
 	main._update_user_interface()
@@ -112,7 +124,7 @@ func _run_test() -> void:
 	main.process_model.money = money_before_cancel
 	main._unhandled_input(standard_event)
 	_expect(not main.contract_selection_visible and not main.player.input_blocked and not main.build_controller.input_blocked, "contract choice closes cleanly and restores gameplay controls")
-	_expect(main.process_model.money == 2900, "second Main-integrated crude batch deducts exactly 300 kr")
+	_expect(main.process_model.money == 5100, "second Main-integrated crude batch deducts exactly 300 kr")
 	_expect(is_equal_approx(main.built_refinery_model.equipment[source.unit_id]["volume_l"], 1000.0), "paid Main-integrated batch loads exactly 1 000 L")
 
 	main.built_refinery_model.interact(pump.unit_id)

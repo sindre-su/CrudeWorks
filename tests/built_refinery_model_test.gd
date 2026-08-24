@@ -39,6 +39,7 @@ func _run_tests() -> void:
 	_test_adjustable_pump_flow_and_quality_tradeoff()
 	_test_recoverable_pump_filter_fault()
 	_test_sour_crude_requires_treatment()
+	_test_product_specific_dispatch()
 
 
 func _test_invalid_network_cannot_start() -> void:
@@ -218,6 +219,7 @@ func _test_sour_crude_requires_treatment() -> void:
 	untreated.tick(100.0)
 	_expect(is_equal_approx(untreated.equipment["diesel_tank"]["volume_l"], 350.0), "untreated Sour crude preserves the established mass-conserving fraction volume")
 	_expect(is_equal_approx(untreated.equipment["diesel_tank"]["sulfur_ppm"], 500.0), "direct Sour diesel retains its high sulfur state")
+	_expect(untreated.dispatch_product("light")["ok"] and untreated.dispatch_product("heavy")["ok"], "Sour crude keeps usable Naphtha and heavy-residue deliveries independent of untreated diesel")
 	var untreated_sample: Dictionary = untreated.take_diesel_sample("diesel_tank")
 	var untreated_lab: Dictionary = untreated.analyze_diesel_sample()
 	_expect(untreated_sample["ok"] and not untreated_lab["approved"] and "Dieselbehandling kreves" in untreated_lab["deviation"], "LAB rejects untreated Sour diesel with a clear treatment requirement")
@@ -259,7 +261,7 @@ func _test_mass_conserving_ideal_batch_and_sale() -> void:
 	model.tick(0.0)
 	_expect("Varm" in model.last_status, "loaded cold route tells the player to heat before pumping")
 	_expect("råoljetank" in model.interaction_prompt("source"), "loaded source prompt switches to inspection")
-	_expect("LETT" in model.interaction_prompt("light_tank"), "product-tank prompt identifies its routed fraction")
+	_expect("NAPHTHA" in model.interaction_prompt("light_tank"), "product-tank prompt identifies its routed fraction")
 	model.interact("heater")
 	model.interact("heater")
 	model.tick(10.0)
@@ -289,11 +291,12 @@ func _test_mass_conserving_ideal_batch_and_sale() -> void:
 	_expect(is_equal_approx(sale["report"]["light_l"] + sale["report"]["diesel_l"] + sale["report"]["heavy_l"], 1000.0), "reported fractions preserve mass balance")
 	_expect(sale["report"]["crude_cost"] == 0 and sale["report"]["net_profit"] == 2800, "free startup report shows exact cost and net result")
 	_expect(is_equal_approx(model.equipment["diesel_tank"]["volume_l"], 0.0), "sale consumes the diesel inventory")
-	_expect(is_equal_approx(model.equipment["light_tank"]["volume_l"], 0.0), "successful product dispatch clears light fraction storage")
-	_expect(is_equal_approx(model.equipment["heavy_tank"]["volume_l"], 0.0), "successful product dispatch clears heavy fraction storage")
+	_expect(is_equal_approx(model.equipment["light_tank"]["volume_l"], 300.0), "diesel dispatch preserves Naphtha for its own order")
+	_expect(is_equal_approx(model.equipment["heavy_tank"]["volume_l"], 350.0), "diesel dispatch preserves heavy residue for its own order")
+	_expect(model.dispatch_product("light")["ok"] and model.dispatch_product("heavy")["ok"], "stored Naphtha and heavy residue can be dispatched separately")
 	var repeated_sale: Dictionary = model.sell_diesel()
 	_expect(not repeated_sale["ok"] and repeated_sale["revenue"] == 0, "diesel cannot be sold repeatedly without new product")
-	_expect(model.successful_sales == 1, "repeated sale cannot duplicate the completion count")
+	_expect(model.successful_sales == 3, "repeated diesel sale cannot duplicate the completion count after two product deliveries")
 	var paid_load: Dictionary = model.load_crude_batch("source", true)
 	model.interact("pump")
 	model.tick(100.0)
@@ -301,7 +304,7 @@ func _test_mass_conserving_ideal_batch_and_sale() -> void:
 	var paid_sale: Dictionary = model.sell_diesel()
 	_expect(paid_load["charge"] == 300 and paid_sale["report"]["crude_cost"] == 300, "paid batch report includes the exact crude cost")
 	_expect(paid_sale["report"]["net_profit"] == 2500, "paid batch report calculates exact net profit")
-	_expect(not paid_sale["contract_completed_now"] and model.successful_sales == 2, "later sales do not recomplete the commissioning contract")
+	_expect(not paid_sale["contract_completed_now"] and model.successful_sales == 4, "later sales do not recomplete the commissioning contract")
 
 
 func _test_full_tank_backpressure() -> void:
@@ -389,6 +392,8 @@ func _test_offspec_recovery() -> void:
 	model.tick(100.0)
 	var sale: Dictionary = model.sell_diesel()
 	_expect(sale["ok"] and model.commissioning_contract_complete, "first approved retry completes commissioning exactly once")
+	model.dispatch_product("light")
+	model.dispatch_product("heavy")
 	var paid_after_completion: Dictionary = model.load_crude_batch("source", true)
 	_expect(paid_after_completion["ok"] and paid_after_completion["charge"] == BuiltRefineryModelScript.CRUDE_BATCH_COST, "subsidy ends permanently after approved commissioning")
 
@@ -527,6 +532,7 @@ func _test_contract_lifecycle_and_bonus_lock() -> void:
 	_expect(not model.can_choose_contract("source")["ok"], "stored Heavy products block contract switching after source depletion")
 	_take_and_analyze(model)
 	model.sell_diesel()
+	model.dispatch_product("light")
 	_expect(model.can_choose_contract("source")["ok"] and model.active_contract_id.is_empty(), "successful dispatch clears the finished contract and enables the next choice")
 
 
@@ -638,8 +644,31 @@ func _test_paid_batch_lab_sampling() -> void:
 	model.interact("pump")
 	_expect(model.diesel_is_dispatch_ready(), "stopping the pump restores dispatch readiness without invalidating unchanged product")
 	var successful_sale: Dictionary = model.sell_diesel()
-	_expect(successful_sale["ok"] and successful_sale["revenue"] == 2800 and is_equal_approx(model.product_volume_l(), 0.0), "approved current sample dispatches the existing product batch exactly once")
+	_expect(successful_sale["ok"] and successful_sale["revenue"] == 2800 and is_equal_approx(model.equipment["diesel_tank"]["volume_l"], 0.0), "approved current sample dispatches only its authorized diesel inventory")
 	_expect(not model.sell_diesel()["ok"] and model.successful_sales == 1, "consumed sample and inventory cannot be dispatched twice")
+
+
+func _test_product_specific_dispatch() -> void:
+	var model = _complete_model()
+	model.commissioning_batch_available = false
+	model.commissioning_contract_complete = true
+	model.load_crude_batch("source", true, "standard")
+	model.equipment["heater"]["temperature_c"] = 200.0
+	model.equipment["heater"]["setpoint_c"] = 200.0
+	model.interact("valve")
+	model.interact("pump")
+	model.tick(100.0)
+	var orders: Array[Dictionary] = model.available_product_orders()
+	_expect(orders.size() == 2 and orders[0]["product_name"] == "Naphtha" and orders[1]["product_name"] == "Tung rest", "product orders expose clear Naphtha and heavy-residue identities")
+	var wrong_product: Dictionary = model.dispatch_product("diesel")
+	_expect(not wrong_product["ok"], "diesel cannot bypass its LAB-controlled delivery path")
+	var light_sale: Dictionary = model.dispatch_product("light")
+	_expect(light_sale["ok"] and light_sale["revenue"] == 1500 and is_equal_approx(model.equipment["light_tank"]["volume_l"], 0.0), "Naphtha dispatch consumes only Naphtha and pays its distinct value")
+	_expect(is_equal_approx(model.equipment["diesel_tank"]["volume_l"], 350.0) and is_equal_approx(model.equipment["heavy_tank"]["volume_l"], 350.0), "Naphtha delivery cannot consume diesel or heavy residue")
+	var repeat_light: Dictionary = model.dispatch_product("light")
+	_expect(not repeat_light["ok"] and repeat_light["revenue"] == 0, "empty Naphtha tank cannot be paid repeatedly")
+	var heavy_sale: Dictionary = model.dispatch_product("heavy")
+	_expect(heavy_sale["ok"] and heavy_sale["revenue"] == 700 and is_equal_approx(model.equipment["heavy_tank"]["volume_l"], 0.0), "heavy-residue delivery consumes inventory and pays its lower value")
 
 
 func _test_ambiguous_routes_block_operation_atomically() -> void:

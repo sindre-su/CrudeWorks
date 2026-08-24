@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.13 – Sour råolje og dieselbehandling**
+**Prototypeversjon: 0.14 – Produktleveranser og hele-fat-økonomi**
 
 En liten 3D-prototype der spilleren driver et forenklet pilotraffineri. Første mål
 er å behandle 1 000 liter råolje og selge minst 200 liter diesel med 90 % eller
@@ -47,6 +47,8 @@ Den første komplette «vertical slice»-en inneholder:
   filterrestriksjon som må undersøkes og repareres i felt
 - Sour råolje med høy svovelstatus og en byggbar dieselbehandler som gjør
   off-spec diesel salgbar uten å endre materialmengden
+- separate produktleveranser: Naphtha gir 5 kr/L, diesel beholder LAB-kravet,
+  og tung rest gir 2 kr/L; hver levering tømmer bare riktig produkttank
 
 Alle objekter er foreløpig bygget av Godots primitive 3D-former. Det gjør at vi
 kan teste gameplay før vi bruker tid på modeller og grafikk.

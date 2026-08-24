@@ -3,6 +3,30 @@ extends RefCounted
 
 const DEFAULT_ID := "standard"
 const ORDER := ["standard", "heavy", "sour"]
+const PRODUCT_ORDER := ["light", "heavy"]
+
+
+static func product_order_definition(product_id: String) -> Dictionary:
+	match product_id:
+		"light":
+			return {
+			"product": "light",
+			"product_name": "Naphtha",
+			"order_name": "NAPHTHALEVERANSE",
+			"target_l": 100.0,
+			"price_per_l": 5.0,
+			"description": "lett produkt • 5 kr/L",
+		}
+		"heavy":
+			return {
+			"product": "heavy",
+			"product_name": "Tung rest",
+			"order_name": "TUNGRESTLEVERANSE",
+			"target_l": 100.0,
+			"price_per_l": 2.0,
+			"description": "lav verdi • 2 kr/L",
+		}
+	return {}
 
 
 static func definition(contract_id: String) -> Dictionary:
