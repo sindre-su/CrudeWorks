@@ -23,6 +23,7 @@ func _run_tests() -> void:
 	_test_v1_to_v2_contract_migration(snapshot)
 	await _test_startup_continue(snapshot)
 	await _test_main_round_trip(snapshot, source_main)
+	await _test_vacuum_intent_and_processing_round_trip()
 	_test_startup_confirmation(source_main)
 	_cleanup_test_files()
 
@@ -116,6 +117,15 @@ func _test_schema_validation(snapshot: Dictionary, live_main) -> void:
 	for field in ["fault_id", "fault_inspected", "fault_triggered", "processed_since_service_l"]:
 		legacy_flow["built_refinery"]["equipment"]["built_pump_2"].erase(field)
 	_expect(SaveSystemScript.validate_snapshot(legacy_flow)["ok"], "older v2 saves without adjustable-flow fields remain valid")
+	_expect(snapshot["built_refinery"]["equipment"]["built_tank_1"].has("material_intent"), "current tank snapshots persist material intent")
+	var legacy_intent := snapshot.duplicate(true)
+	for state in legacy_intent["built_refinery"]["equipment"].values():
+		if state["type"] == "tank":
+			state.erase("material_intent")
+	_expect(SaveSystemScript.validate_snapshot(legacy_intent)["ok"], "older saves without material intent remain valid")
+	var mismatched_intent := snapshot.duplicate(true)
+	mismatched_intent["built_refinery"]["equipment"]["built_tank_1"]["material_intent"] = "diesel"
+	_expect(not SaveSystemScript.validate_snapshot(mismatched_intent)["ok"], "saved material intent cannot conflict with non-empty actual tank contents")
 
 
 func _test_optional_delivery_report_validation(snapshot: Dictionary) -> void:
@@ -307,6 +317,56 @@ func _test_main_round_trip(snapshot: Dictionary, source_main) -> void:
 	restored.build_controller.set_input_blocked(false)
 	restored._on_build_placement_requested("tank", Vector3(-11.0, 1.96, 28.0), 0)
 	_expect(restored.build_controller.registered_unit_by_id("built_tank_10") != null, "next placement uses a non-colliding serial after load")
+
+
+func _test_vacuum_intent_and_processing_round_trip() -> void:
+	var source = MainScene.instantiate()
+	source.persistence_enabled = false
+	root.add_child(source)
+	await process_frame
+	for entry in [
+		["tank", Vector3(-11.0, 1.96, 27.0), 0, 1],
+		["pump", Vector3(-7.0, 0.86, 27.0), 0, 2],
+		["vacuum_distillation", Vector3(-2.0, 2.76, 27.0), 0, 3],
+		["tank", Vector3(5.0, 1.96, 22.0), 0, 4],
+		["tank", Vector3(5.0, 1.96, 27.0), 0, 5],
+	]:
+		_expect(source._create_built_unit(entry[0], entry[1], entry[2], entry[3], false)["ok"], "headless VDU fixture restores a buildable unit")
+	var model = source.built_refinery_model
+	model.set_tank_material_intent("built_tank_1", "heavy")
+	model.set_tank_material_intent("built_tank_4", "vacuum_gas_oil")
+	model.set_tank_material_intent("built_tank_5", "vacuum_residue")
+	var feed = source.build_controller.registered_unit_by_id("built_tank_1")
+	var pump = source.build_controller.registered_unit_by_id("built_pump_2")
+	var vdu = source.build_controller.registered_unit_by_id("built_vacuum_distillation_3")
+	var vgo = source.build_controller.registered_unit_by_id("built_tank_4")
+	var residue = source.build_controller.registered_unit_by_id("built_tank_5")
+	source.build_controller._connect_ports(feed.get_port("output"), pump.get_port("input"))
+	source.build_controller._connect_ports(pump.get_port("output"), vdu.get_port("input"))
+	source.build_controller._connect_ports(vdu.get_port("vgo"), vgo.get_port("input"))
+	source.build_controller._connect_ports(vdu.get_port("vacuum_residue"), residue.get_port("input"))
+	model.equipment[feed.unit_id]["contents"] = "heavy"
+	model.equipment[feed.unit_id]["volume_l"] = 100.0
+	model.equipment[pump.unit_id]["running"] = true
+	model.tick(2.0)
+	var snapshot: Dictionary = source._build_snapshot()
+	var vdu_validation: Dictionary = SaveSystemScript.validate_snapshot(snapshot)
+	_expect(vdu_validation["ok"], "partial VDU inventory with intents validates as a normal save snapshot: %s" % vdu_validation["message"])
+	var restored = MainScene.instantiate()
+	restored.persistence_enabled = false
+	root.add_child(restored)
+	await process_frame
+	var restore_result: Dictionary = restored._apply_snapshot(snapshot)
+	_expect(restore_result["ok"], "fresh Main restores VDU construction and material-intent state")
+	var restored_model = restored.built_refinery_model
+	_expect(restored_model.network.filter_routes_by_process_type(restored_model.network.find_complete_routes(), "vacuum_distillation").size() == 1 and restored_model.equipment["built_tank_1"]["material_intent"] == "heavy", "restored VDU source intent rediscoveres the same planned vacuum route")
+	_expect(is_equal_approx(restored_model.equipment["built_tank_1"]["volume_l"], 80.0) and is_equal_approx(restored_model.equipment["built_tank_4"]["volume_l"], 12.0) and is_equal_approx(restored_model.equipment["built_tank_5"]["volume_l"], 8.0), "VDU save/load preserves exact partial atomic inventory")
+	restored_model.equipment["built_pump_2"]["running"] = true
+	var mass_before := _total_tank_volume(restored)
+	restored_model.tick(1.0)
+	_expect(is_equal_approx(restored_model.equipment["built_tank_1"]["volume_l"], 70.0) and is_equal_approx(restored_model.equipment["built_tank_4"]["volume_l"], 18.0) and is_equal_approx(restored_model.equipment["built_tank_5"]["volume_l"], 12.0) and is_equal_approx(_total_tank_volume(restored), mass_before), "restored VDU route continues with one mass-conserving atomic transaction")
+	source.queue_free()
+	restored.queue_free()
 
 
 func _test_startup_confirmation(main) -> void:

@@ -50,10 +50,10 @@ Headless tests cannot replace this check.
   operator alarms and LS-201 explicitly atmospheric until an additional
   process family supplies its own routing and operating semantics.
 - The VDU skeleton is intentionally outside the player build menu. It has no
-  material simulation or saved tank-intent metadata yet. The next VDU work
-  must add atomic runtime transfer and persist intended material before it is
-  exposed to players. It must not reuse atmospheric valve, heater, column or
-  three-product assumptions.
+  player interaction or economy yet. v0.21D persists tank material intent and
+  performs an atomic 60/40 Heavy Residue → VGO/Vacuum Residue transfer. It
+  must not reuse atmospheric valve, heater, column or three-product
+  assumptions.
 
 ## Next milestones
 
@@ -63,8 +63,9 @@ Headless tests cannot replace this check.
    product-value balance before expanding into broader manifolds.
 3. Consider the next constrained routing decision only after the header's
    manual selection and source ownership are proven understandable in play.
-4. After the interaction pass, implement atomic VDU material transfer only
-   when source/destination ownership and save persistence are ready.
+4. Expose VDU construction, field operation and VGO/Vacuum Residue economy
+   only after the interaction pass; retain the existing atomic typed transfer
+   and do not add atmospheric semantics to the VDU.
 
 ## Task context rules
 

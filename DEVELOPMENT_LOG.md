@@ -630,8 +630,27 @@
   metadata, not persisted save data. Do not expose VDU construction or atomic
   VDU processing until that metadata and transaction state are saved.
 
+## v0.21D — Persisted Material Intent and Atomic VDU Processing
+
+- Tanks now persist `material_intent` separately from actual contents. Empty
+  tanks retain their intended material, and existing saves infer intent from
+  non-empty known contents when the optional field is absent.
+- Tank writes reject incompatible intended material. An unassigned tank adopts
+  its first accepted material without changing existing atmospheric gameplay.
+- Added isolated `_tick_vacuum_route()` dispatch. A running VDU feed pump
+  processes actual Heavy Residue only, using a fixed 60% VGO / 40% Vacuum
+  Residue split with no contracts, quality, LAB or HT-201 dependencies.
+- VDU capacity is pre-calculated across both outputs before source mutation;
+  partial capacity scales the complete transaction, while a full/incompatible
+  destination consumes no feed and produces nothing.
+- Headless integration proves atmospheric Heavy Residue in one physical tank
+  can feed VDU, and that partial VDU construction/inventory/intents survive
+  normal snapshot validation, reload and continued processing.
+- Validation: all six regression suites passed; headless main launch, editor
+  resource scan and `git diff --check` passed.
+
 ## Next Best Work
 
-- Implement atomic VDU material transfer only after persisting intended tank
-  material and defining source/output state ownership. Keep the deferred
-  hands-on 1280×720 interaction pass independent of that architecture work.
+- Perform the deferred hands-on 1280×720 interaction pass. Then expose VDU
+  construction and simple field operation over the existing atomic material
+  model; add VGO/Vacuum Residue economy only as player-facing follow-up work.

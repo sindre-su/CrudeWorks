@@ -48,7 +48,9 @@ func _run_tests() -> void:
 	_test_product_header_allocation_and_capacity()
 	_test_product_header_preserves_treated_diesel_and_save_state()
 	_test_sparse_future_route_is_ignored_by_atmospheric_consumers()
-	_test_real_vacuum_route_is_not_simulated()
+	_test_persisted_material_intent()
+	_test_atomic_vacuum_distillation()
+	_test_vacuum_capacity_and_multi_stage_processing()
 
 
 func _test_invalid_network_cannot_start() -> void:
@@ -1134,24 +1136,100 @@ func _test_sparse_future_route_is_ignored_by_atmospheric_consumers() -> void:
 	_expect(model.operations_snapshot()["trains"].size() == 1, "LS-201 exposes only the supported atmospheric train set")
 
 
-func _test_real_vacuum_route_is_not_simulated() -> void:
-	var model = BuiltRefineryModelScript.new()
-	model.register_unit("vacuum_source", "tank", "VT-201", "heavy")
-	model.register_unit("vacuum_pump", "pump", "VP-201")
-	model.register_unit("vdu", "vacuum_distillation", "VDU-301")
-	model.register_unit("vgo_tank", "tank", "VT-202", "vacuum_gas_oil")
-	model.register_unit("vacuum_residue_tank", "tank", "VT-203", "vacuum_residue")
-	model.network.try_connect("vacuum_source", "output", "vacuum_pump", "input")
-	model.network.try_connect("vacuum_pump", "output", "vdu", "input")
-	model.network.try_connect("vdu", "vgo", "vgo_tank", "input")
-	model.network.try_connect("vdu", "vacuum_residue", "vacuum_residue_tank", "input")
+func _test_persisted_material_intent() -> void:
+	var model = _vacuum_model(0.0)
+	_expect(model.equipment["vacuum_source"]["material_intent"] == "heavy" and model.network.tank_intended_material("vacuum_source") == "heavy", "planned Heavy Residue source stores explicit material intent at zero volume")
+	var saved: Dictionary = model.save_state()
+	var restored = _vacuum_model(0.0)
+	restored.apply_saved_state(saved)
+	_expect(restored.equipment["vacuum_source"]["material_intent"] == "heavy" and restored.network.filter_routes_by_process_type(restored.network.find_complete_routes(), restored.network.VACUUM_DISTILLATION).size() == 1, "empty planned vacuum source retains intent and discovery after save/load")
+	var legacy_saved: Dictionary = _vacuum_model(1.0).save_state()
+	for state in legacy_saved["equipment"].values():
+		if state["type"] == "tank":
+			state.erase("material_intent")
+	var legacy_restored = _vacuum_model(0.0)
+	legacy_restored.apply_saved_state(legacy_saved)
+	_expect(legacy_restored.equipment["vacuum_source"]["material_intent"] == "heavy" and legacy_restored.network.filter_routes_by_process_type(legacy_restored.network.find_complete_routes(), legacy_restored.network.VACUUM_DISTILLATION).is_empty(), "legacy non-empty material is inferred while empty unassigned destinations do not create a vacuum route")
 	model.equipment["vacuum_source"]["contents"] = "heavy"
-	model.equipment["vacuum_source"]["volume_l"] = 100.0
-	model.equipment["vacuum_pump"]["running"] = true
-	model.tick(10.0)
-	_expect(model.network.filter_routes_by_process_type(model.network.find_complete_routes(), model.network.VACUUM_DISTILLATION).size() == 1, "BuiltRefineryModel sees the real discovered vacuum route")
-	_expect(is_equal_approx(model.equipment["vacuum_source"]["volume_l"], 100.0) and is_equal_approx(model.equipment["vgo_tank"]["volume_l"], 0.0) and is_equal_approx(model.equipment["vacuum_residue_tank"]["volume_l"], 0.0), "tick skips vacuum material flow until its atomic simulation is implemented")
-	_expect(model.operations_snapshot()["trains"].is_empty() and model.operator_alarms().is_empty() and model.active_connection_keys().is_empty(), "real vacuum route stays out of atmospheric console, alarms and pipe visuals")
+	model.equipment["vacuum_source"]["volume_l"] = 1.0
+	_expect(not model.set_tank_material_intent("vacuum_source", "diesel")["ok"], "non-empty tank rejects incompatible material-intent reassignment")
+	model.equipment["vacuum_source"]["volume_l"] = 0.0
+	model.equipment["vacuum_source"]["contents"] = "empty"
+	_expect(model.equipment["vacuum_source"]["material_intent"] == "heavy", "emptying a tank does not erase its planned material intent")
+
+
+func _test_atomic_vacuum_distillation() -> void:
+	var stopped = _vacuum_model(100.0)
+	stopped.tick(10.0)
+	_expect(is_equal_approx(stopped.equipment["vacuum_source"]["volume_l"], 100.0) and is_equal_approx(stopped.equipment["vgo_tank"]["volume_l"], 0.0), "stopped VDU feed pump consumes and produces nothing")
+	stopped.equipment["vacuum_pump"]["running"] = true
+	var mass_before := _total_tank_volume(stopped)
+	stopped.tick(10.0)
+	_expect(is_equal_approx(stopped.equipment["vacuum_source"]["volume_l"], 0.0) and is_equal_approx(stopped.equipment["vgo_tank"]["volume_l"], 60.0) and is_equal_approx(stopped.equipment["vacuum_residue_tank"]["volume_l"], 40.0), "running VDU pump applies the fixed 60/40 VGO and Vacuum Residue split")
+	_expect(is_equal_approx(_total_tank_volume(stopped), mass_before) and stopped.equipment["vgo_tank"]["contents"] == "vacuum_gas_oil" and stopped.equipment["vacuum_residue_tank"]["contents"] == "vacuum_residue", "atomic VDU transfer conserves mass and preserves output identities")
+	var empty = _vacuum_model(0.0)
+	empty.equipment["vacuum_pump"]["running"] = true
+	empty.tick(1.0)
+	_expect(empty.network.filter_routes_by_process_type(empty.network.find_complete_routes(), empty.network.VACUUM_DISTILLATION).size() == 1 and is_equal_approx(_total_tank_volume(empty), 0.0), "empty planned VDU source remains valid but produces no material")
+	var wrong_material = _vacuum_model(10.0)
+	wrong_material.equipment["vacuum_source"]["contents"] = "diesel"
+	wrong_material.equipment["vacuum_pump"]["running"] = true
+	wrong_material.tick(1.0)
+	_expect(is_equal_approx(wrong_material.equipment["vacuum_source"]["volume_l"], 10.0) and is_equal_approx(_total_tank_volume(wrong_material), 10.0), "wrong actual VDU feed is rejected defensively without consumption or output")
+	var saved: Dictionary = stopped.save_state()
+	var restored = _vacuum_model(0.0)
+	restored.apply_saved_state(saved)
+	_expect(restored.equipment["vgo_tank"]["material_intent"] == "vacuum_gas_oil" and restored.equipment["vacuum_residue_tank"]["material_intent"] == "vacuum_residue" and is_equal_approx(_total_tank_volume(restored), 100.0), "VDU inventories and all material intents survive save/load")
+
+
+func _test_vacuum_capacity_and_multi_stage_processing() -> void:
+	var vgo_limited = _vacuum_model(100.0)
+	vgo_limited.equipment["vgo_tank"]["contents"] = "vacuum_gas_oil"
+	vgo_limited.equipment["vgo_tank"]["volume_l"] = 970.0
+	vgo_limited.equipment["vacuum_pump"]["running"] = true
+	var mass_before := _total_tank_volume(vgo_limited)
+	vgo_limited.tick(10.0)
+	_expect(is_equal_approx(vgo_limited.equipment["vacuum_source"]["volume_l"], 50.0) and is_equal_approx(vgo_limited.equipment["vgo_tank"]["volume_l"], 1000.0) and is_equal_approx(vgo_limited.equipment["vacuum_residue_tank"]["volume_l"], 20.0), "VGO capacity limits the complete atomic VDU transaction to 50 L feed")
+	_expect(is_equal_approx(_total_tank_volume(vgo_limited), mass_before), "capacity-limited VDU processing does not lose or duplicate material")
+	var residue_limited = _vacuum_model(100.0)
+	residue_limited.equipment["vacuum_residue_tank"]["contents"] = "vacuum_residue"
+	residue_limited.equipment["vacuum_residue_tank"]["volume_l"] = 980.0
+	residue_limited.equipment["vacuum_pump"]["running"] = true
+	residue_limited.tick(10.0)
+	_expect(is_equal_approx(residue_limited.equipment["vacuum_source"]["volume_l"], 50.0) and is_equal_approx(residue_limited.equipment["vgo_tank"]["volume_l"], 30.0) and is_equal_approx(residue_limited.equipment["vacuum_residue_tank"]["volume_l"], 1000.0), "Vacuum Residue capacity independently limits both proportional outputs")
+	var exact_capacity = _vacuum_model(100.0)
+	exact_capacity.equipment["vgo_tank"]["contents"] = "vacuum_gas_oil"
+	exact_capacity.equipment["vgo_tank"]["volume_l"] = 940.0
+	exact_capacity.equipment["vacuum_residue_tank"]["contents"] = "vacuum_residue"
+	exact_capacity.equipment["vacuum_residue_tank"]["volume_l"] = 960.0
+	exact_capacity.equipment["vacuum_pump"]["running"] = true
+	exact_capacity.tick(10.0)
+	_expect(is_equal_approx(exact_capacity.equipment["vacuum_source"]["volume_l"], 0.0) and is_equal_approx(exact_capacity.equipment["vgo_tank"]["volume_l"], 1000.0) and is_equal_approx(exact_capacity.equipment["vacuum_residue_tank"]["volume_l"], 1000.0), "exact VDU output capacities fill without overflow or extra source consumption")
+	var zero_capacity = _vacuum_model(10.0)
+	zero_capacity.equipment["vacuum_residue_tank"]["contents"] = "vacuum_residue"
+	zero_capacity.equipment["vacuum_residue_tank"]["volume_l"] = 1000.0
+	zero_capacity.equipment["vacuum_pump"]["running"] = true
+	zero_capacity.tick(10.0)
+	_expect(is_equal_approx(zero_capacity.equipment["vacuum_source"]["volume_l"], 10.0) and is_equal_approx(zero_capacity.equipment["vgo_tank"]["volume_l"], 0.0), "full VDU destination blocks both outputs and leaves feed untouched")
+	var tiny_steps = _vacuum_model(1.0)
+	tiny_steps.equipment["vacuum_pump"]["flow_setpoint_lps"] = 5.0
+	tiny_steps.equipment["vacuum_pump"]["running"] = true
+	for step in 20:
+		tiny_steps.tick(0.01)
+	_expect(is_equal_approx(tiny_steps.equipment["vacuum_source"]["volume_l"], 0.0) and is_equal_approx(tiny_steps.equipment["vgo_tank"]["volume_l"], 0.6) and is_equal_approx(tiny_steps.equipment["vacuum_residue_tank"]["volume_l"], 0.4), "tiny repeated VDU ticks retain the fixed split without rounding drift")
+	var staged = _complete_model()
+	staged.set_tank_material_intent("heavy_tank", "heavy")
+	_add_vacuum_route(staged, "heavy_tank")
+	staged.load_crude_batch("source")
+	staged.equipment["heater"]["temperature_c"] = 200.0
+	staged.equipment["valve"]["open"] = true
+	staged.equipment["pump"]["running"] = true
+	staged.tick(10.0)
+	var heavy_before: float = staged.equipment["heavy_tank"]["volume_l"]
+	staged.equipment["vacuum_pump"]["running"] = true
+	staged.tick(1.0)
+	_expect(heavy_before > 0.001 and is_equal_approx(staged.equipment["source"]["volume_l"], 890.0) and staged.equipment["heavy_tank"]["volume_l"] < heavy_before and is_equal_approx(staged.equipment["vgo_tank"]["volume_l"], 6.0) and is_equal_approx(staged.equipment["vacuum_residue_tank"]["volume_l"], 4.0), "atmospheric Heavy Residue in the same physical tank can feed VDU during simultaneous typed processing without a hidden batch")
+	_expect(staged.operations_snapshot()["trains"].size() == 1 and staged.active_connection_keys().size() == 7, "vacuum operation remains isolated from atmospheric console and pipe consumers")
 
 
 func _take_and_analyze(model) -> Dictionary:
@@ -1188,6 +1266,34 @@ func _treated_model():
 	model.network.try_connect("column", "diesel", "treatment", "input")
 	model.network.try_connect("treatment", "output", "diesel_tank", "input")
 	return model
+
+
+func _vacuum_model(feed_l := 0.0):
+	var model = BuiltRefineryModelScript.new()
+	model.register_unit("vacuum_source", "tank", "VT-201", "heavy")
+	model.register_unit("vacuum_pump", "pump", "VP-201")
+	model.register_unit("vdu", "vacuum_distillation", "VDU-301")
+	model.register_unit("vgo_tank", "tank", "VT-202", "vacuum_gas_oil")
+	model.register_unit("vacuum_residue_tank", "tank", "VT-203", "vacuum_residue")
+	model.network.try_connect("vacuum_source", "output", "vacuum_pump", "input")
+	model.network.try_connect("vacuum_pump", "output", "vdu", "input")
+	model.network.try_connect("vdu", "vgo", "vgo_tank", "input")
+	model.network.try_connect("vdu", "vacuum_residue", "vacuum_residue_tank", "input")
+	if feed_l > 0.0:
+		model.equipment["vacuum_source"]["contents"] = "heavy"
+		model.equipment["vacuum_source"]["volume_l"] = feed_l
+	return model
+
+
+func _add_vacuum_route(model, source_id: String) -> void:
+	model.register_unit("vacuum_pump", "pump", "VP-201")
+	model.register_unit("vdu", "vacuum_distillation", "VDU-301")
+	model.register_unit("vgo_tank", "tank", "VT-205", "vacuum_gas_oil")
+	model.register_unit("vacuum_residue_tank", "tank", "VT-206", "vacuum_residue")
+	model.network.try_connect(source_id, "output", "vacuum_pump", "input")
+	model.network.try_connect("vacuum_pump", "output", "vdu", "input")
+	model.network.try_connect("vdu", "vgo", "vgo_tank", "input")
+	model.network.try_connect("vdu", "vacuum_residue", "vacuum_residue_tank", "input")
 
 
 func _add_diesel_product_header(model, after_treatment := false) -> void:

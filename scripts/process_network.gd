@@ -331,6 +331,15 @@ func tank_intended_material(unit_id: String) -> String:
 	return String(units.get(unit_id, {}).get("intended_material", "")) if _unit_type(unit_id) == "tank" else ""
 
 
+func set_tank_intended_material(unit_id: String, intended_material: String, notify := true) -> Dictionary:
+	if _unit_type(unit_id) != "tank":
+		return _result(false, "Materialintensjon kan bare settes på en tank.")
+	units[unit_id]["intended_material"] = intended_material
+	if notify:
+		topology_changed.emit()
+	return _result(true, "%s sin materialintensjon er oppdatert." % _unit_name(unit_id))
+
+
 func _find_atmospheric_routes() -> Array[Dictionary]:
 	var routes: Array[Dictionary] = []
 	var feed_paths: Array[Dictionary] = []

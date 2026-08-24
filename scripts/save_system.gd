@@ -126,7 +126,8 @@ static func validate_snapshot(snapshot) -> Dictionary:
 		return construction_result
 	var built_result := _validate_built_refinery(
 		snapshot["built_refinery"],
-		construction_result["unit_types"]
+		construction_result["unit_types"],
+		snapshot["construction"]["connections"]
 	)
 	if not built_result["ok"]:
 		return built_result
@@ -295,7 +296,7 @@ static func _validate_construction(state: Dictionary) -> Dictionary:
 	}
 
 
-static func _validate_built_refinery(state: Dictionary, unit_types: Dictionary) -> Dictionary:
+static func _validate_built_refinery(state: Dictionary, unit_types: Dictionary, connections: Array) -> Dictionary:
 	for field in ["commissioning_batch_available", "commissioning_contract_complete"]:
 		if typeof(state.get(field)) != TYPE_BOOL:
 			return _result(false, "Ugyldig progresjonsstatus: %s." % field)
@@ -337,7 +338,6 @@ static func _validate_built_refinery(state: Dictionary, unit_types: Dictionary) 
 	var saved_equipment: Dictionary = state["equipment"]
 	if saved_equipment.size() != unit_types.size():
 		return _result(false, "Prosessutstyr og byggedata er ikke synkronisert.")
-	var has_material := false
 	for unit_id in unit_types:
 		if typeof(saved_equipment.get(unit_id)) != TYPE_DICTIONARY:
 			return _result(false, "%s mangler prosesstilstand." % unit_id)
@@ -347,12 +347,6 @@ static func _validate_built_refinery(state: Dictionary, unit_types: Dictionary) 
 		var equipment_result := _validate_equipment_state(unit_state)
 		if not equipment_result["ok"]:
 			return equipment_result
-		if (
-			unit_state["type"] == "tank"
-			and float(unit_state["volume_l"]) > 0.001
-			and unit_state["contents"] in ["crude", "light", "diesel", "heavy"]
-		):
-			has_material = true
 	for unit_id in saved_equipment:
 		if not unit_types.has(unit_id):
 			return _result(false, "Prosesstilstanden inneholder ukjent utstyr.")
@@ -371,15 +365,37 @@ static func _validate_built_refinery(state: Dictionary, unit_types: Dictionary) 
 			var selected_tank_id: String = allocation.get("selected_tank_id", "")
 			if not selected_tank_id.is_empty() and unit_types.get(selected_tank_id, "") != "tank":
 				return _result(false, "Lagret produkttildeling peker ikke på en tank.")
+	var semantic_network := ProcessNetworkScript.new()
+	for unit_id in unit_types:
+		var unit_state: Dictionary = saved_equipment[unit_id]
+		var intent := ""
+		if unit_state["type"] == "tank":
+			intent = String(unit_state.get("material_intent", ""))
+			if intent.is_empty() and float(unit_state["volume_l"]) > 0.001:
+				intent = String(unit_state["contents"])
+		semantic_network.register_unit(unit_id, unit_types[unit_id], unit_id, intent)
+	for edge in connections:
+		semantic_network.try_connect(edge["from_unit"], edge["from_port"], edge["to_unit"], edge["to_port"])
+	var atmospheric_tanks := {}
+	for route in semantic_network.atmospheric_routes():
+		atmospheric_tanks[route["source"]] = true
+		for product_tank in route["products"].values():
+			atmospheric_tanks[product_tank] = true
+	var has_atmospheric_batch_material := false
+	for tank_id in atmospheric_tanks:
+		var tank_state: Dictionary = saved_equipment[tank_id]
+		if tank_state["type"] == "tank" and float(tank_state["volume_l"]) > 0.001:
+			has_atmospheric_batch_material = true
+			break
 	var has_tracking := (
 		float(state["report_crude_processed_l"]) > 0.001
 		or float(state["report_temperature_total"]) > 0.001
 		or float(state.get("report_flow_total", 0.0)) > 0.001
 		or float(state["report_crude_cost"]) > 0.001
 	)
-	if (has_material or has_tracking) and active_contract_id.is_empty():
+	if (has_atmospheric_batch_material or has_tracking) and active_contract_id.is_empty():
 		return _result(false, "Materiale mangler en aktiv råoljekontrakt.")
-	if not has_material and not has_tracking and not active_contract_id.is_empty():
+	if not has_atmospheric_batch_material and not has_tracking and not active_contract_id.is_empty():
 		return _result(false, "En aktiv råoljekontrakt finnes uten batchmateriale.")
 	return _result(true, "Bygd prosesstilstand er gyldig.")
 
@@ -392,10 +408,15 @@ static func _validate_equipment_state(state: Dictionary) -> Dictionary:
 					return _result(false, "En lagret tank har ugyldig %s." % field)
 			if not _in_range(state["volume_l"], 0.0, 1000.0):
 				return _result(false, "En lagret tank overskrider kapasiteten.")
-			if state.get("contents") not in ["empty", "crude", "light", "diesel", "heavy"]:
+			if state.get("contents") not in ["empty", "crude", "light", "diesel", "heavy", "vacuum_gas_oil", "vacuum_residue"]:
 				return _result(false, "En lagret tank har ukjent innhold.")
 			if float(state["volume_l"]) > 0.001 and state["contents"] == "empty":
 				return _result(false, "En lagret tank har volum uten innhold.")
+			if state.has("material_intent"):
+				if typeof(state["material_intent"]) != TYPE_STRING or state["material_intent"] not in ["", "crude", "light", "diesel", "heavy", "vacuum_gas_oil", "vacuum_residue"]:
+					return _result(false, "En lagret tank har ukjent materialintensjon.")
+				if float(state["volume_l"]) > 0.001 and state["material_intent"] != "" and state["material_intent"] != state["contents"]:
+					return _result(false, "En lagret tank har innhold som ikke stemmer med materialintensjonen.")
 			if not _in_range(state["temperature_c"], -50.0, 500.0) or not _in_range(state["quality_percent"], 0.0, 100.0):
 				return _result(false, "En lagret tank har ugyldig temperatur eller kvalitet.")
 			if not _in_range(state["crude_cost_per_l"], 0.0, 1000.0):
@@ -439,6 +460,9 @@ static func _validate_equipment_state(state: Dictionary) -> Dictionary:
 		"treatment":
 			if typeof(state.get("running")) != TYPE_BOOL or not _finite_number(state.get("processed_total_l")) or float(state["processed_total_l"]) < 0.0:
 				return _result(false, "En lagret dieselbehandler har ugyldig tilstand.")
+		"vacuum_distillation":
+			if not _finite_number(state.get("processed_total_l")) or float(state["processed_total_l"]) < 0.0:
+				return _result(false, "En lagret vakuumdestillasjon har ugyldig prosessteller.")
 		"header", "product_header":
 			pass
 		_:

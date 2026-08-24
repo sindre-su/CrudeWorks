@@ -22,6 +22,9 @@ const DIESEL_PRICE_PER_L := 8.0
 const HEATER_MAX_TEMPERATURE_C := 250.0
 const AUTO_OUTPUT_RESPONSE_PERCENT_PER_SECOND := 45.0
 const AUTO_ERROR_GAIN_PERCENT_PER_C := 0.9
+const VACUUM_GAS_OIL_YIELD := 0.60
+const VACUUM_RESIDUE_YIELD := 0.40
+const TANK_MATERIALS := ["", "crude", "light", "diesel", "heavy", "vacuum_gas_oil", "vacuum_residue"]
 
 var network
 var equipment: Dictionary = {}
@@ -58,7 +61,7 @@ func save_state() -> Dictionary:
 		var saved_state := {"type": state["type"]}
 		match state["type"]:
 			"tank":
-				for field in ["volume_l", "contents", "temperature_c", "quality_percent", "sulfur_ppm", "crude_cost_per_l", "contract_id", "contract_bonus_available", "report_crude_processed_l", "report_temperature_total", "report_flow_total", "report_crude_cost"]:
+				for field in ["volume_l", "contents", "material_intent", "temperature_c", "quality_percent", "sulfur_ppm", "crude_cost_per_l", "contract_id", "contract_bonus_available", "report_crude_processed_l", "report_temperature_total", "report_flow_total", "report_crude_cost"]:
 					saved_state[field] = state[field]
 			"valve":
 				saved_state["open"] = state["open"]
@@ -75,6 +78,8 @@ func save_state() -> Dictionary:
 				saved_state["processed_total_l"] = state["processed_total_l"]
 			"treatment":
 				saved_state["running"] = state["running"]
+				saved_state["processed_total_l"] = state["processed_total_l"]
+			"vacuum_distillation":
 				saved_state["processed_total_l"] = state["processed_total_l"]
 		saved_equipment[unit_id] = saved_state
 	return {
@@ -120,6 +125,8 @@ func apply_saved_state(state: Dictionary) -> void:
 			"tank":
 				for field in ["volume_l", "contents", "temperature_c", "quality_percent", "sulfur_ppm", "crude_cost_per_l", "contract_id", "contract_bonus_available", "report_crude_processed_l", "report_temperature_total", "report_flow_total", "report_crude_cost"]:
 					target[field] = saved.get(field, 0.0 if field == "sulfur_ppm" else target[field])
+				target["material_intent"] = _saved_tank_material_intent(saved)
+				network.set_tank_intended_material(unit_id, target["material_intent"], false)
 			"pump":
 				target["running"] = false
 				target["actual_flow_lps"] = 0.0
@@ -146,6 +153,8 @@ func apply_saved_state(state: Dictionary) -> void:
 			"treatment":
 				target["running"] = bool(saved.get("running", false))
 				target["processed_total_l"] = float(saved.get("processed_total_l", 0.0))
+			"vacuum_distillation":
+				target["processed_total_l"] = float(saved.get("processed_total_l", 0.0))
 	actual_flow_lps = 0.0
 	_remote_guard_pump_id = ""
 	_remote_guard_trip_message = ""
@@ -168,6 +177,7 @@ func register_unit(unit_id: String, equipment_type: String, display_name := "", 
 				"capacity_l": TANK_CAPACITY_L,
 				"volume_l": 0.0,
 				"contents": "empty",
+				"material_intent": intended_material,
 				"temperature_c": AMBIENT_TEMPERATURE_C,
 				"quality_percent": 0.0,
 				"sulfur_ppm": 0.0,
@@ -204,6 +214,8 @@ func register_unit(unit_id: String, equipment_type: String, display_name := "", 
 			state["processed_total_l"] = 0.0
 		"treatment":
 			state.merge({"running": false, "processed_total_l": 0.0})
+		"vacuum_distillation":
+			state["processed_total_l"] = 0.0
 		"header", "product_header":
 			pass
 	equipment[unit_id] = state
@@ -661,6 +673,49 @@ func _reset_route_report(source: Dictionary) -> void:
 		source[field] = 0.0
 
 
+func set_tank_material_intent(unit_id: String, material_intent: String) -> Dictionary:
+	if not equipment.has(unit_id) or equipment[unit_id]["type"] != "tank":
+		return _result(false, "Materialintensjon kan bare settes på en tank.")
+	if not TANK_MATERIALS.has(material_intent):
+		return _result(false, "Ukjent materialintensjon.")
+	var tank: Dictionary = equipment[unit_id]
+	if tank["volume_l"] > 0.001 and tank["contents"] != "empty" and not material_intent.is_empty() and tank["contents"] != material_intent:
+		return _result(false, "%s inneholder %s og kan ikke få en inkompatibel materialintensjon." % [tank["name"], _contents_name(tank["contents"])])
+	tank["material_intent"] = material_intent
+	network.set_tank_intended_material(unit_id, material_intent)
+	return _result(true, "%s er merket for %s." % [tank["name"], _contents_name(material_intent)])
+
+
+func _saved_tank_material_intent(saved: Dictionary) -> String:
+	var intent := String(saved.get("material_intent", ""))
+	if intent.is_empty() and float(saved.get("volume_l", 0.0)) > 0.001:
+		var contents := String(saved.get("contents", "empty"))
+		if TANK_MATERIALS.has(contents):
+			intent = contents
+	return intent
+
+
+func _tank_accepts_material(tank: Dictionary, material: String) -> bool:
+	if not TANK_MATERIALS.has(material):
+		return false
+	var intent := String(tank.get("material_intent", ""))
+	if not intent.is_empty() and intent != material:
+		return false
+	return tank["contents"] == "empty" or tank["contents"] == material
+
+
+func _commit_tank_material(tank_id: String, material: String, volume_l: float, temperature_c: float) -> void:
+	if volume_l <= 0.0:
+		return
+	var tank: Dictionary = equipment[tank_id]
+	if String(tank.get("material_intent", "")).is_empty():
+		tank["material_intent"] = material
+		network.set_tank_intended_material(tank_id, material, false)
+	tank["volume_l"] += volume_l
+	tank["contents"] = material
+	tank["temperature_c"] = temperature_c
+
+
 func load_crude_batch(
 	unit_id: String,
 	paid_batch := false,
@@ -685,6 +740,10 @@ func load_crude_batch(
 	var tank: Dictionary = equipment[unit_id]
 	if tank["volume_l"] > 0.001:
 		return _result(false, "%s er ikke tom." % tank["name"])
+	if not _tank_accepts_material(tank, "crude"):
+		return _result(false, "%s er merket for %s og kan ikke laste råolje." % [
+			tank["name"], _contents_name(String(tank.get("material_intent", ""))),
+		])
 	if _route_product_volume_l(route) > 0.001 or float(tank["report_crude_processed_l"]) > 0.001:
 		return _result(false, "Denne prosesslinjens produkter må leveres eller tømmes før ny batch lastes.")
 	if not String(tank["contract_id"]).is_empty():
@@ -710,6 +769,9 @@ func load_crude_batch(
 	_reset_route_report(tank)
 	tank["volume_l"] = BATCH_VOLUME_L
 	tank["contents"] = "crude"
+	if String(tank.get("material_intent", "")).is_empty():
+		tank["material_intent"] = "crude"
+		network.set_tank_intended_material(unit_id, "crude", false)
 	tank["temperature_c"] = AMBIENT_TEMPERATURE_C
 	tank["quality_percent"] = 0.0
 	tank["sulfur_ppm"] = 0.0
@@ -732,8 +794,11 @@ func tick(delta: float) -> void:
 	for state in equipment.values():
 		if state["type"] == "pump":
 			state["actual_flow_lps"] = 0.0
-	var routes: Array[Dictionary] = network.atmospheric_routes()
-	_update_heaters(delta, routes)
+	var routes: Array[Dictionary] = network.find_complete_routes()
+	var atmospheric_routes: Array[Dictionary] = network.filter_routes_by_process_type(
+		routes, ProcessNetworkScript.ATMOSPHERIC_DISTILLATION
+	)
+	_update_heaters(delta, atmospheric_routes)
 	if routes.is_empty():
 		_stop_all_pumps()
 		last_status = network.validate_configuration()["message"]
@@ -742,6 +807,8 @@ func tick(delta: float) -> void:
 		match String(route.get("process_type", ProcessNetworkScript.ATMOSPHERIC_DISTILLATION)):
 			ProcessNetworkScript.ATMOSPHERIC_DISTILLATION:
 				_tick_atmospheric_route(route, delta)
+			ProcessNetworkScript.VACUUM_DISTILLATION:
+				_tick_vacuum_route(route, delta)
 
 
 func _tick_atmospheric_route(route: Dictionary, delta: float) -> void:
@@ -833,7 +900,7 @@ func _tick_atmospheric_route(route: Dictionary, delta: float) -> void:
 	var products: Dictionary = route["products"]
 	for product_name in ["light", "diesel", "heavy"]:
 		var tank: Dictionary = equipment[products[product_name]]
-		if tank["contents"] != "empty" and tank["contents"] != product_name:
+		if not _tank_accepts_material(tank, product_name):
 			last_status = "%s inneholder allerede et annet produkt." % tank["name"]
 			return
 		var remaining: float = tank["capacity_l"] - tank["volume_l"]
@@ -866,6 +933,51 @@ func _tick_atmospheric_route(route: Dictionary, delta: float) -> void:
 		pump["actual_flow_lps"] = 0.0
 		_remote_guard_pump_id = ""
 		last_status = "Batch ferdig. Kontroller dieselkvaliteten ved LAB / SALG."
+
+
+func _tick_vacuum_route(route: Dictionary, delta: float) -> void:
+	var pump_id: String = network.get_route_primary_pump(route)
+	if not equipment.has(pump_id) or not equipment.has(route["source"]) or not equipment.has(route["vdu"]):
+		return
+	var pump: Dictionary = equipment[pump_id]
+	if not pump["running"]:
+		return
+	var source: Dictionary = equipment[route["source"]]
+	if source["contents"] != "heavy" or source["volume_l"] <= 0.001:
+		pump["actual_flow_lps"] = 0.0
+		last_status = "VDU FLOW STOPPET — Heavy Residue-tanken er tom eller har feil innhold."
+		return
+	var outputs: Dictionary = route["outputs"]
+	var vgo: Dictionary = equipment[outputs["vacuum_gas_oil"]]
+	var residue: Dictionary = equipment[outputs["vacuum_residue"]]
+	if not _tank_accepts_material(vgo, "vacuum_gas_oil") or not _tank_accepts_material(residue, "vacuum_residue"):
+		pump["actual_flow_lps"] = 0.0
+		last_status = "VDU FLOW STOPPET — en vakuumprodukttank har feil innhold eller materialintensjon."
+		return
+	var requested_feed := minf(source["volume_l"], _effective_pump_flow_lps(pump) * maxf(delta, 0.0))
+	var vgo_capacity_feed := maxf(0.0, vgo["capacity_l"] - vgo["volume_l"]) / VACUUM_GAS_OIL_YIELD
+	var residue_capacity_feed := maxf(0.0, residue["capacity_l"] - residue["volume_l"]) / VACUUM_RESIDUE_YIELD
+	var processed_feed := minf(requested_feed, minf(vgo_capacity_feed, residue_capacity_feed))
+	if processed_feed <= 0.0001:
+		pump["actual_flow_lps"] = 0.0
+		last_status = "VDU FLOW STOPPET — VGO- eller Vacuum Residue-tanken er full."
+		return
+	var vgo_output := processed_feed * VACUUM_GAS_OIL_YIELD
+	var residue_output := processed_feed * VACUUM_RESIDUE_YIELD
+	# All capacities and identities are checked before this point. Commit the
+	# feed removal and both proportional products as one small transaction.
+	source["volume_l"] -= processed_feed
+	if source["volume_l"] <= 0.0001:
+		source["volume_l"] = 0.0
+		source["contents"] = "empty"
+	_commit_tank_material(outputs["vacuum_gas_oil"], "vacuum_gas_oil", vgo_output, source["temperature_c"])
+	_commit_tank_material(outputs["vacuum_residue"], "vacuum_residue", residue_output, source["temperature_c"])
+	equipment[route["vdu"]]["processed_total_l"] += processed_feed
+	var flow := processed_feed / delta if delta > 0.0 else 0.0
+	pump["actual_flow_lps"] = flow
+	actual_flow_lps += flow
+	product_inventory_revision += 1
+	last_status = "VDU %.1f L/s — %.1f L VGO og %.1f L Vacuum Residue produsert." % [flow, vgo_output, residue_output]
 
 
 func take_diesel_sample(unit_id: String) -> Dictionary:
@@ -2111,9 +2223,7 @@ func _process_input(
 			var sulfur_total: float = tank.get("sulfur_ppm", 0.0) * tank["volume_l"]
 			sulfur_total += diesel_sulfur * product_l
 			tank["sulfur_ppm"] = sulfur_total / (tank["volume_l"] + product_l)
-		tank["volume_l"] += product_l
-		tank["contents"] = product_name
-		tank["temperature_c"] = temperature_c
+		_commit_tank_material(route["products"][product_name], product_name, product_l, temperature_c)
 	equipment[route["column"]]["processed_total_l"] += input_l
 	product_inventory_revision += 1
 
