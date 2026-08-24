@@ -127,6 +127,28 @@ static func definition(equipment_type: String) -> Dictionary:
 				"has_input": true,
 				"has_output": true,
 			}
+		"crude_intake":
+			return {
+				"name": "Crude Intake",
+				"tag": "CI-101",
+				"cost": 0,
+				"size": Vector3(3.0, 2.6, 2.6),
+				"color": Color("45676e"),
+				"shape": "box",
+				"has_input": false,
+				"has_output": true,
+			}
+		"product_dispatch":
+			return {
+				"name": "Product Dispatch",
+				"tag": "PD-101",
+				"cost": 0,
+				"size": Vector3(3.4, 2.8, 2.8),
+				"color": Color("3e6650"),
+				"shape": "box",
+				"has_input": true,
+				"has_output": false,
+			}
 	return {}
 
 
@@ -174,6 +196,19 @@ static func port_definitions(equipment_type: String) -> Array[Dictionary]:
 		]
 	if equipment_type == "power_unit":
 		return []
+	if equipment_type == "crude_intake":
+		return [_port("output", "output", "crude", "CRUDE OUT", Vector3(0.0, y, -z))]
+	if equipment_type == "product_dispatch":
+		return [
+			_port("light", "input", "light", "NAPHTHA", Vector3(-1.05, y, z)),
+			_port("diesel", "input", "diesel", "DIESEL", Vector3(-0.35, y, z)),
+			_port("heavy", "input", "heavy", "TUNGREST", Vector3(0.35, y, z)),
+			_port("vacuum_gas_oil", "input", "vacuum_gas_oil", "VGO", Vector3(1.05, y, z)),
+			_port("vacuum_residue", "input", "vacuum_residue", "VAKUUMREST", Vector3(-1.05, y, -z)),
+			_port("gasoline_blendstock", "input", "gasoline_blendstock", "GASOLINE", Vector3(-0.35, y, -z)),
+			_port("lpg", "input", "lpg", "LPG", Vector3(0.35, y, -z)),
+			_port("light_cycle_oil", "input", "light_cycle_oil", "LCO", Vector3(1.05, y, -z)),
+		]
 	if equipment_type == "catalytic_cracking":
 		return [
 			_port("input", "input", "vacuum_gas_oil", "IN", Vector3(0.0, y, z)),
@@ -234,6 +269,8 @@ static func process_order_allows(from_type: String, to_type: String) -> bool:
 		or (from_type == "treatment" and to_type == "tank")
 		or (from_type == "vacuum_distillation" and to_type == "tank")
 		or (from_type == "catalytic_cracking" and to_type == "tank")
+		or (from_type == "crude_intake" and to_type == "pump")
+		or (from_type == "pump" and to_type == "product_dispatch")
 	)
 
 

@@ -54,6 +54,7 @@ var batch_report_visible := false
 var contract_selection_visible := false
 var contract_selection_source_id := ""
 var product_dispatch_visible := false
+var physical_dispatch_terminal_id := ""
 var control_station_visible := false
 var control_station_feedback := ""
 var control_station_feedback_is_error := false
@@ -77,6 +78,7 @@ func _ready() -> void:
 	_build_process_area()
 	_build_player()
 	_build_build_system()
+	_build_site_logistics()
 	_build_user_interface()
 	if persistence_enabled:
 		built_refinery_model.network.topology_changed.connect(_schedule_save)
@@ -308,6 +310,20 @@ func _build_build_system() -> void:
 	build_controller.placement_requested.connect(_on_build_placement_requested)
 	build_controller.removal_requested.connect(_on_build_removal_requested)
 	build_controller.notification_requested.connect(_show_notification)
+
+
+func _build_site_logistics() -> void:
+	_create_fixed_logistics_unit("crude_intake", Vector3(-23.0, 1.3, 34.5))
+	_create_fixed_logistics_unit("product_dispatch", Vector3(23.0, 1.4, 34.5))
+
+
+func _create_fixed_logistics_unit(equipment_type: String, position_3d: Vector3) -> void:
+	var unit = BuildableUnitScript.new()
+	unit.configure_buildable(equipment_type, 0)
+	unit.position = position_3d
+	add_child(unit)
+	built_refinery_model.register_unit(unit.unit_id, unit.equipment_type, unit.display_name)
+	build_controller.register_fixed_unit(unit)
 
 
 func _build_user_interface() -> void:
@@ -868,6 +884,12 @@ func _on_unit_interacted(unit_id: String) -> void:
 			else:
 				_open_control_station()
 				return
+		"built_crude_intake_0":
+			_open_contract_selection(unit_id)
+			return
+		"built_product_dispatch_0":
+			_open_physical_product_dispatch(unit_id)
+			return
 		"raw_tank":
 			message = "Råolje: %.0f liter, %.1f °C." % [
 				process_model.crude_volume_l,
@@ -888,7 +910,7 @@ func _on_unit_interacted(unit_id: String) -> void:
 			if unit_id.begins_with("built_"):
 				var contract_choice: Dictionary = built_refinery_model.can_choose_contract(unit_id)
 				if contract_choice["ok"]:
-					_open_contract_selection(unit_id)
+					_show_notification("Velg råoljeleveranse ved CI-101.")
 					return
 				var result: Dictionary = built_refinery_model.interact(
 					unit_id,
@@ -1029,6 +1051,9 @@ func _create_built_unit(
 func _on_build_removal_requested(unit) -> void:
 	if not is_instance_valid(unit) or not build_controller.has_registered_unit(unit):
 		return
+	if unit.equipment_type in ["crude_intake", "product_dispatch"]:
+		_show_notification("Dette er et fast anleggspunkt og kan ikke fjernes.")
+		return
 	var removal_check: Dictionary = built_refinery_model.can_remove(unit.unit_id)
 	if not removal_check["ok"]:
 		_show_notification(removal_check["message"])
@@ -1157,8 +1182,9 @@ func _update_contract_selection_text(error_text := "") -> void:
 	var standard := CrudeCatalogScript.definition("standard")
 	var heavy := CrudeCatalogScript.definition("heavy")
 	var sour := CrudeCatalogScript.definition("sour")
+	var intake_mode := contract_selection_source_id == "built_crude_intake_0"
 	contract_selection_label.text = (
-		"LEVERINGSORDRE — VELG 1 000 L\nPenger: %d kr\n\n" % process_model.money
+		("RÅOLJEINNTAK CI-101 — VELG 1 000 L\nPenger: %d kr\n\n" if intake_mode else "LEVERINGSORDRE — VELG 1 000 L\nPenger: %d kr\n\n") % process_model.money
 		+ "1 %s / %s — %d kr\n  %s\n\n" % [
 			standard["order_name"], standard["short_name"], standard["purchase_cost"], standard["description"],
 		]
@@ -1169,7 +1195,7 @@ func _update_contract_selection_text(error_text := "") -> void:
 			sour["order_name"], sour["short_name"], sour["purchase_cost"], sour["description"],
 		]
 		+ (error_text + "\n\n" if not error_text.is_empty() else "")
-		+ "1 / 2 / 3 — kjøp og last    Esc — avbryt"
+		+ ("1 / 2 / 3 — kjøp og motta    Esc — avbryt" if intake_mode else "1 / 2 / 3 — kjøp og last    Esc — avbryt")
 	)
 
 
@@ -1190,10 +1216,10 @@ func _select_contract(contract_id: String) -> void:
 	if not process_model.can_afford(cost):
 		_update_contract_selection_text("Ikke nok penger — mangler %d kr." % (cost - process_model.money))
 		return
-	var result: Dictionary = built_refinery_model.load_crude_batch(
-		contract_selection_source_id,
-		true,
-		contract_id
+	var result: Dictionary = (
+		built_refinery_model.receive_intake_delivery(contract_id, true)
+		if contract_selection_source_id == "built_crude_intake_0"
+		else built_refinery_model.load_crude_batch(contract_selection_source_id, true, contract_id)
 	)
 	if not result["ok"]:
 		_update_contract_selection_text(result["message"])
@@ -1229,6 +1255,16 @@ func _active_diesel_available() -> bool:
 
 
 func _open_product_dispatch() -> void:
+	physical_dispatch_terminal_id = ""
+	product_dispatch_visible = true
+	notification_time_left = 0.0
+	_update_product_dispatch_text()
+	player.set_input_blocked(true)
+	build_controller.set_input_blocked(true)
+
+
+func _open_physical_product_dispatch(terminal_id: String) -> void:
+	physical_dispatch_terminal_id = terminal_id
 	product_dispatch_visible = true
 	notification_time_left = 0.0
 	_update_product_dispatch_text()
@@ -1237,7 +1273,11 @@ func _open_product_dispatch() -> void:
 
 
 func _update_product_dispatch_text(error_text := "") -> void:
-	var orders: Array[Dictionary] = built_refinery_model.available_product_orders()
+	var orders: Array[Dictionary] = (
+		built_refinery_model.available_physical_dispatch_orders(physical_dispatch_terminal_id)
+		if not physical_dispatch_terminal_id.is_empty()
+		else built_refinery_model.available_product_orders()
+	)
 	var rows: Array[String] = []
 	for index in orders.size():
 		var order: Dictionary = orders[index]
@@ -1247,7 +1287,7 @@ func _update_product_dispatch_text(error_text := "") -> void:
 			order["revenue_preview"], state,
 		])
 	product_dispatch_label.text = (
-		"PRODUKTLEVERANSER\n\n"
+		("PD-101 — PRODUKTDISPATCH\n\n" if not physical_dispatch_terminal_id.is_empty() else "PRODUKTLEVERANSER\n\n")
 		+ "\n\n".join(rows)
 		+ ("\n\n" + error_text if not error_text.is_empty() else "")
 		+ "\n\n1–%d — send produkt    Esc — avbryt" % orders.size()
@@ -1262,10 +1302,18 @@ func _handle_product_dispatch_input(event: InputEventKey) -> void:
 	var index := -1
 	if event.keycode >= KEY_1 and event.keycode <= KEY_9:
 		index = int(event.keycode) - int(KEY_1)
-	var orders: Array[Dictionary] = built_refinery_model.available_product_orders()
+	var orders: Array[Dictionary] = (
+		built_refinery_model.available_physical_dispatch_orders(physical_dispatch_terminal_id)
+		if not physical_dispatch_terminal_id.is_empty()
+		else built_refinery_model.available_product_orders()
+	)
 	if index < 0 or index >= orders.size():
 		return
-	var result: Dictionary = built_refinery_model.dispatch_product_from_tank(String(orders[index]["tank_id"]))
+	var result: Dictionary = (
+		built_refinery_model.dispatch_product_from_terminal(physical_dispatch_terminal_id, String(orders[index]["tank_id"]))
+		if not physical_dispatch_terminal_id.is_empty()
+		else built_refinery_model.dispatch_product_from_tank(String(orders[index]["tank_id"]))
+	)
 	if not result["ok"]:
 		_update_product_dispatch_text(result["message"])
 		return
@@ -1277,6 +1325,7 @@ func _handle_product_dispatch_input(event: InputEventKey) -> void:
 
 func _close_product_dispatch() -> void:
 	product_dispatch_visible = false
+	physical_dispatch_terminal_id = ""
 	player.set_input_blocked(false)
 	build_controller.set_input_blocked(false)
 
@@ -1586,6 +1635,8 @@ func _write_save(show_feedback: bool) -> Dictionary:
 func _build_snapshot() -> Dictionary:
 	var placements: Array[Dictionary] = []
 	for entry in build_controller.registered_units:
+		if bool(entry.get("fixed", false)):
+			continue
 		var unit = entry["node"]
 		if not is_instance_valid(unit):
 			continue
@@ -1619,12 +1670,11 @@ func _apply_snapshot(snapshot: Dictionary) -> Dictionary:
 	var validation: Dictionary = SaveSystemScript.validate_snapshot(snapshot)
 	if not validation["ok"]:
 		return validation
-	if (
-		not build_controller.registered_units.is_empty()
-		or not built_refinery_model.equipment.is_empty()
-		or not built_refinery_model.network.units.is_empty()
-		or built_refinery_model.network.connection_count() > 0
-	):
+	var placed_units := false
+	for entry in build_controller.registered_units:
+		if not bool(entry.get("fixed", false)):
+			placed_units = true
+	if placed_units or built_refinery_model.network.connection_count() > 0:
 		return {"ok": false, "message": "Lagring kan bare gjenopprettes fra oppstartsskjermen."}
 	suppress_save_requests = true
 	var construction: Dictionary = snapshot["construction"]

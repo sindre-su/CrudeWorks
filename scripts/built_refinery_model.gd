@@ -61,6 +61,7 @@ var _remote_guard_pump_id := ""
 var _remote_guard_trip_message := ""
 var _diesel_sample: Dictionary = {}
 var _sample_sequence := 0
+var pending_intake_delivery := {"contract_id": "", "volume_l": 0.0}
 
 
 func _init(p_network = null) -> void:
@@ -72,6 +73,8 @@ func save_state() -> Dictionary:
 	var saved_equipment := {}
 	for unit_id in equipment:
 		var state: Dictionary = equipment[unit_id]
+		if state["type"] in ["crude_intake", "product_dispatch"]:
+			continue
 		var saved_state := {"type": state["type"]}
 		match state["type"]:
 			"tank":
@@ -110,6 +113,7 @@ func save_state() -> Dictionary:
 		"report_crude_cost": _report_crude_cost,
 		"feed_allocations": _save_feed_allocations(),
 		"product_allocations": _save_product_allocations(),
+		"site_logistics": {"pending_intake_delivery": pending_intake_delivery.duplicate(true)},
 		"equipment": saved_equipment,
 	}
 
@@ -131,9 +135,12 @@ func apply_saved_state(state: Dictionary) -> void:
 	_report_crude_cost = float(state["report_crude_cost"])
 	_restore_feed_allocations(state.get("feed_allocations", {}))
 	_restore_product_allocations(state.get("product_allocations", {}))
+	pending_intake_delivery = state.get("site_logistics", {}).get("pending_intake_delivery", {"contract_id": "", "volume_l": 0.0}).duplicate(true)
 	var saved_equipment: Dictionary = state["equipment"]
 	for unit_id in equipment:
 		var target: Dictionary = equipment[unit_id]
+		if not saved_equipment.has(unit_id):
+			continue
 		var saved: Dictionary = saved_equipment[unit_id]
 		match target["type"]:
 			"tank":
@@ -238,9 +245,7 @@ func register_unit(unit_id: String, equipment_type: String, display_name := "", 
 			state.merge({"running": false, "processed_total_l": 0.0})
 		"vacuum_distillation", "catalytic_cracking":
 			state["processed_total_l"] = 0.0
-		"power_unit":
-			pass
-		"header", "product_header":
+		"power_unit", "header", "product_header", "crude_intake", "product_dispatch":
 			pass
 	equipment[unit_id] = state
 	return {"ok": true, "message": "%s er klar for tilkobling." % state["name"]}
@@ -612,6 +617,10 @@ func interaction_prompt(unit_id: String) -> String:
 			return "E — inspiser FCC-401"
 		"power_unit":
 			return "E — inspiser strømkapasitet"
+		"crude_intake":
+			return "E — velg råoljeleveranse ved CI-101"
+		"product_dispatch":
+			return "E — åpne PD-101 produktdispatch"
 		"column":
 			return "E — inspiser destillasjon"
 		"tank":
@@ -619,15 +628,7 @@ func interaction_prompt(unit_id: String) -> String:
 				if _route_for_source_operation(unit_id).is_empty():
 					return "Velg fôringsrute på Crude Feed Header"
 				if state["volume_l"] <= 0.001:
-					if commissioning_contract_complete:
-						if _route_product_volume_l(_atmospheric_route_for_unit(unit_id)) <= 0.001 and String(state.get("contract_id", "")).is_empty():
-							return "E — velg råoljeleveranse"
-						return "Selg eller tøm produktene før ny levering"
-					return (
-						"E — last gratis oppstartsbatch"
-						if commissioning_batch_available
-						else "E — kjøp 1 000 L råolje (%d kr)" % CRUDE_BATCH_COST
-					)
+					return "E — velg råoljeleveranse ved CI-101"
 				return "E — inspiser %s råoljetank" % CrudeCatalog.definition(String(state.get("contract_id", CrudeCatalog.DEFAULT_ID)))["short_name"]
 			var product_role: String = _product_role_for_tank(unit_id)
 			if not product_role.is_empty():
@@ -852,17 +853,53 @@ func load_crude_batch(
 	return {"ok": true, "message": message, "charge": charge, "contract_id": selected_id}
 
 
+func can_purchase_intake_delivery(contract_id: String) -> Dictionary:
+	if not CrudeCatalog.is_valid(contract_id):
+		return _result(false, "Ukjent råoljeleveranse.")
+	if float(pending_intake_delivery.get("volume_l", 0.0)) > 0.001:
+		return _result(false, "CI-101 har fortsatt %.0f L %s som må pumpes til lagring." % [
+			float(pending_intake_delivery["volume_l"]),
+			CrudeCatalog.definition(String(pending_intake_delivery["contract_id"]))["short_name"],
+		])
+	if not commissioning_contract_complete and contract_id != CrudeCatalog.DEFAULT_ID:
+		return _result(false, "Tung og Sour råolje låses opp etter oppstartskontrakten.")
+	return _result(true, "Råoljeleveranse kan mottas ved CI-101.")
+
+
+func receive_intake_delivery(contract_id: String, paid_batch := false) -> Dictionary:
+	var check := can_purchase_intake_delivery(contract_id)
+	if not check["ok"]:
+		return check
+	var selected_id := contract_id
+	var charge := 0
+	if commissioning_batch_available:
+		selected_id = CrudeCatalog.DEFAULT_ID
+		commissioning_batch_available = false
+	elif paid_batch:
+		charge = contract_cost(selected_id)
+	else:
+		return _result(false, "%s koster %d kr." % [CrudeCatalog.definition(selected_id)["display_name"], contract_cost(selected_id)])
+	pending_intake_delivery = {"contract_id": selected_id, "volume_l": BATCH_VOLUME_L}
+	var profile := CrudeCatalog.definition(selected_id)
+	last_status = "CI-101 mottok 1 000 L %s. Pump leveransen til en råoljetank." % profile["short_name"]
+	return {"ok": true, "message": last_status, "charge": charge, "contract_id": selected_id}
+
+
 func tick(delta: float) -> void:
 	actual_flow_lps = 0.0
 	for state in equipment.values():
 		if state["type"] == "pump":
 			state["actual_flow_lps"] = 0.0
 	var routes: Array[Dictionary] = network.find_complete_routes()
+	# Physical site logistics intentionally sit beside process-route discovery.
+	# They use the same pumps and tank state without becoming fake refinery trains.
+	_tick_intake_routes(delta)
+	_tick_dispatch_routes()
 	var atmospheric_routes: Array[Dictionary] = network.filter_routes_by_process_type(
 		routes, ProcessNetworkScript.ATMOSPHERIC_DISTILLATION
 	)
 	_update_heaters(delta, atmospheric_routes)
-	if routes.is_empty():
+	if routes.is_empty() and network.crude_intake_routes().is_empty() and network.product_dispatch_routes().is_empty():
 		_stop_all_pumps()
 		last_status = network.validate_configuration()["message"]
 		return
@@ -874,6 +911,53 @@ func tick(delta: float) -> void:
 				_tick_vacuum_route(route, delta)
 			ProcessNetworkScript.CATALYTIC_CRACKING:
 				_tick_fcc_route(route, delta)
+
+
+func _tick_intake_routes(delta: float) -> void:
+	for route in network.crude_intake_routes():
+		var pump: Dictionary = equipment.get(route["pump"], {})
+		if pump.is_empty() or not pump["running"]:
+			continue
+		var available := float(pending_intake_delivery.get("volume_l", 0.0))
+		if available <= 0.001:
+			_stop_secondary_pump(pump, "CI-101 TOM — ingen råoljeleveranse er tilgjengelig.")
+			continue
+		var tank: Dictionary = equipment.get(route["tank"], {})
+		var contract_id := String(pending_intake_delivery.get("contract_id", ""))
+		if tank.is_empty() or tank["type"] != "tank" or not _tank_accepts_material(tank, "crude"):
+			_stop_secondary_pump(pump, "CI-101 BLOKKERT — valgt råoljetank kan ikke ta imot leveransen.")
+			continue
+		var room := maxf(0.0, float(tank["capacity_l"]) - float(tank["volume_l"]))
+		var moved := minf(minf(available, room), _effective_pump_flow_lps(pump) * delta)
+		if moved <= 0.001:
+			_stop_secondary_pump(pump, "CI-101 BLOKKERT — råoljetanken er full.")
+			continue
+		_commit_tank_material(route["tank"], "crude", moved, AMBIENT_TEMPERATURE_C)
+		tank["contract_id"] = contract_id
+		tank["contract_bonus_available"] = int(CrudeCatalog.definition(contract_id).get("delivery_bonus", 0)) > 0
+		tank["crude_cost_per_l"] = float(contract_cost(contract_id)) / BATCH_VOLUME_L
+		pending_intake_delivery["volume_l"] = available - moved
+		pump["actual_flow_lps"] = moved / delta
+		actual_flow_lps = maxf(actual_flow_lps, pump["actual_flow_lps"])
+		_degrade_pump_condition(pump, moved)
+		_update_pump_fault_progress(pump, moved)
+		if float(pending_intake_delivery["volume_l"]) <= 0.001:
+			pending_intake_delivery = {"contract_id": "", "volume_l": 0.0}
+			pump["running"] = false
+			last_status = "CI-101-leveransen er pumpet til %s." % tank["name"]
+
+
+func _tick_dispatch_routes() -> void:
+	for route in network.product_dispatch_routes():
+		var pump: Dictionary = equipment.get(route["pump"], {})
+		if pump.is_empty() or not pump["running"]:
+			continue
+		var tank: Dictionary = equipment.get(route["tank"], {})
+		if tank.is_empty() or String(tank.get("contents", "")) != String(route["product_port"]) or float(tank.get("volume_l", 0.0)) <= 0.001:
+			_stop_secondary_pump(pump, "PD-101 VENTER — den valgte produkttanken er tom.")
+			continue
+		pump["actual_flow_lps"] = _effective_pump_flow_lps(pump)
+		actual_flow_lps = maxf(actual_flow_lps, pump["actual_flow_lps"])
 
 
 func _tick_atmospheric_route(route: Dictionary, delta: float) -> void:
@@ -922,7 +1006,7 @@ func _tick_atmospheric_route(route: Dictionary, delta: float) -> void:
 	if not pump["running"]:
 		if source["volume_l"] <= 0.001 or source["contents"] != "crude":
 			last_status = (
-				"Linjen er klar. Trykk E på kildetanken for å velge råolje."
+				"Linjen er klar. Velg råoljeleveranse ved CI-101."
 				if commissioning_contract_complete
 				else "Linjen er klar. Trykk E på kildetanken for å laste råolje."
 			)
@@ -1413,6 +1497,55 @@ func available_product_orders() -> Array[Dictionary]:
 	return orders
 
 
+func available_physical_dispatch_orders(dispatch_id: String) -> Array[Dictionary]:
+	var orders: Array[Dictionary] = []
+	for route in network.product_dispatch_routes():
+		if String(route["dispatch"]) != dispatch_id:
+			continue
+		var tank: Dictionary = equipment.get(route["tank"], {})
+		var product_id := String(route["product_port"])
+		var order := CrudeCatalog.product_order_definition(product_id)
+		if tank.is_empty() or order.is_empty() or String(tank.get("contents", "")) != product_id:
+			continue
+		order["tank_id"] = route["tank"]
+		order["pump_id"] = route["pump"]
+		order["volume_l"] = float(tank["volume_l"])
+		order["ready"] = float(tank["volume_l"]) + 0.01 >= float(order["target_l"])
+		order["revenue_preview"] = int(round(float(tank["volume_l"]) * float(order["price_per_l"])))
+		orders.append(order)
+	return orders
+
+
+func dispatch_product_from_terminal(dispatch_id: String, tank_id: String) -> Dictionary:
+	var selected_route := {}
+	for route in network.product_dispatch_routes():
+		if String(route["dispatch"]) == dispatch_id and String(route["tank"]) == tank_id:
+			selected_route = route
+			break
+	if selected_route.is_empty():
+		return _result(false, "Produktet har ingen gyldig fysisk rute til PD-101.")
+	var pump: Dictionary = equipment[selected_route["pump"]]
+	if not pump["running"]:
+		return _result(false, "Start salgspumpen før produktet sendes fra PD-101.")
+	var product_id := String(selected_route["product_port"])
+	var tank: Dictionary = equipment[tank_id]
+	if String(tank["contents"]) != product_id or float(tank["volume_l"]) <= 0.001:
+		return _result(false, "Den valgte produkttanken er tom eller har feil produkt.")
+	if product_id == "diesel":
+		var active_diesel_route := _resolved_route(active_route())
+		if active_diesel_route.is_empty() or String(active_diesel_route["products"].get("diesel", "")) != tank_id:
+			return _result(false, "Diesel må komme fra den aktive laboratoriegodkjente prosesslinjen.")
+	# Existing sale methods guard against every running pump. The dedicated sales
+	# pump is the physical prerequisite, so stop it only while the trusted atomic
+	# sale transaction validates and consumes the real tank inventory.
+	pump["running"] = false
+	pump["actual_flow_lps"] = 0.0
+	var result: Dictionary = sell_diesel() if product_id == "diesel" else dispatch_product_from_tank(tank_id)
+	if not result["ok"]:
+		pump["running"] = true
+	return result
+
+
 func dispatch_product(product_id: String) -> Dictionary:
 	if product_id in ["vacuum_gas_oil", "vacuum_residue", "gasoline_blendstock", "lpg", "light_cycle_oil"]:
 		for tank_id in equipment:
@@ -1660,6 +1793,15 @@ func inspect_unit(unit_id: String) -> String:
 		return "Ukjent bygd utstyr."
 	var state: Dictionary = equipment[unit_id]
 	match state["type"]:
+		"crude_intake":
+			var intake_l := float(pending_intake_delivery.get("volume_l", 0.0))
+			var intake_contract := String(pending_intake_delivery.get("contract_id", ""))
+			if intake_l > 0.001 and CrudeCatalog.is_valid(intake_contract):
+				return "CI-101: %.0f L %s klar for overføring." % [intake_l, CrudeCatalog.definition(intake_contract)["short_name"]]
+			return "CI-101: Ingen råoljeleveranse valgt."
+		"product_dispatch":
+			var ready_orders := available_physical_dispatch_orders(unit_id)
+			return "PD-101: %d produktlinje%s klar for dispatch." % [ready_orders.size(), "er" if ready_orders.size() != 1 else ""]
 		"tank":
 			var contents_name := _contents_name(state["contents"])
 			if state["contents"] == "crude" and CrudeCatalog.is_valid(active_contract_id):
@@ -1740,6 +1882,11 @@ func unit_status(unit_id: String) -> String:
 		return "IKKE REGISTRERT"
 	var state: Dictionary = equipment[unit_id]
 	match state["type"]:
+		"crude_intake":
+			var intake_l := float(pending_intake_delivery.get("volume_l", 0.0))
+			return "%.0f / %.0f L KLAR" % [intake_l, BATCH_VOLUME_L] if intake_l > 0.001 else "VELG LEVERANSE"
+		"product_dispatch":
+			return "%d KLARE LINJER" % available_physical_dispatch_orders(unit_id).size()
 		"tank":
 			var contents_label := _contents_name(state["contents"])
 			if state["contents"] == "crude" and CrudeCatalog.is_valid(active_contract_id):
@@ -2269,6 +2416,20 @@ func _effective_pump_flow_lps(pump: Dictionary) -> float:
 	return target_flow
 
 
+func _intake_route_for_pump(pump_id: String) -> Dictionary:
+	for route in network.crude_intake_routes():
+		if String(route["pump"]) == pump_id:
+			return route
+	return {}
+
+
+func _dispatch_route_for_pump(pump_id: String) -> Dictionary:
+	for route in network.product_dispatch_routes():
+		if String(route["pump"]) == pump_id:
+			return route
+	return {}
+
+
 func _degrade_pump_condition(pump: Dictionary, processed_l: float) -> bool:
 	if processed_l <= 0.001 or float(pump.get("condition_percent", 100.0)) <= 0.001:
 		return false
@@ -2365,6 +2526,16 @@ func active_connection_keys() -> Dictionary:
 		_add_connection_key(keys, route["fcc"], "gasoline", route["outputs"]["gasoline_blendstock"], "input", fcc_normalized_flow)
 		_add_connection_key(keys, route["fcc"], "lpg", route["outputs"]["lpg"], "input", fcc_normalized_flow)
 		_add_connection_key(keys, route["fcc"], "lco", route["outputs"]["light_cycle_oil"], "input", fcc_normalized_flow)
+	for route in network.crude_intake_routes():
+		var intake_flow := _normalized_pump_flow(String(route["pump"]))
+		if intake_flow > 0.01:
+			_add_connection_key(keys, route["intake"], "output", route["pump"], "input", intake_flow)
+			_add_connection_key(keys, route["pump"], "output", route["tank"], "input", intake_flow)
+	for route in network.product_dispatch_routes():
+		var dispatch_flow := _normalized_pump_flow(String(route["pump"]))
+		if dispatch_flow > 0.01:
+			_add_connection_key(keys, route["tank"], "output", route["pump"], "input", dispatch_flow)
+			_add_connection_key(keys, route["pump"], "output", route["dispatch"], route["product_port"], dispatch_flow)
 	return keys
 
 
@@ -2444,29 +2615,42 @@ func _toggle_pump(unit_id: String) -> Dictionary:
 		if float(pump.get("condition_percent", 100.0)) <= 0.001:
 			last_status = "%s START BLOCKED — MAINTENANCE REQUIRED." % pump["name"]
 			return _result(false, last_status)
-		var route: Dictionary = _atmospheric_route_for_unit(unit_id)
-		if route.is_empty():
-			var vacuum_route := _vacuum_route_for_unit(unit_id)
-			if not vacuum_route.is_empty() and vacuum_route["primary_pump"] == unit_id:
-				var vacuum_start_check := _secondary_route_start_check(vacuum_route)
-				if not vacuum_start_check["ok"]:
-					last_status = vacuum_start_check["message"]
-					return vacuum_start_check
-			else:
-				var fcc_route := _fcc_route_for_unit(unit_id)
-				if fcc_route.is_empty() or fcc_route["primary_pump"] != unit_id:
-					return _result(false, "%s er ikke del av en komplett prosesslinje." % pump["name"])
-				var fcc_start_check := _secondary_route_start_check(fcc_route)
-				if not fcc_start_check["ok"]:
-					last_status = fcc_start_check["message"]
-					return fcc_start_check
+		var intake_route := _intake_route_for_pump(unit_id)
+		if not intake_route.is_empty():
+			if float(pending_intake_delivery.get("volume_l", 0.0)) <= 0.001:
+				return _result(false, "CI-101 har ingen råoljeleveranse klar.")
+			var intake_tank: Dictionary = equipment[intake_route["tank"]]
+			if not _tank_accepts_material(intake_tank, "crude") or float(intake_tank["volume_l"]) >= float(intake_tank["capacity_l"]) - 0.001:
+				return _result(false, "CI-101 kan ikke starte: råoljetanken er full eller har feil råoljetype.")
+		elif not _dispatch_route_for_pump(unit_id).is_empty():
+			var dispatch_route := _dispatch_route_for_pump(unit_id)
+			var dispatch_tank: Dictionary = equipment[dispatch_route["tank"]]
+			if String(dispatch_tank["contents"]) != String(dispatch_route["product_port"]) or float(dispatch_tank["volume_l"]) <= 0.001:
+				return _result(false, "PD-101 kan ikke starte: valgt produkttank er tom eller har feil produkt.")
 		else:
-			if route["pump"] != unit_id:
-				return _result(false, "%s er ikke del av den komplette prosesslinjen." % pump["name"])
-			if not _route_has_feed_access(route):
-				return _result(false, "Velg denne ruten på Crude Feed Header før %s startes." % pump["name"])
-			if _resolved_route(route).is_empty():
-				return _result(false, "Velg produkttank på Product Routing Header før %s startes." % pump["name"])
+			var route: Dictionary = _atmospheric_route_for_unit(unit_id)
+			if route.is_empty():
+				var vacuum_route := _vacuum_route_for_unit(unit_id)
+				if not vacuum_route.is_empty() and vacuum_route["primary_pump"] == unit_id:
+					var vacuum_start_check := _secondary_route_start_check(vacuum_route)
+					if not vacuum_start_check["ok"]:
+						last_status = vacuum_start_check["message"]
+						return vacuum_start_check
+				else:
+					var fcc_route := _fcc_route_for_unit(unit_id)
+					if fcc_route.is_empty() or fcc_route["primary_pump"] != unit_id:
+						return _result(false, "%s er ikke del av en komplett prosesslinje." % pump["name"])
+					var fcc_start_check := _secondary_route_start_check(fcc_route)
+					if not fcc_start_check["ok"]:
+						last_status = fcc_start_check["message"]
+						return fcc_start_check
+			else:
+				if route["pump"] != unit_id:
+					return _result(false, "%s er ikke del av den komplette prosesslinjen." % pump["name"])
+				if not _route_has_feed_access(route):
+					return _result(false, "Velg denne ruten på Crude Feed Header før %s startes." % pump["name"])
+				if _resolved_route(route).is_empty():
+					return _result(false, "Velg produkttank på Product Routing Header før %s startes." % pump["name"])
 		var power_check := _can_start_electrical_load(unit_id)
 		if not power_check["ok"]:
 			return power_check

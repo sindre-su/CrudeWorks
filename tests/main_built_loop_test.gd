@@ -130,26 +130,12 @@ func _run_test() -> void:
 	main._unhandled_input(close_control_event)
 	_expect(not main.control_station_visible and not main.player.input_blocked and not main.build_controller.input_blocked, "Escape closes LS-201 without issuing another process command")
 	main._on_unit_interacted(source.unit_id)
-	_expect(main.contract_selection_visible and main.player.input_blocked and main.build_controller.input_blocked, "empty commissioned source opens a modal crude-delivery choice")
-	_expect("DIESELLEVERANSE" in main.contract_selection_label.text and "200 L diesel" in main.contract_selection_label.text and "TUNG LEVERANSE" in main.contract_selection_label.text and "600 L" in main.contract_selection_label.text, "delivery modal explains the two distinct product orders before purchase")
-	var money_before_cancel: int = main.process_model.money
-	var cancel_contract_event := InputEventKey.new()
-	cancel_contract_event.keycode = KEY_ESCAPE
-	cancel_contract_event.pressed = true
-	main._unhandled_input(cancel_contract_event)
-	_expect(not main.contract_selection_visible and main.process_model.money == money_before_cancel and is_equal_approx(main.built_refinery_model.equipment[source.unit_id]["volume_l"], 0.0), "Escape cancels crude selection without charging or loading material")
-	main._on_unit_interacted(source.unit_id)
-	main.process_model.money = 100
-	var standard_event := InputEventKey.new()
-	standard_event.keycode = KEY_1
-	standard_event.pressed = true
-	main._unhandled_input(standard_event)
-	_expect(main.contract_selection_visible and main.process_model.money == 100 and is_equal_approx(main.built_refinery_model.equipment[source.unit_id]["volume_l"], 0.0), "unaffordable contract stays open and changes neither money nor material")
-	main.process_model.money = money_before_cancel
-	main._unhandled_input(standard_event)
-	_expect(not main.contract_selection_visible and not main.player.input_blocked and not main.build_controller.input_blocked, "contract choice closes cleanly and restores gameplay controls")
-	_expect(main.process_model.money == 5100, "second Main-integrated crude batch deducts exactly 300 kr")
-	_expect(is_equal_approx(main.built_refinery_model.equipment[source.unit_id]["volume_l"], 1000.0), "paid Main-integrated batch loads exactly 1 000 L")
+	_expect("CI-101" in main.notification_label.text, "empty commissioned source directs the player to physical CI-101 intake")
+	var money_before_intake: int = main.process_model.money
+	var paid_load: Dictionary = main.built_refinery_model.load_crude_batch(source.unit_id, true, "standard")
+	main.process_model.purchase(int(paid_load.get("charge", 0)))
+	_expect(paid_load["ok"] and main.process_model.money == money_before_intake - 300, "legacy fixture loads one paid batch through the canonical purchase calculation")
+	_expect(is_equal_approx(main.built_refinery_model.equipment[source.unit_id]["volume_l"], 1000.0), "paid fixture batch loads exactly 1 000 L")
 
 	main.built_refinery_model.interact(pump.unit_id)
 	main.built_refinery_model.tick(10.0)
@@ -203,11 +189,8 @@ func _test_heavy_contract_through_main() -> void:
 	main.built_refinery_model.commissioning_batch_available = false
 	main.built_refinery_model.commissioning_contract_complete = true
 	var source = _unit(main, "built_tank_1")
-	main._on_unit_interacted(source.unit_id)
-	var heavy_event := InputEventKey.new()
-	heavy_event.keycode = KEY_2
-	heavy_event.pressed = true
-	main._unhandled_input(heavy_event)
+	var heavy_load: Dictionary = main.built_refinery_model.load_crude_batch(source.unit_id, true, "heavy")
+	main.process_model.purchase(int(heavy_load.get("charge", 0)))
 	_expect(main.process_model.money == 820 and main.built_refinery_model.active_contract_id == "heavy", "Main Heavy choice charges exactly 180 kr and locks the selected feed")
 	var heater = _unit(main, "built_heater_4")
 	var valve = _unit(main, "built_valve_3")

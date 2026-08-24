@@ -91,6 +91,18 @@ func register_unit(unit) -> void:
 	_update_network_feedback()
 
 
+func register_fixed_unit(unit) -> void:
+	registered_units.append({
+		"node": unit,
+		"footprint": unit.rotated_footprint(),
+		"cost": 0,
+		"fixed": true,
+	})
+	for port in unit.ports.values():
+		port.visible = active
+	_update_network_feedback()
+
+
 func has_registered_unit(unit) -> bool:
 	for entry in registered_units:
 		if entry["node"] == unit:
@@ -128,6 +140,10 @@ func _set_unit_ports_visible(value: bool) -> void:
 
 
 func remove_registered_unit(unit) -> void:
+	for entry in registered_units:
+		if entry["node"] == unit and bool(entry.get("fixed", false)):
+			notification_requested.emit("Dette er et fast anleggspunkt og kan ikke fjernes.")
+			return
 	_clear_connection_candidates()
 	_clear_connection_if_source(unit)
 	process_network.unregister_unit(unit.unit_id)

@@ -817,3 +817,24 @@
 - Validation: focused graph/build coverage plus the full regression gate passed.
   Human QA still needs to confirm the candidate highlights reduce aiming effort
   without visual clutter at 1280×720.
+
+## v0.25.0 — Physical Feed-to-Cash Endpoints
+
+- Added fixed CI-101 crude intake and PD-101 product dispatch endpoints to
+  Area 02. They use normal build/process registration but cannot be sold or
+  deleted.
+- CI-101 receives the canonical crude order as a persisted pending 1,000 L
+  delivery. A connected, powered player pump moves it into compatible crude
+  storage; full or incompatible storage stops safely without losing material.
+- PD-101 requires a physically connected compatible tank and running sales
+  pump before it invokes the existing product/diesel dispatch transaction.
+  Product identity, sulfur, LAB approval and revenue remain authoritative in
+  the existing model; the endpoint adds no parallel economy or inventory.
+- Save validation registers fixed endpoints while retaining the v2 schema and
+  accepting legacy saves without logistics state.
+- Added focused coverage for endpoint ports, canonical crude charge, transfer
+  mass balance, pending-delivery persistence, full-tank safe stop, physical
+  VGO dispatch and repeated-dispatch prevention.
+- Validation: editor scan, focused logistics, save/load and Main loop passed.
+  A human 1280×720 pass must still verify endpoint placement, port targeting
+  and field-copy readability.

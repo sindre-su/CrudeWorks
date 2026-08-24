@@ -2,7 +2,7 @@
 
 ## Current baseline
 
-Version 0.24.5 has a tested pilot plant and a substantial Area 02 refinery
+Version 0.25.0 has a tested pilot plant and a substantial Area 02 refinery
 slice: free building, directed process networks, multiple independent trains,
 shared-feed/product routing, Standard/Heavy/Sour crude, diesel treatment,
 quality/LAB dispatch, VDU-301, FCC-401, electrical capacity, controls, alarms,
@@ -11,6 +11,10 @@ pump condition/filter repair, economy and validated save/load.
 The core conclusion is deliberate: **process depth is no longer the primary
 bottleneck.** Further process-unit expansion is lower priority until existing
 systems feel physical, understandable, rewarding and scalable in real play.
+The first physical feed-to-cash endpoints are now established: CI-101 receives
+the canonical crude order into an explicit pending delivery, a player pump
+moves it into crude storage, and PD-101 requires a compatible product tank and
+running sales pump before it can invoke the existing dispatch transaction.
 
 ## Current priority
 
@@ -18,6 +22,10 @@ systems feel physical, understandable, rewarding and scalable in real play.
 pipe/valve readability, equipment interaction, alarms, tank levels, LAB-101,
 LS-201, power feedback, VDU/FCC placement and pump-condition pacing in the
 running game. Headless tests protect logic; they cannot replace human play.
+
+The next focused gameplay decision should be whether the initial physical
+intake/dispatch route is introduced clearly enough in the player objective and
+starter-economy flow. Do not add another process unit before that playtest.
 
 ## Development phases
 

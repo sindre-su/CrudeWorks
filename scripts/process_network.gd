@@ -78,7 +78,8 @@ func can_connect(
 			_unit_name(to_unit_id),
 			from_port["label"].to_lower(),
 		])
-	if not Catalog.process_order_allows(from_type, to_type):
+	var intake_transfer := from_type == "pump" and to_type == "tank" and _pump_receives_from_crude_intake(from_unit_id)
+	if not Catalog.process_order_allows(from_type, to_type) and not intake_transfer:
 		if from_type == "pump" and to_type == "heater":
 			return _result(false, "Den manuelle ventilen må stå mellom pumpen og varmeenheten.")
 		return _result(false, "%s kan ikke stå før %s i prosessen." % [
@@ -93,6 +94,11 @@ func can_connect(
 		from_port["label"],
 		_unit_name(to_unit_id),
 	])
+
+
+func _pump_receives_from_crude_intake(pump_id: String) -> bool:
+	var inlet := incoming_edge(pump_id, "input")
+	return not inlet.is_empty() and _unit_type(String(inlet["from_unit"])) == "crude_intake"
 
 
 func try_connect(
@@ -258,6 +264,32 @@ func filter_routes_by_process_type(routes: Array, process_type: String) -> Array
 
 func atmospheric_routes() -> Array[Dictionary]:
 	return filter_routes_by_process_type(find_complete_routes(), ATMOSPHERIC_DISTILLATION)
+
+
+func crude_intake_routes() -> Array[Dictionary]:
+	var routes: Array[Dictionary] = []
+	for edge in connections:
+		if _unit_type(edge["from_unit"]) != "crude_intake" or _unit_type(edge["to_unit"]) != "pump":
+			continue
+		var pump_edge := outgoing_edge(String(edge["to_unit"]), "output")
+		if not pump_edge.is_empty() and _unit_type(pump_edge["to_unit"]) == "tank":
+			routes.append({"intake": edge["from_unit"], "pump": edge["to_unit"], "tank": pump_edge["to_unit"]})
+	return routes
+
+
+func product_dispatch_routes() -> Array[Dictionary]:
+	var routes: Array[Dictionary] = []
+	for edge in connections:
+		if _unit_type(edge["from_unit"]) != "tank" or _unit_type(edge["to_unit"]) != "pump":
+			continue
+		var pump_edge := outgoing_edge(String(edge["to_unit"]), "output")
+		if pump_edge.is_empty() or _unit_type(pump_edge["to_unit"]) != "product_dispatch":
+			continue
+		routes.append({
+			"tank": edge["from_unit"], "pump": edge["to_unit"],
+			"dispatch": pump_edge["to_unit"], "product_port": pump_edge["to_port"],
+		})
+	return routes
 
 
 func find_route_for_unit(unit_id: String) -> Dictionary:

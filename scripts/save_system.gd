@@ -12,6 +12,10 @@ const BUILD_BOUNDS := Rect2(-20.0, 10.5, 40.0, 28.0)
 const MAX_UNITS := 128
 const MAX_CONNECTIONS := 256
 const MAX_BUILD_SERIAL := 1000000
+const SITE_UNIT_TYPES := {
+	"built_crude_intake_0": "crude_intake",
+	"built_product_dispatch_0": "product_dispatch",
+}
 
 
 static func write_snapshot(path: String, snapshot: Dictionary) -> Dictionary:
@@ -286,6 +290,7 @@ static func _validate_construction(state: Dictionary) -> Dictionary:
 		var result: Dictionary = graph.register_unit(unit_id, unit_types[unit_id], unit_id)
 		if not result["ok"]:
 			return _result(false, result["message"])
+	_register_site_units(graph)
 	for edge in connections:
 		if typeof(edge) != TYPE_DICTIONARY:
 			return _result(false, "Et prosessrør har ugyldig format.")
@@ -304,7 +309,15 @@ static func _validate_construction(state: Dictionary) -> Dictionary:
 	}
 
 
+static func _register_site_units(graph) -> void:
+	for unit_id in SITE_UNIT_TYPES:
+		graph.register_unit(unit_id, SITE_UNIT_TYPES[unit_id], unit_id)
+
+
 static func _validate_built_refinery(state: Dictionary, unit_types: Dictionary, connections: Array) -> Dictionary:
+	var logistics_result := _validate_site_logistics(state.get("site_logistics", {}))
+	if not logistics_result["ok"]:
+		return logistics_result
 	for field in ["commissioning_batch_available", "commissioning_contract_complete"]:
 		if typeof(state.get(field)) != TYPE_BOOL:
 			return _result(false, "Ugyldig progresjonsstatus: %s." % field)
@@ -382,6 +395,7 @@ static func _validate_built_refinery(state: Dictionary, unit_types: Dictionary, 
 			if intent.is_empty() and float(unit_state["volume_l"]) > 0.001:
 				intent = String(unit_state["contents"])
 		semantic_network.register_unit(unit_id, unit_types[unit_id], unit_id, intent)
+	_register_site_units(semantic_network)
 	for edge in connections:
 		semantic_network.try_connect(edge["from_unit"], edge["from_port"], edge["to_unit"], edge["to_port"])
 	var atmospheric_tanks := {}
@@ -406,6 +420,25 @@ static func _validate_built_refinery(state: Dictionary, unit_types: Dictionary, 
 	if not has_atmospheric_batch_material and not has_tracking and not active_contract_id.is_empty():
 		return _result(false, "En aktiv råoljekontrakt finnes uten batchmateriale.")
 	return _result(true, "Bygd prosesstilstand er gyldig.")
+
+
+static func _validate_site_logistics(state) -> Dictionary:
+	if typeof(state) != TYPE_DICTIONARY:
+		return _result(false, "Terminaltilstanden har ugyldig format.")
+	if state.is_empty():
+		return _result(true, "Eldre lagring uten terminaltilstand.")
+	var pending = state.get("pending_intake_delivery", {})
+	if typeof(pending) != TYPE_DICTIONARY:
+		return _result(false, "CI-101-leveransen har ugyldig format.")
+	var contract_id = pending.get("contract_id", "")
+	var volume_l = pending.get("volume_l", 0.0)
+	if typeof(contract_id) != TYPE_STRING or not _finite_number(volume_l) or not _in_range(volume_l, 0.0, BuiltRefineryModelScript.BATCH_VOLUME_L):
+		return _result(false, "CI-101-leveransen inneholder ugyldige verdier.")
+	if float(volume_l) > 0.001 and not CrudeCatalogScript.is_valid(contract_id):
+		return _result(false, "CI-101-leveransen mangler gyldig råoljetype.")
+	if float(volume_l) <= 0.001 and not contract_id.is_empty():
+		return _result(false, "Tom CI-101-leveranse kan ikke ha råoljetype.")
+	return _result(true, "CI-101-leveranse er gyldig.")
 
 
 static func _validate_equipment_state(state: Dictionary) -> Dictionary:

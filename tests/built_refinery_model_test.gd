@@ -397,7 +397,7 @@ func _test_mass_conserving_ideal_batch_and_sale() -> void:
 	var model = _complete_model()
 	model.tick(0.0)
 	_expect("kildetanken" in model.last_status, "empty valid route tells the player to load crude first")
-	_expect("oppstartsbatch" in model.interaction_prompt("source"), "empty source prompt identifies the free startup action")
+	_expect("CI-101" in model.interaction_prompt("source"), "empty source prompt identifies physical CI-101 intake")
 	var load_result: Dictionary = model.load_crude_batch("source")
 	_expect(load_result["ok"] and load_result["charge"] == 0, "first built batch is an explicit free commissioning batch")
 	_expect(not model.can_remove("source")["ok"], "non-empty built tanks cannot be removed for a refund")

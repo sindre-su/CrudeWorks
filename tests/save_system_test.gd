@@ -322,7 +322,7 @@ func _test_startup_continue(snapshot: Dictionary) -> void:
 	startup._unhandled_input(continue_event)
 	_expect(startup.startup_choice_state.is_empty() and not startup.player.input_blocked, "Enter continues the save and restores gameplay controls")
 	_expect("Forrige sikre lagring" in startup.notification_label.text, "Continue clearly reports when an older safe backup was recovered")
-	_expect(startup.build_controller.registered_units.size() == snapshot["construction"]["units"].size(), "startup Continue restores the saved construction")
+	_expect(_player_built_count(startup) == snapshot["construction"]["units"].size(), "startup Continue restores the saved construction")
 	startup.persistence_enabled = false
 	startup.queue_free()
 
@@ -338,7 +338,7 @@ func _test_main_round_trip(snapshot: Dictionary, source_main) -> void:
 	_expect(restore_result["ok"], "fresh Main restores a fully validated snapshot")
 	_expect(restored.process_model.money == source_main.process_model.money, "load replaces economy exactly without charging or refunding")
 	_expect(restored.build_serial_number == 9, "maximum build serial is restored")
-	_expect(restored.build_controller.registered_units.size() == 9 and restored.built_refinery_model.equipment.size() == 9, "all built nodes and model states restore once")
+	_expect(_player_built_count(restored) == 9 and _player_equipment_count(restored) == 9, "all built nodes and model states restore once")
 	_expect(restored.built_refinery_model.network.connection_count() == 7 and restored.build_controller.connections.size() == 7, "logical topology and seven visual pipes restore together")
 	_expect(
 		restored.build_controller.registered_unit_by_id("built_header_9") != null
@@ -538,6 +538,22 @@ func _total_tank_volume(main) -> float:
 		if state["type"] == "tank":
 			total += state["volume_l"]
 	return total
+
+
+func _player_built_count(main) -> int:
+	var count := 0
+	for entry in main.build_controller.registered_units:
+		if not bool(entry.get("fixed", false)):
+			count += 1
+	return count
+
+
+func _player_equipment_count(main) -> int:
+	var count := 0
+	for state in main.built_refinery_model.equipment.values():
+		if not String(state.get("type", "")) in ["crude_intake", "product_dispatch"]:
+			count += 1
+	return count
 
 
 func _cleanup_test_files() -> void:
