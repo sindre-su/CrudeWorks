@@ -26,6 +26,7 @@ func _run_tests() -> void:
 	_test_shared_source_candidate_discovery()
 	_test_optional_diesel_treatment_route()
 	_test_product_header_destination_discovery()
+	_test_typed_route_envelope()
 
 
 func _test_valid_topology() -> void:
@@ -64,6 +65,24 @@ func _test_product_header_destination_discovery() -> void:
 	_expect(destinations.size() == 2 and destinations[0]["tank"] == "diesel_tank" and destinations[1]["tank"] == "diesel_backup", "product header exposes stable physical A/B storage destinations")
 	network.disconnect_ports("diesel_header", "out_b", "diesel_backup", "input")
 	_expect(network.validate_configuration()["valid"] and network.destinations_for_product_header("diesel_header").size() == 1, "an incomplete sibling storage branch does not invalidate the available product route")
+
+
+func _test_typed_route_envelope() -> void:
+	var network = _complete_network()
+	var atmospheric: Dictionary = network.find_complete_route()
+	var vacuum := {
+		"process_type": ProcessNetworkScript.VACUUM_DISTILLATION,
+		"route_id": "vacuum:vdu_pump",
+		"source": "heavy_source",
+		"pump": "vdu_pump",
+		"equipment_ids": ["heavy_source", "vdu_pump", "vdu"],
+	}
+	_expect(network.is_atmospheric_route(atmospheric), "atmospheric route helper recognizes the current process family")
+	_expect(not network.is_atmospheric_route(vacuum), "synthetic vacuum route is not treated as atmospheric")
+	_expect(network.get_route_id(vacuum) == "vacuum:vdu_pump" and network.get_route_source(vacuum) == "heavy_source" and network.get_route_primary_pump(vacuum) == "vdu_pump", "route envelope exposes stable generic identity, source and primary pump")
+	_expect(network.route_contains_unit(vacuum, "vdu") and not network.route_contains_unit(vacuum, "heater"), "generic route membership does not require atmospheric equipment fields")
+	var atmospheric_only: Array[Dictionary] = network.filter_routes_by_process_type([vacuum, atmospheric], ProcessNetworkScript.ATMOSPHERIC_DISTILLATION)
+	_expect(atmospheric_only.size() == 1 and atmospheric_only[0]["pump"] == "pump", "atmospheric consumers can explicitly ignore a sparse future route")
 
 
 func _test_direction_and_order() -> void:

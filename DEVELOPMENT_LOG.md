@@ -584,3 +584,32 @@
   interlocks used by existing remote controls.
 - Field-only work remains physical: valve/header routing, sampling, LAB work,
   equipment inspection and filter repair are not exposed by the console.
+
+## v0.21 Foundation 2 — Route Envelope and Typed Consumer Hardening
+
+- Added a bounded ProcessNetwork route envelope: process type, stable route ID,
+  source, primary pump and equipment-membership helpers. Atmospheric route
+  discovery now supplies a stable `atmospheric:<pump-id>` route ID.
+- Classified existing consumers deliberately. Process identity and topology
+  cleanup remain shared; FeedAllocation/Crude Feed Header, product allocation,
+  lab/dispatch, active-pipe visuals, alarms, LS-201 and atmospheric simulation
+  now request atmospheric routes explicitly.
+- Added safe atmospheric lookups for physical and remote interaction. A future
+  route that does not define valve/heater/column/product fields is ignored by
+  current atmospheric systems instead of being interpreted as a broken
+  atmospheric process.
+- Preserved current material behavior, validation and save data. This was an
+  architecture-hardening change only: no VDU equipment, route discovery,
+  vacuum material, runtime flow or player UI was added.
+- Added synthetic sparse-vacuum tests covering the route envelope, type
+  filtering, feed-access rejection, alarm safety, product-routing rejection
+  and LS-201 atmospheric-only visibility.
+- Validation: process model, process network, building system, built refinery,
+  Main integration and save-system suites passed; headless main launch, editor
+  resource scan and `git diff --check` passed.
+
+## Next Best Work
+
+- Add VDU discovery only after defining its typed route contract and an atomic
+  material-transfer path. Keep the deferred hands-on 1280×720 interaction
+  pass independent of that architecture work.

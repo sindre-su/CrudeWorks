@@ -7,6 +7,12 @@ Area 02 refinery trains. The built loop covers construction, directed pipes, val
 Sour-diesel treatment, physical diesel sampling, LAB-101, LS-201, 5/10/15 L/s
 pump targets and separate Naphtha/heavy-residue deliveries.
 
+The v0.21 architectural foundation tags every discovered atmospheric route
+explicitly. Its small route-envelope API separates shared identity/ownership
+lookups from atmospheric-only consumers, so a future secondary process family
+can be introduced without making the current LS-201, alarms, feed headers,
+product routing or simulation assume its equipment fields.
+
 One source can now physically feed two complete trains through a buildable
 Crude Feed Header. Feed allocation keeps an explicit player-selected branch;
 it never auto-splits or falls back to another train.
@@ -33,6 +39,17 @@ temperature and flow commands through existing safety-checked APIs.
 alarm visibility, treatment readability, product-delivery modal layout and
 terminal feedback in the running game.
 Headless tests cannot replace this check.
+
+## Architecture preparation
+
+- Keep `ProcessNetwork` route discovery additive. Atmospheric distillation is
+  the only discoverable and executable process family today.
+- Keep FeedAllocation, Crude Feed Header, Product Routing Header, LAB-101,
+  operator alarms and LS-201 explicitly atmospheric until an additional
+  process family supplies its own routing and operating semantics.
+- The next VDU work must add discovery and a typed runtime consumer before
+  adding equipment, materials or UI. It must not reuse atmospheric valve,
+  heater, column or three-product assumptions.
 
 ## Next milestones
 

@@ -180,20 +180,65 @@ func find_complete_route() -> Dictionary:
 	return routes[0] if not routes.is_empty() else {}
 
 
+func get_process_type(route: Dictionary) -> String:
+	return String(route.get("process_type", ""))
+
+
+func is_atmospheric_route(route: Dictionary) -> bool:
+	return get_process_type(route) == ATMOSPHERIC_DISTILLATION
+
+
+func get_route_id(route: Dictionary) -> String:
+	return String(route.get("route_id", route.get("pump", "")))
+
+
+func get_route_source(route: Dictionary) -> String:
+	return String(route.get("source", ""))
+
+
+func get_route_primary_pump(route: Dictionary) -> String:
+	return String(route.get("pump", ""))
+
+
+func route_contains_unit(route: Dictionary, unit_id: String) -> bool:
+	if unit_id.is_empty():
+		return false
+	if route.get("equipment_ids", []).has(unit_id):
+		return true
+	# Atmospheric routes predate the compact equipment envelope. Keep this
+	# fallback while their discovery remains intentionally lightweight.
+	for field in ["source", "header", "pump", "valve", "heater", "column", "treatment"]:
+		if String(route.get(field, "")) == unit_id:
+			return true
+	for product_id in route.get("products", {}):
+		if String(route["products"][product_id]) == unit_id:
+			return true
+	for product_id in route.get("product_headers", {}):
+		var header_id := String(route["product_headers"][product_id])
+		if header_id == unit_id:
+			return true
+		for destination in destinations_for_product_header(header_id):
+			if String(destination.get("tank", "")) == unit_id:
+				return true
+	return false
+
+
+func filter_routes_by_process_type(routes: Array, process_type: String) -> Array[Dictionary]:
+	var matching: Array[Dictionary] = []
+	for route in routes:
+		if get_process_type(route) == process_type:
+			matching.append(route)
+	return matching
+
+
+func atmospheric_routes() -> Array[Dictionary]:
+	return filter_routes_by_process_type(find_complete_routes(), ATMOSPHERIC_DISTILLATION)
+
+
 func find_route_for_unit(unit_id: String) -> Dictionary:
 	for route in find_complete_routes():
-		if unit_id in [route["source"], route.get("header", ""), route["pump"], route["valve"], route["heater"], route["column"], route.get("treatment", "")]:
+		if route_contains_unit(route, unit_id):
 			return route
-		for product_id in route["products"]:
-			if route["products"][product_id] == unit_id:
-				return route
-			if route.get("product_headers", {}).has(product_id):
-				var product_header_id: String = route["product_headers"][product_id]
-				if unit_id == product_header_id:
-					return route
-				for destination in destinations_for_product_header(product_header_id):
-					if destination["tank"] == unit_id:
-						return route
 	return {}
 
 
@@ -202,19 +247,20 @@ func eligible_routes_for_source(source_id: String) -> Array[Dictionary]:
 	# never depend on connection insertion order.
 	var eligible: Array[Dictionary] = []
 	var seen_pumps := {}
-	for route in find_complete_routes():
-		if route["source"] != source_id or seen_pumps.has(route["pump"]):
+	for route in atmospheric_routes():
+		var pump_id := get_route_primary_pump(route)
+		if get_route_source(route) != source_id or seen_pumps.has(pump_id):
 			continue
-		seen_pumps[route["pump"]] = true
+		seen_pumps[pump_id] = true
 		eligible.append(route)
-	eligible.sort_custom(func(a: Dictionary, b: Dictionary): return String(a["pump"]) < String(b["pump"]))
+	eligible.sort_custom(func(a: Dictionary, b: Dictionary): return get_route_primary_pump(a) < get_route_primary_pump(b))
 	return eligible
 
 
 func eligible_train_ids_for_source(source_id: String) -> Array[String]:
 	var train_ids: Array[String] = []
 	for route in eligible_routes_for_source(source_id):
-		train_ids.append(route["pump"])
+		train_ids.append(get_route_primary_pump(route))
 	return train_ids
 
 
@@ -227,13 +273,13 @@ func source_for_header(header_id: String) -> String:
 
 func routes_for_header(header_id: String) -> Array[Dictionary]:
 	var routes: Array[Dictionary] = []
-	for route in find_complete_routes():
+	for route in atmospheric_routes():
 		if route.get("header", "") == header_id:
 			routes.append(route)
 	routes.sort_custom(func(a: Dictionary, b: Dictionary):
 		var outlet_a := String(a.get("header_outlet", ""))
 		var outlet_b := String(b.get("header_outlet", ""))
-		return outlet_a < outlet_b if outlet_a != outlet_b else String(a["pump"]) < String(b["pump"])
+		return outlet_a < outlet_b if outlet_a != outlet_b else get_route_primary_pump(a) < get_route_primary_pump(b)
 	)
 	return routes
 
@@ -267,7 +313,7 @@ func destinations_for_product_header(header_id: String) -> Array[Dictionary]:
 
 func routes_for_product_header(header_id: String) -> Array[Dictionary]:
 	var routes: Array[Dictionary] = []
-	for route in find_complete_routes():
+	for route in atmospheric_routes():
 		for product_id in route.get("product_headers", {}):
 			if route["product_headers"][product_id] == header_id:
 				routes.append(route)
@@ -356,6 +402,7 @@ func _find_atmospheric_routes() -> Array[Dictionary]:
 		if complete:
 			routes.append({
 				"process_type": ATMOSPHERIC_DISTILLATION,
+				"route_id": "atmospheric:%s" % pump_id,
 				"source": source_id,
 				"header": feed_path["header"],
 				"header_outlet": feed_path["header_outlet"],

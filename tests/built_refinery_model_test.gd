@@ -47,6 +47,7 @@ func _run_tests() -> void:
 	_test_product_specific_dispatch()
 	_test_product_header_allocation_and_capacity()
 	_test_product_header_preserves_treated_diesel_and_save_state()
+	_test_sparse_future_route_is_ignored_by_atmospheric_consumers()
 
 
 func _test_invalid_network_cannot_start() -> void:
@@ -1113,6 +1114,23 @@ func _test_product_header_preserves_treated_diesel_and_save_state() -> void:
 	restored.apply_saved_state(saved)
 	_expect(restored.product_allocations["diesel_header"].selected_tank_id == "diesel_backup", "selected Product Routing Header destination survives save/load")
 	_expect(is_equal_approx(restored.equipment["diesel_tank"]["sulfur_ppm"], 10.0) and is_equal_approx(restored.equipment["diesel_tank"]["volume_l"], 35.0), "saved routed diesel preserves volume and treatment quality")
+
+
+func _test_sparse_future_route_is_ignored_by_atmospheric_consumers() -> void:
+	var model = _complete_model()
+	model.register_unit("vacuum_source", "tank", "VT-201")
+	model.register_unit("vacuum_pump", "pump", "VP-201")
+	var vacuum_route := {
+		"process_type": model.network.VACUUM_DISTILLATION,
+		"route_id": "vacuum:vacuum_pump",
+		"source": "vacuum_source",
+		"pump": "vacuum_pump",
+		"equipment_ids": ["vacuum_source", "vacuum_pump", "vdu"],
+	}
+	_expect(not model._route_has_feed_access(vacuum_route), "feed allocation refuses a sparse non-atmospheric route")
+	_expect(model._operator_alarms_for_route(vacuum_route).is_empty(), "operator alarms ignore a sparse non-atmospheric route without reading atmospheric fields")
+	_expect(model._resolved_route(vacuum_route).is_empty(), "atmospheric product routing does not resolve a future route without its own semantics")
+	_expect(model.operations_snapshot()["trains"].size() == 1, "LS-201 exposes only the supported atmospheric train set")
 
 
 func _take_and_analyze(model) -> Dictionary:
