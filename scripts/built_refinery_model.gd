@@ -19,6 +19,9 @@ const TREATED_DIESEL_SULFUR_PPM := 10.0
 const DIESEL_TARGET_L := 200.0
 const APPROVED_QUALITY_PERCENT := 90.0
 const DIESEL_PRICE_PER_L := 8.0
+const HEATER_MAX_TEMPERATURE_C := 250.0
+const AUTO_OUTPUT_RESPONSE_PERCENT_PER_SECOND := 45.0
+const AUTO_ERROR_GAIN_PERCENT_PER_C := 0.9
 
 var network
 var equipment: Dictionary = {}
@@ -66,6 +69,8 @@ func save_state() -> Dictionary:
 			"heater":
 				saved_state["setpoint_c"] = state["setpoint_c"]
 				saved_state["temperature_c"] = state["temperature_c"]
+				saved_state["control_mode"] = state["control_mode"]
+				saved_state["output_percent"] = state["output_percent"]
 			"column":
 				saved_state["processed_total_l"] = state["processed_total_l"]
 			"treatment":
@@ -131,6 +136,11 @@ func apply_saved_state(state: Dictionary) -> void:
 			"heater":
 				target["setpoint_c"] = float(saved["setpoint_c"])
 				target["temperature_c"] = float(saved["temperature_c"])
+				target["control_mode"] = String(saved.get("control_mode", "manual"))
+				target["output_percent"] = float(saved.get(
+					"output_percent", _output_for_temperature_target(target["setpoint_c"])
+				))
+				target["auto_blocked"] = false
 			"column":
 				target["processed_total_l"] = float(saved["processed_total_l"])
 			"treatment":
@@ -186,6 +196,9 @@ func register_unit(unit_id: String, equipment_type: String, display_name := "") 
 			state.merge({
 				"setpoint_c": 0.0,
 				"temperature_c": AMBIENT_TEMPERATURE_C,
+				"control_mode": "manual",
+				"output_percent": 0.0,
+				"auto_blocked": false,
 			})
 		"column":
 			state["processed_total_l"] = 0.0
@@ -507,7 +520,11 @@ func interaction_prompt(unit_id: String) -> String:
 				state["name"],
 			]
 		"heater":
-			return "E — endre temperaturmål"
+			if not commissioning_contract_complete:
+				return "E — endre temperaturmål  |  AUTO låses opp etter commissioning"
+			return "E — endre temperaturmål  |  Q — %s" % (
+				"slå på AUTO" if state["control_mode"] == "manual" else "gå til MANUELL"
+			)
 		"treatment":
 			return "E — %s dieselbehandler" % ("stopp" if state["running"] else "start")
 		"header":
@@ -1312,7 +1329,11 @@ func inspect_unit(unit_id: String) -> String:
 		"valve":
 			return "Manuell ventil %s." % ("ÅPEN" if state["open"] else "STENGT")
 		"heater":
-			return "Varme %.0f °C, mål %.0f °C." % [state["temperature_c"], state["setpoint_c"]]
+			return "TIC-201 %s: PV %.0f °C, SP %.0f °C, utgang %.0f %%%s." % [
+				String(state["control_mode"]).to_upper(), state["temperature_c"],
+				state["setpoint_c"], state["output_percent"],
+				" — BLOKKERT" if state.get("auto_blocked", false) else "",
+			]
 		"column":
 			return "Destillasjon: %.0f L totalt prosessert." % state["processed_total_l"]
 		"treatment":
@@ -1354,7 +1375,10 @@ func unit_status(unit_id: String) -> String:
 		"valve":
 			return "ÅPEN" if state["open"] else "STENGT"
 		"heater":
-			return "%.0f °C  |  mål %.0f °C" % [state["temperature_c"], state["setpoint_c"]]
+			return "%s  |  PV %.0f °C  |  SP %.0f °C  |  UT %.0f %%" % [
+				String(state["control_mode"]).to_upper(), state["temperature_c"],
+				state["setpoint_c"], state["output_percent"],
+			]
 		"column":
 			return "%.0f L prosessert" % state["processed_total_l"]
 		"treatment":
@@ -1537,6 +1561,9 @@ func control_snapshot() -> Dictionary:
 		"source_level_percent": 100.0 * float(source["volume_l"]) / float(source["capacity_l"]),
 		"heater_temperature_c": float(heater["temperature_c"]),
 		"heater_setpoint_c": float(heater["setpoint_c"]),
+		"heater_control_mode": String(heater["control_mode"]),
+		"heater_output_percent": float(heater["output_percent"]),
+		"heater_auto_blocked": bool(heater.get("auto_blocked", false)),
 		"pump_running": bool(pump["running"]),
 		"pump_flow_setpoint_lps": float(pump["flow_setpoint_lps"]),
 		"actual_flow_lps": float(pump["actual_flow_lps"]),
@@ -1826,20 +1853,81 @@ func _cycle_heater(unit_id: String) -> Dictionary:
 	return _result(true, last_status)
 
 
+func toggle_heater_auto(unit_id: String) -> Dictionary:
+	if not equipment.has(unit_id) or equipment[unit_id]["type"] != "heater":
+		return _result(false, "Velg en varmeenhet for temperaturkontroll.")
+	if not commissioning_contract_complete:
+		return _result(false, "TIC-201 låses opp etter første godkjente Område 02-batch.")
+	var heater: Dictionary = equipment[unit_id]
+	if heater["control_mode"] == "manual":
+		if heater["setpoint_c"] <= 0.0:
+			return _result(false, "Velg et temperaturmål før AUTO slås på.")
+		heater["output_percent"] = _output_for_temperature_target(heater["setpoint_c"])
+		heater["control_mode"] = "auto"
+		last_status = "TIC-201 AUTO: PV %.0f °C følger SP %.0f °C." % [
+			heater["temperature_c"], heater["setpoint_c"],
+		]
+	else:
+		heater["control_mode"] = "manual"
+		heater["setpoint_c"] = _temperature_for_output(heater["output_percent"])
+		heater["auto_blocked"] = false
+		last_status = "TIC-201 MANUELL: utgang %.0f %% er beholdt." % heater["output_percent"]
+	return _result(true, last_status)
+
+
 func _update_heaters(delta: float, routes: Array[Dictionary]) -> void:
-	var pump_for_heater := {}
+	var route_for_heater := {}
 	for route in routes:
-		pump_for_heater[route["heater"]] = route["pump"]
+		route_for_heater[route["heater"]] = route
 	for unit_id in equipment:
 		var state: Dictionary = equipment[unit_id]
 		if state["type"] != "heater":
 			continue
-		var target: float = state["setpoint_c"] if state["setpoint_c"] > 0.0 else AMBIENT_TEMPERATURE_C
-		var pump_id: String = String(pump_for_heater.get(unit_id, ""))
+		var route: Dictionary = route_for_heater.get(unit_id, {})
+		var pump_id: String = String(route.get("pump", ""))
 		var rate := 18.0
 		if not pump_id.is_empty() and equipment.has(pump_id) and equipment[pump_id]["actual_flow_lps"] > 0.01:
 			rate = 7.0
+		state["auto_blocked"] = false
+		if state["control_mode"] == "auto":
+			var blocked_by_low_flow := (
+				not route.is_empty()
+				and bool(equipment[pump_id]["running"])
+				and not bool(equipment[route["valve"]]["open"])
+			)
+			if blocked_by_low_flow:
+				state["output_percent"] = 0.0
+				state["auto_blocked"] = true
+			else:
+				var base_output := _output_for_temperature_target(state["setpoint_c"])
+				var error_c: float = state["setpoint_c"] - state["temperature_c"]
+				var desired_output := clampf(
+					base_output + error_c * AUTO_ERROR_GAIN_PERCENT_PER_C,
+					0.0, 100.0
+				)
+				state["output_percent"] = move_toward(
+					state["output_percent"], desired_output,
+					AUTO_OUTPUT_RESPONSE_PERCENT_PER_SECOND * delta
+				)
+		else:
+			state["output_percent"] = _output_for_temperature_target(state["setpoint_c"])
+		var target := _temperature_for_output(state["output_percent"])
 		state["temperature_c"] = move_toward(state["temperature_c"], target, rate * delta)
+
+
+func _output_for_temperature_target(target_c: float) -> float:
+	if target_c <= AMBIENT_TEMPERATURE_C:
+		return 0.0
+	return clampf(
+		100.0 * (target_c - AMBIENT_TEMPERATURE_C) / (HEATER_MAX_TEMPERATURE_C - AMBIENT_TEMPERATURE_C),
+		0.0, 100.0
+	)
+
+
+func _temperature_for_output(output_percent: float) -> float:
+	return AMBIENT_TEMPERATURE_C + clampf(output_percent, 0.0, 100.0) * (
+		HEATER_MAX_TEMPERATURE_C - AMBIENT_TEMPERATURE_C
+	) / 100.0
 
 
 func _stop_all_pumps() -> void:

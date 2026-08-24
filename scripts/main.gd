@@ -710,7 +710,7 @@ func _update_unit_statuses() -> void:
 			built_unit.set_valve_open(state["open"])
 			built_unit.set_active(state["open"], Color("78e08f"))
 		elif state.get("type", "") == "heater":
-			built_unit.set_active(state["setpoint_c"] > 0.0, Color("ff5a35"))
+			built_unit.set_active(state["output_percent"] > 0.0, Color("ff5a35"))
 		elif state.get("type", "") == "column":
 			built_unit.set_active(
 				built_refinery_model.actual_flow_lps > 0.01
@@ -865,7 +865,11 @@ func _on_secondary_unit_interacted(unit_id: String) -> void:
 	if not unit_id.begins_with("built_"):
 		return
 	var before: Dictionary = built_refinery_model.save_state()
-	var result: Dictionary = built_refinery_model.cycle_pump_flow(unit_id)
+	var result: Dictionary = (
+		built_refinery_model.toggle_heater_auto(unit_id)
+		if built_refinery_model.equipment.get(unit_id, {}).get("type", "") == "heater"
+		else built_refinery_model.cycle_pump_flow(unit_id)
+	)
 	_show_notification(result["message"])
 	if result["ok"] and before != built_refinery_model.save_state():
 		_schedule_save()
@@ -1317,6 +1321,10 @@ func _update_control_station_text() -> void:
 		]
 		+ "TT-201 TEMPERATUR      %4.0f °C / mål %3.0f °C    %s\n" % [
 			snapshot["heater_temperature_c"], snapshot["heater_setpoint_c"], temperature_state,
+		]
+		+ "TIC-201 KONTROLL       %s | UT %3.0f %%%s\n" % [
+			String(snapshot["heater_control_mode"]).to_upper(), snapshot["heater_output_percent"],
+			" — BLOKKERT" if snapshot["heater_auto_blocked"] else "",
 		]
 		+ "FT-201 FLOW            %5.1f L/s | mål %2.0f   %s\n" % [
 			snapshot["actual_flow_lps"], snapshot["pump_flow_setpoint_lps"], flow_state,

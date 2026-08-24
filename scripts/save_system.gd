@@ -424,8 +424,15 @@ static func _validate_equipment_state(state: Dictionary) -> Dictionary:
 		"heater":
 			if not _finite_number(state.get("setpoint_c")) or not _finite_number(state.get("temperature_c")):
 				return _result(false, "En lagret varmeenhet har ugyldig temperatur.")
-			if not _in_range(state["setpoint_c"], 0.0, 300.0) or not _in_range(state["temperature_c"], -50.0, 500.0):
+			if not _in_range(state["setpoint_c"], 0.0, 250.0) or not _in_range(state["temperature_c"], -50.0, 500.0):
 				return _result(false, "En lagret varmeenhet er utenfor temperaturgrensene.")
+			if state.has("control_mode") and state["control_mode"] not in ["manual", "auto"]:
+				return _result(false, "En lagret varmeenhet har ukjent kontrollmodus.")
+			if state.has("output_percent") and (
+				not _finite_number(state["output_percent"])
+				or not _in_range(state["output_percent"], 0.0, 100.0)
+			):
+				return _result(false, "En lagret varmeenhet har ugyldig varmeutgang.")
 		"column":
 			if not _finite_number(state.get("processed_total_l")) or float(state["processed_total_l"]) < 0.0:
 				return _result(false, "En lagret kolonne har ugyldig prosessteller.")

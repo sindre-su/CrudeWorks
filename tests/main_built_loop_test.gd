@@ -76,6 +76,8 @@ func _run_test() -> void:
 	dismiss_event.pressed = true
 	main._unhandled_input(dismiss_event)
 	_expect(not main.batch_report_visible and not main.player.input_blocked and not main.build_controller.input_blocked, "Enter dismisses the report and restores gameplay controls")
+	main._on_secondary_unit_interacted(heater.unit_id)
+	_expect(main.built_refinery_model.equipment[heater.unit_id]["control_mode"] == "auto" and "TIC-201 AUTO" in main.notification_label.text, "commissioned player can enable physical TIC-201 AUTO on the existing heater")
 	main._on_unit_interacted("sales_terminal")
 	_expect(main.product_dispatch_visible and "NAPHTHALEVERANSE" in main.product_dispatch_label.text and "TUNGRESTLEVERANSE" in main.product_dispatch_label.text, "terminal opens distinct non-diesel product orders after the LAB-controlled diesel delivery")
 	var naphtha_event := InputEventKey.new()
@@ -91,7 +93,7 @@ func _run_test() -> void:
 	main._on_unit_interacted("area02_control")
 	_expect(main.control_station_visible and main.player.input_blocked and main.build_controller.input_blocked, "unlocked LS-201 opens a live modal and blocks field/build controls")
 	main._update_user_interface()
-	_expect("LT-201 NIVÅ" in main.control_station_label.text and "TT-201 TEMPERATUR" in main.control_station_label.text and "FT-201 FLOW" in main.control_station_label.text, "LS-201 presents explicit level, temperature and flow instruments with units")
+	_expect("LT-201 NIVÅ" in main.control_station_label.text and "TT-201 TEMPERATUR" in main.control_station_label.text and "TIC-201 KONTROLL" in main.control_station_label.text and "FT-201 FLOW" in main.control_station_label.text, "LS-201 presents explicit level, temperature, control and flow instruments with units")
 	_expect("Ingen aktiv råolje" in main.control_station_label.text and "VENTER PÅ RÅOLJE" in main.control_station_label.text, "idle LS-201 clearly waits for crude instead of advertising a zero-degree target")
 	main._update_unit_statuses()
 	_expect("VENTER — RÅOLJE" in main.units["area02_control"].status_label.text, "idle LS-201 world status points the player toward the next delivery")

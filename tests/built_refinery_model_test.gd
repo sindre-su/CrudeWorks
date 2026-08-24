@@ -22,6 +22,7 @@ func _run_tests() -> void:
 	_test_feed_allocation_foundation()
 	_test_shared_source_runtime_allocation()
 	_test_manual_valve_low_flow()
+	_test_automatic_heater_control()
 	_test_mass_conserving_ideal_batch_and_sale()
 	_test_full_tank_backpressure()
 	_test_commissioning_and_paid_batches()
@@ -794,6 +795,68 @@ func _test_independent_process_trains() -> void:
 	model.equipment["light_tank"]["contents"] = "empty"
 	model.tick(20.0)
 	_expect(not String(model.equipment["pump"]["fault_id"]).is_empty() and String(model.equipment["b_pump"]["fault_id"]).is_empty(), "pump-filter restriction remains attached to the train that created it")
+
+
+func _test_automatic_heater_control() -> void:
+	var locked = _complete_model()
+	locked.equipment["heater"]["setpoint_c"] = 200.0
+	_expect(not locked.toggle_heater_auto("heater")["ok"], "temperature AUTO remains earned until Area 02 commissioning is complete")
+
+	var model = _complete_model()
+	model.commissioning_batch_available = false
+	model.commissioning_contract_complete = true
+	model.equipment["heater"]["setpoint_c"] = 200.0
+	model.equipment["heater"]["temperature_c"] = 100.0
+	_expect(model.toggle_heater_auto("heater")["ok"] and model.equipment["heater"]["control_mode"] == "auto", "manual heater transfers into TIC-201 AUTO without replacing the heater state")
+	var output_before: float = model.equipment["heater"]["output_percent"]
+	model.tick(1.0)
+	_expect(model.equipment["heater"]["output_percent"] > output_before, "AUTO raises heater output when PV is below SP")
+	model.equipment["heater"]["temperature_c"] = 200.0
+	model.tick(1.0)
+	var near_output: float = model.equipment["heater"]["output_percent"]
+	_expect(absf(near_output - 78.26) < 3.0, "AUTO settles near the output needed to hold the 200 C setpoint")
+	model.equipment["heater"]["temperature_c"] = 225.0
+	model.tick(1.0)
+	_expect(model.equipment["heater"]["output_percent"] < near_output, "AUTO reduces heater output when PV rises above SP")
+	_expect(model.toggle_heater_auto("heater")["ok"] and model.equipment["heater"]["control_mode"] == "manual", "AUTO returns deterministically to manual control while preserving its current output")
+
+	model.equipment["heater"]["setpoint_c"] = 200.0
+	model.equipment["heater"]["temperature_c"] = 200.0
+	model.equipment["valve"]["open"] = false
+	model.equipment["pump"]["running"] = true
+	model.toggle_heater_auto("heater")
+	model.tick(1.0)
+	_expect(model.equipment["heater"]["auto_blocked"] and is_equal_approx(model.equipment["heater"]["output_percent"], 0.0), "closed-valve LOW FLOW safety blocks AUTO heater output without restarting or moving material")
+
+	var multi = _complete_model()
+	multi.commissioning_batch_available = false
+	multi.commissioning_contract_complete = true
+	_add_second_complete_route(multi)
+	multi.equipment["heater"]["setpoint_c"] = 200.0
+	multi.equipment["b_heater"]["setpoint_c"] = 230.0
+	multi.equipment["heater"]["temperature_c"] = 190.0
+	multi.equipment["b_heater"]["temperature_c"] = 190.0
+	multi.toggle_heater_auto("heater")
+	multi.toggle_heater_auto("b_heater")
+	multi.tick(1.0)
+	_expect(multi.equipment["heater"]["output_percent"] != multi.equipment["b_heater"]["output_percent"], "independent trains keep separate TIC-201 setpoints and outputs")
+	var saved: Dictionary = multi.save_state()
+	var restored = _complete_model()
+	_add_second_complete_route(restored)
+	restored.apply_saved_state(saved)
+	_expect(restored.equipment["heater"]["control_mode"] == "auto" and restored.equipment["b_heater"]["control_mode"] == "auto" and is_equal_approx(restored.equipment["b_heater"]["setpoint_c"], 230.0), "AUTO mode, setpoint and heater ownership survive save/load by stable equipment ID")
+
+	var quality_model = _complete_model()
+	quality_model.commissioning_batch_available = false
+	quality_model.commissioning_contract_complete = true
+	quality_model.load_crude_batch("source", true, "standard")
+	quality_model.equipment["heater"]["setpoint_c"] = 200.0
+	quality_model.equipment["heater"]["temperature_c"] = 200.0
+	quality_model.toggle_heater_auto("heater")
+	quality_model.interact("valve")
+	quality_model.interact("pump")
+	quality_model.tick(10.0)
+	_expect(is_equal_approx(quality_model.equipment["diesel_tank"]["quality_percent"], 100.0), "AUTO uses the existing temperature-quality rules without an artificial quality bonus")
 
 
 func _add_second_complete_route(model) -> void:

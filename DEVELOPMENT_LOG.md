@@ -407,7 +407,7 @@
 
 ## Current Stable State
 
-- Version 0.17.0 is verified stable after the physical product-routing milestone.
+- Version 0.18.0 is verified stable after the first automatic temperature-control milestone.
 - Area 02 now discovers and runs multiple independent complete refinery trains;
   source contracts, temperatures, flow, capacity limits, sulfur treatment,
   pump-filter faults and route product storage remain local to each train.
@@ -540,3 +540,21 @@
 - Added focused graph, build, model and Main save/load coverage for destination
   discovery, switching, deletion, capacity behavior, treated Sour diesel and
   physical header restoration.
+
+## v0.18 — Instrumentation and Automatic Temperature Control
+
+- Added TIC-201 as an earned, per-heater control mode after Area 02
+  commissioning. The existing heat state now stores PV, SP, MANUAL/AUTO mode
+  and actual output percentage; no parallel heater simulation was introduced.
+- `E` retains existing setpoint selection. Field `Q` switches the focused
+  heater safely between MANUELL and AUTO, retaining a deterministic current
+  output on transfer.
+- AUTO applies bounded proportional output adjustment to the existing heater.
+  It carries no artificial quality bonus: product quality still follows actual
+  temperature and flow.
+- A commanded pump against a closed manual valve creates the existing LOW FLOW
+  symptom and blocks AUTO output. It does not restart pumps, open valves or
+  change feed/product routing.
+- LS-201 now presents TIC-201 mode and heater output alongside its established
+  PV/SP, level and flow readings. Save/load persists mode, SP and output while
+  retaining the existing pump-stop safety rule.

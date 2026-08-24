@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.17 – Produktruting og tankfarm**
+**Prototypeversjon: 0.18 – Instrumentering og temperaturkontroll**
 
 En liten 3D-prototype der spilleren driver et forenklet pilotraffineri. Første mål
 er å behandle 1 000 liter råolje og selge minst 200 liter diesel med 90 % eller
@@ -51,6 +51,8 @@ Den første komplette «vertical slice»-en inneholder:
   og tung rest gir 2 kr/L; hver levering tømmer bare riktig produkttank
 - fysisk Product Routing Header for én produktstrøm: velg lagring A, B eller
   ingen rute før drift; valgt tank fylles alene og fullt lager stopper prosessen
+- TIC-201 temperaturkontroll etter commissioning: velg MANUELL eller AUTO og
+  la eksisterende varmeenhet holde et valgt temperaturmål
 
 Alle objekter er foreløpig bygget av Godots primitive 3D-former. Det gjør at vi
 kan teste gameplay før vi bruker tid på modeller og grafikk.
@@ -125,6 +127,12 @@ Byggemodus låses opp når den første dieselbatchen er solgt.
 | G | Fjern røret på porten du ser på |
 | V | Valider prosesslinjen og vis første feil |
 | Høyreklikk | Avbryt gjeldende byggehandling |
+
+Etter godkjent commissioning kan spilleren se på en varmeenhet og trykke `Q`
+for å veksle mellom **MANUELL** og **AUTO**. `E` beholder det kjente
+temperaturmålet. I AUTO sammenligner TIC-201 målt temperatur (PV) med målet
+(SP) og justerer heater-utgangen. LS-201 viser PV, SP, modus og utgang; en
+lukket feltventil gir fortsatt LOW FLOW og blokkerer automatisk varmeutgang.
 
 ## Første produksjonsrunde
 

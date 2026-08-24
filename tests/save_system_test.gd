@@ -104,6 +104,12 @@ func _test_schema_validation(snapshot: Dictionary, live_main) -> void:
 	var invalid_service_counter := snapshot.duplicate(true)
 	invalid_service_counter["built_refinery"]["equipment"]["built_pump_2"]["processed_since_service_l"] = -1.0
 	_expect(not SaveSystemScript.validate_snapshot(invalid_service_counter)["ok"], "negative saved maintenance counters are rejected")
+	var invalid_heater_mode := snapshot.duplicate(true)
+	invalid_heater_mode["built_refinery"]["equipment"]["built_heater_4"]["control_mode"] = "pid"
+	_expect(not SaveSystemScript.validate_snapshot(invalid_heater_mode)["ok"], "unknown saved heater control modes are rejected")
+	var invalid_heater_output := snapshot.duplicate(true)
+	invalid_heater_output["built_refinery"]["equipment"]["built_heater_4"]["output_percent"] = 101.0
+	_expect(not SaveSystemScript.validate_snapshot(invalid_heater_output)["ok"], "out-of-range saved heater output is rejected")
 	var legacy_flow := snapshot.duplicate(true)
 	legacy_flow["built_refinery"].erase("report_flow_total")
 	legacy_flow["built_refinery"]["equipment"]["built_pump_2"].erase("flow_setpoint_lps")
