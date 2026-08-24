@@ -48,6 +48,12 @@ func _run_tests() -> void:
 	controller._input(product_header_key)
 	_expect(controller.selected_type == "product_header", "key 8 selects the Product Routing Header")
 	_expect(controller.ghost.has_node("PreviewOut APort") and controller.ghost.has_node("PreviewOut BPort"), "product-header preview exposes both readable storage outlets")
+	var vdu_key := InputEventKey.new()
+	vdu_key.keycode = KEY_9
+	vdu_key.pressed = true
+	controller._input(vdu_key)
+	_expect(controller.selected_type == "vacuum_distillation", "key 9 selects the player-buildable VDU-301")
+	_expect(_ghost_has_port(controller.ghost, "vgo") and _ghost_has_port(controller.ghost, "vacuum_residue"), "VDU preview exposes both readable secondary-product outlets")
 	controller.set_build_mode(false)
 
 	_test_catalog()
@@ -63,14 +69,21 @@ func _run_tests() -> void:
 
 
 func _test_catalog() -> void:
-	_expect(Catalog.ORDER.size() == 8, "catalog exposes both crude-feed and product-routing headers alongside the refinery machines")
+	_expect(Catalog.ORDER.size() == 9, "catalog exposes both headers and the player-buildable VDU alongside refinery machines")
 	for equipment_type in Catalog.ORDER:
 		var definition: Dictionary = Catalog.definition(equipment_type)
 		_expect(not definition.is_empty(), "%s has a catalog definition" % equipment_type)
 		_expect(definition["cost"] > 0, "%s has a positive price" % equipment_type)
 	var vdu_ports: Array[Dictionary] = Catalog.port_definitions("vacuum_distillation")
-	_expect(not Catalog.definition("vacuum_distillation").is_empty() and vdu_ports.size() == 3, "VDU skeleton exists outside the current player build catalog")
+	_expect(Catalog.ORDER.has("vacuum_distillation") and Catalog.definition("vacuum_distillation")["cost"] > Catalog.definition("pump")["cost"] and vdu_ports.size() == 3, "VDU is a purchasable normal build-menu unit with three typed ports")
 	_expect(Catalog.port_definition("vacuum_distillation", "input")["material"] == "heavy" and Catalog.port_definition("vacuum_distillation", "vgo")["material"] == "vacuum_gas_oil" and Catalog.port_definition("vacuum_distillation", "vacuum_residue")["material"] == "vacuum_residue", "VDU skeleton exposes typed Heavy Residue, VGO and Vacuum Residue ports")
+
+
+func _ghost_has_port(ghost: Node3D, target_port_id: String) -> bool:
+	for child in ghost.get_children():
+		if child.get("port_id") == target_port_id:
+			return true
+	return false
 
 
 func _test_units_and_footprints(world: Node3D) -> void:

@@ -1194,7 +1194,7 @@ func _update_product_dispatch_text(error_text := "") -> void:
 		"PRODUKTLEVERANSER\n\n"
 		+ "\n\n".join(rows)
 		+ ("\n\n" + error_text if not error_text.is_empty() else "")
-		+ "\n\n1 / 2 — send produkt    Esc — avbryt"
+		+ "\n\n1–%d — send produkt    Esc — avbryt" % orders.size()
 	)
 
 
@@ -1203,14 +1203,13 @@ func _handle_product_dispatch_input(event: InputEventKey) -> void:
 		_close_product_dispatch()
 		_show_notification("Produktleveranse avbrutt.")
 		return
-	var product_id := ""
-	if event.keycode == KEY_1:
-		product_id = "light"
-	elif event.keycode == KEY_2:
-		product_id = "heavy"
-	if product_id.is_empty():
+	var index := -1
+	if event.keycode >= KEY_1 and event.keycode <= KEY_9:
+		index = int(event.keycode) - int(KEY_1)
+	var orders: Array[Dictionary] = built_refinery_model.available_product_orders()
+	if index < 0 or index >= orders.size():
 		return
-	var result: Dictionary = built_refinery_model.dispatch_product(product_id)
+	var result: Dictionary = built_refinery_model.dispatch_product_from_tank(String(orders[index]["tank_id"]))
 	if not result["ok"]:
 		_update_product_dispatch_text(result["message"])
 		return

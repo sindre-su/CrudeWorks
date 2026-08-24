@@ -3,7 +3,7 @@ extends RefCounted
 
 const DEFAULT_ID := "standard"
 const ORDER := ["standard", "heavy", "sour"]
-const PRODUCT_ORDER := ["light", "heavy"]
+const PRODUCT_ORDER := ["light", "heavy", "vacuum_gas_oil", "vacuum_residue"]
 
 
 static func product_order_definition(product_id: String) -> Dictionary:
@@ -19,13 +19,31 @@ static func product_order_definition(product_id: String) -> Dictionary:
 		}
 		"heavy":
 			return {
-			"product": "heavy",
-			"product_name": "Tung rest",
-			"order_name": "TUNGRESTLEVERANSE",
-			"target_l": 100.0,
-			"price_per_l": 2.0,
-			"description": "lav verdi • 2 kr/L",
-		}
+				"product": "heavy",
+				"product_name": "Tung rest",
+				"order_name": "TUNGRESTLEVERANSE",
+				"target_l": 100.0,
+				"price_per_l": 2.0,
+				"description": "lav verdi • 2 kr/L",
+			}
+		"vacuum_gas_oil":
+			return {
+				"product": "vacuum_gas_oil",
+				"product_name": "Vacuum Gas Oil",
+				"order_name": "VGO-LEVERANSE",
+				"target_l": 100.0,
+				"price_per_l": 4.0,
+				"description": "sekundærprodukt • 4 kr/L",
+			}
+		"vacuum_residue":
+			return {
+				"product": "vacuum_residue",
+				"product_name": "Vacuum Residue",
+				"order_name": "VAKUUMRESTLEVERANSE",
+				"target_l": 100.0,
+				"price_per_l": 1.0,
+				"description": "sekundærprodukt • 1 kr/L",
+			}
 	return {}
 
 

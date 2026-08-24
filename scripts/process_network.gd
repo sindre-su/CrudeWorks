@@ -94,6 +94,11 @@ func try_connect(
 		"to_port": to_port_id,
 	}
 	connections.append(new_edge)
+	# The two VDU outlets are explicitly typed. Marking an empty destination
+	# tank here lets a normal player-built route become discoverable without a
+	# separate configuration menu.
+	if from_type == "vacuum_distillation" and to_type == "tank" and tank_intended_material(to_unit_id).is_empty():
+		set_tank_intended_material(to_unit_id, String(from_port["material"]), false)
 	topology_changed.emit()
 	return _result(true, "%s %s er koblet til %s IN." % [
 		_unit_name(from_unit_id),

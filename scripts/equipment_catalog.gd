@@ -1,7 +1,7 @@
 class_name EquipmentCatalog
 extends RefCounted
 
-const ORDER := ["tank", "pump", "heater", "column", "valve", "treatment", "header", "product_header"]
+const ORDER := ["tank", "pump", "heater", "column", "valve", "treatment", "header", "product_header", "vacuum_distillation"]
 
 
 static func definition(equipment_type: String) -> Dictionary:
@@ -98,7 +98,7 @@ static func definition(equipment_type: String) -> Dictionary:
 			return {
 				"name": "Vacuum Distillation Unit",
 				"tag": "VDU-301",
-				"cost": 0,
+				"cost": 1200,
 				"size": Vector3(3.6, 5.2, 3.4),
 				"color": Color("6b607e"),
 				"shape": "cylinder",

@@ -334,8 +334,6 @@ func _test_vacuum_intent_and_processing_round_trip() -> void:
 		_expect(source._create_built_unit(entry[0], entry[1], entry[2], entry[3], false)["ok"], "headless VDU fixture restores a buildable unit")
 	var model = source.built_refinery_model
 	model.set_tank_material_intent("built_tank_1", "heavy")
-	model.set_tank_material_intent("built_tank_4", "vacuum_gas_oil")
-	model.set_tank_material_intent("built_tank_5", "vacuum_residue")
 	var feed = source.build_controller.registered_unit_by_id("built_tank_1")
 	var pump = source.build_controller.registered_unit_by_id("built_pump_2")
 	var vdu = source.build_controller.registered_unit_by_id("built_vacuum_distillation_3")
@@ -359,7 +357,7 @@ func _test_vacuum_intent_and_processing_round_trip() -> void:
 	var restore_result: Dictionary = restored._apply_snapshot(snapshot)
 	_expect(restore_result["ok"], "fresh Main restores VDU construction and material-intent state")
 	var restored_model = restored.built_refinery_model
-	_expect(restored_model.network.filter_routes_by_process_type(restored_model.network.find_complete_routes(), "vacuum_distillation").size() == 1 and restored_model.equipment["built_tank_1"]["material_intent"] == "heavy", "restored VDU source intent rediscoveres the same planned vacuum route")
+	_expect(restored_model.network.filter_routes_by_process_type(restored_model.network.find_complete_routes(), "vacuum_distillation").size() == 1 and restored_model.equipment["built_tank_1"]["material_intent"] == "heavy" and restored_model.equipment["built_tank_4"]["material_intent"] == "vacuum_gas_oil" and restored_model.equipment["built_tank_5"]["material_intent"] == "vacuum_residue", "restored VDU routes preserve source and typed-output tank intent without a configuration menu")
 	_expect(is_equal_approx(restored_model.equipment["built_tank_1"]["volume_l"], 80.0) and is_equal_approx(restored_model.equipment["built_tank_4"]["volume_l"], 12.0) and is_equal_approx(restored_model.equipment["built_tank_5"]["volume_l"], 8.0), "VDU save/load preserves exact partial atomic inventory")
 	restored_model.equipment["built_pump_2"]["running"] = true
 	var mass_before := _total_tank_volume(restored)

@@ -651,6 +651,17 @@
 
 ## Next Best Work
 
-- Perform the deferred hands-on 1280×720 interaction pass. Then expose VDU
-  construction and simple field operation over the existing atomic material
-  model; add VGO/Vacuum Residue economy only as player-facing follow-up work.
+- Perform the deferred hands-on 1280×720 interaction pass, including VDU port
+  labels, build-menu readability and the secondary-product delivery modal.
+
+## v0.21.0 — Playable Vacuum Distillation
+
+- Released VDU-301 through the normal Area 02 build menu with a 1,200 kr
+  purchase cost, typed ports and ordinary field inspection.
+- A Heavy Residue feed pump operates the existing atomic 60/40 transfer;
+  feed depletion stops safely and running VDU pipes receive flow visuals.
+- Added separate physical dispatch orders for Vacuum Gas Oil (4 kr/L) and
+  Vacuum Residue (1 kr/L). Neither needs LAB approval; each consumes only its
+  own tank inventory.
+- Validation: all six Godot suites, headless main launch, editor resource scan
+  and `git diff --check` passed. Human 1280×720 playtesting remains deferred.

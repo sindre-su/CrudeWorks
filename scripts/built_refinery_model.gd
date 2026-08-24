@@ -125,7 +125,13 @@ func apply_saved_state(state: Dictionary) -> void:
 			"tank":
 				for field in ["volume_l", "contents", "temperature_c", "quality_percent", "sulfur_ppm", "crude_cost_per_l", "contract_id", "contract_bonus_available", "report_crude_processed_l", "report_temperature_total", "report_flow_total", "report_crude_cost"]:
 					target[field] = saved.get(field, 0.0 if field == "sulfur_ppm" else target[field])
-				target["material_intent"] = _saved_tank_material_intent(saved)
+				var restored_intent := _saved_tank_material_intent(saved)
+				# A freshly rebuilt VDU outlet can infer its typed empty tank from the
+				# restored connection. Preserve that physical intent when older/newer
+				# snapshots intentionally contain no material yet.
+				if restored_intent.is_empty() and saved.has("material_intent"):
+					restored_intent = network.tank_intended_material(unit_id)
+				target["material_intent"] = restored_intent
 				network.set_tank_intended_material(unit_id, target["material_intent"], false)
 			"pump":
 				target["running"] = false
@@ -342,6 +348,11 @@ func _atmospheric_route_for_unit(unit_id: String) -> Dictionary:
 	return route if network.is_atmospheric_route(route) else {}
 
 
+func _vacuum_route_for_unit(unit_id: String) -> Dictionary:
+	var route: Dictionary = network.find_route_for_unit(unit_id)
+	return route if network.get_process_type(route) == ProcessNetworkScript.VACUUM_DISTILLATION else {}
+
+
 func _save_feed_allocations() -> Dictionary:
 	var saved := {}
 	for source_id in feed_allocations:
@@ -506,6 +517,8 @@ func interact(unit_id: String, can_pay_for_crude := false) -> Dictionary:
 			return cycle_feed_header(unit_id)
 		"product_header":
 			return cycle_product_header(unit_id)
+		"vacuum_distillation":
+			return _result(true, inspect_unit(unit_id))
 		"tank":
 			if _is_route_source(unit_id) and equipment[unit_id]["volume_l"] <= 0.001:
 				if commissioning_contract_complete and can_choose_contract(unit_id)["ok"]:
@@ -514,6 +527,8 @@ func interact(unit_id: String, can_pay_for_crude := false) -> Dictionary:
 			if commissioning_contract_complete and _product_role_for_tank(unit_id) == "diesel":
 				return take_diesel_sample(unit_id)
 			if commissioning_contract_complete and _product_role_for_tank(unit_id) in ["light", "heavy"]:
+				return dispatch_product_from_tank(unit_id)
+			if commissioning_contract_complete and String(equipment[unit_id]["contents"]) in ["vacuum_gas_oil", "vacuum_residue"]:
 				return dispatch_product_from_tank(unit_id)
 	return _result(true, inspect_unit(unit_id))
 
@@ -551,6 +566,8 @@ func interaction_prompt(unit_id: String) -> String:
 			return "E — bytt fôringsrute (A → B → ingen)"
 		"product_header":
 			return "E — bytt produkttank (A → B → ingen)"
+		"vacuum_distillation":
+			return "E — inspiser VDU-301"
 		"column":
 			return "E — inspiser destillasjon"
 		"tank":
@@ -581,6 +598,8 @@ func interaction_prompt(unit_id: String) -> String:
 				if commissioning_contract_complete and product_role in ["light", "heavy"] and state["volume_l"] > 0.001:
 					return "E — send %s" % _contents_name(product_role)
 				return "E — inspiser %s-tank" % _contents_name(product_role)
+			if commissioning_contract_complete and String(state["contents"]) in ["vacuum_gas_oil", "vacuum_residue"] and state["volume_l"] > 0.001:
+				return "E — send %s" % _contents_name(String(state["contents"]))
 			return "E — inspiser tank"
 	return "E — inspiser bygd utstyr"
 
@@ -977,7 +996,12 @@ func _tick_vacuum_route(route: Dictionary, delta: float) -> void:
 	pump["actual_flow_lps"] = flow
 	actual_flow_lps += flow
 	product_inventory_revision += 1
-	last_status = "VDU %.1f L/s — %.1f L VGO og %.1f L Vacuum Residue produsert." % [flow, vgo_output, residue_output]
+	if source["volume_l"] <= 0.001:
+		pump["running"] = false
+		pump["actual_flow_lps"] = 0.0
+		last_status = "VDU-batch ferdig. VGO og Vacuum Residue er klare for levering."
+	else:
+		last_status = "VDU %.1f L/s — %.1f L VGO og %.1f L Vacuum Residue produsert." % [flow, vgo_output, residue_output]
 
 
 func take_diesel_sample(unit_id: String) -> Dictionary:
@@ -1200,17 +1224,31 @@ func sell_diesel() -> Dictionary:
 
 
 func available_product_orders() -> Array[Dictionary]:
-	var validation: Dictionary = network.validate_configuration()
-	if not validation["valid"] or _any_pump_running():
-		return []
-	var route: Dictionary = _resolved_route(active_route())
-	if route.is_empty():
+	if _any_pump_running():
 		return []
 	var orders: Array[Dictionary] = []
-	for product_id in CrudeCatalog.PRODUCT_ORDER:
+	var route: Dictionary = _resolved_route(active_route())
+	for product_id in ["light", "heavy"]:
+		if route.is_empty():
+			continue
 		var order := CrudeCatalog.product_order_definition(product_id)
 		var tank: Dictionary = equipment[route["products"][product_id]]
 		var volume_l := float(tank["volume_l"]) if tank["contents"] == product_id else 0.0
+		order["tank_id"] = route["products"][product_id]
+		order["volume_l"] = volume_l
+		order["ready"] = volume_l + 0.01 >= float(order["target_l"])
+		order["revenue_preview"] = int(round(volume_l * float(order["price_per_l"])))
+		orders.append(order)
+	for tank_id in equipment:
+		var state: Dictionary = equipment[tank_id]
+		if state["type"] != "tank":
+			continue
+		var product_id: String = String(state["contents"])
+		if not product_id in ["vacuum_gas_oil", "vacuum_residue"]:
+			continue
+		var order := CrudeCatalog.product_order_definition(product_id)
+		var volume_l: float = state["volume_l"]
+		order["tank_id"] = tank_id
 		order["volume_l"] = volume_l
 		order["ready"] = volume_l + 0.01 >= float(order["target_l"])
 		order["revenue_preview"] = int(round(volume_l * float(order["price_per_l"])))
@@ -1219,10 +1257,21 @@ func available_product_orders() -> Array[Dictionary]:
 
 
 func dispatch_product(product_id: String) -> Dictionary:
+	if product_id in ["vacuum_gas_oil", "vacuum_residue"]:
+		for tank_id in equipment:
+			var state: Dictionary = equipment[tank_id]
+			if state["type"] == "tank" and state["contents"] == product_id:
+				return _dispatch_secondary_product(tank_id, product_id)
+		return _result(false, "Ingen %s-tank er klar for utsending." % _contents_name(product_id))
 	return _dispatch_route_product(_resolved_route(active_route()), product_id)
 
 
 func dispatch_product_from_tank(unit_id: String) -> Dictionary:
+	if not equipment.has(unit_id) or equipment[unit_id]["type"] != "tank":
+		return _result(false, "Velg en produkttank for utsending.")
+	var contents: String = String(equipment[unit_id]["contents"])
+	if contents in ["vacuum_gas_oil", "vacuum_residue"]:
+		return _dispatch_secondary_product(unit_id, contents)
 	var route: Dictionary = _resolved_route(_atmospheric_route_for_unit(unit_id))
 	if route.is_empty():
 		return _result(false, "Produktet må stå i en komplett prosesslinje før utsending.")
@@ -1233,6 +1282,34 @@ func dispatch_product_from_tank(unit_id: String) -> Dictionary:
 	if product_id.is_empty() or product_id == "diesel":
 		return _result(false, "Dette produktet sendes via riktig leveringspunkt.")
 	return _dispatch_route_product(route, product_id)
+
+
+func _dispatch_secondary_product(tank_id: String, product_id: String) -> Dictionary:
+	if _any_pump_running():
+		return _result(false, "Stopp pumpen før produktleveransen sendes.")
+	var order := CrudeCatalog.product_order_definition(product_id)
+	if order.is_empty():
+		return _result(false, "Denne produktleveransen finnes ikke.")
+	var tank: Dictionary = equipment[tank_id]
+	var volume_l: float = tank["volume_l"] if tank["contents"] == product_id else 0.0
+	if volume_l + 0.01 < float(order["target_l"]):
+		return _result(false, "%s krever %.0f L; tanken har %.0f L." % [order["order_name"], order["target_l"], volume_l])
+	var revenue := int(round(volume_l * float(order["price_per_l"])))
+	tank["volume_l"] = 0.0
+	tank["contents"] = "empty"
+	tank["quality_percent"] = 0.0
+	tank["sulfur_ppm"] = 0.0
+	product_inventory_revision += 1
+	successful_sales += 1
+	last_status = "%s sendt: %.0f L for %d kr." % [order["product_name"], volume_l, revenue]
+	return {
+		"ok": true,
+		"message": last_status,
+		"revenue": revenue,
+		"product_id": product_id,
+		"product_name": order["product_name"],
+		"sold_volume_l": volume_l,
+	}
 
 
 func _dispatch_route_product(route: Dictionary, product_id: String) -> Dictionary:
@@ -1467,6 +1544,18 @@ func inspect_unit(unit_id: String) -> String:
 			return _feed_header_inspection(unit_id)
 		"product_header":
 			return _product_header_inspection(unit_id)
+		"vacuum_distillation":
+			var vacuum_route := _vacuum_route_for_unit(unit_id)
+			var vacuum_status := _vacuum_status(unit_id)
+			var details := [
+				"VDU-301 — VACUUM DISTILLATION",
+				"Feed: Heavy Residue",
+				"Products: 60 % Vacuum Gas Oil / 40 % Vacuum Residue",
+				"Status: %s" % vacuum_status,
+			]
+			if not vacuum_route.is_empty():
+				details.append("%.0f L totalt prosessert." % state["processed_total_l"])
+			return "\n".join(details)
 	return "Bygd prosessutstyr."
 
 
@@ -1512,7 +1601,27 @@ func unit_status(unit_id: String) -> String:
 			return _feed_header_status(unit_id)
 		"product_header":
 			return _product_header_status(unit_id)
+		"vacuum_distillation":
+			return _vacuum_status(unit_id)
 	return "KLAR"
+
+
+func _vacuum_status(vdu_id: String) -> String:
+	var route := _vacuum_route_for_unit(vdu_id)
+	if route.is_empty():
+		return "KOBLE HEAVY FEED + VGO/VAKUUMREST"
+	var pump: Dictionary = equipment[route["primary_pump"]]
+	var source: Dictionary = equipment[route["source"]]
+	if source["contents"] != "heavy" or source["volume_l"] <= 0.001:
+		return "NO FEED"
+	var outputs: Dictionary = route["outputs"]
+	var vgo: Dictionary = equipment[outputs["vacuum_gas_oil"]]
+	var residue: Dictionary = equipment[outputs["vacuum_residue"]]
+	if vgo["volume_l"] >= vgo["capacity_l"] - 0.001:
+		return "VGO STORAGE FULL"
+	if residue["volume_l"] >= residue["capacity_l"] - 0.001:
+		return "VACUUM RESIDUE STORAGE FULL"
+	return "RUNNING" if pump["running"] else "READY"
 
 
 func _feed_header_status(header_id: String) -> String:
@@ -1992,6 +2101,14 @@ func active_connection_keys() -> Dictionary:
 				_add_connection_key(keys, product_header_id, outlet_id, allocation.selected_tank_id, "input")
 				continue
 			_add_connection_key(keys, source_unit, source_port, route["products"][product_name], "input")
+	for route in network.filter_routes_by_process_type(network.find_complete_routes(), ProcessNetworkScript.VACUUM_DISTILLATION):
+		var pump_id: String = route["primary_pump"]
+		if not equipment.has(pump_id) or not equipment[pump_id]["running"]:
+			continue
+		_add_connection_key(keys, route["source"], "output", pump_id, "input")
+		_add_connection_key(keys, pump_id, "output", route["vdu"], "input")
+		_add_connection_key(keys, route["vdu"], "vgo", route["outputs"]["vacuum_gas_oil"], "input")
+		_add_connection_key(keys, route["vdu"], "vacuum_residue", route["outputs"]["vacuum_residue"], "input")
 	return keys
 
 
@@ -2063,12 +2180,17 @@ func _toggle_pump(unit_id: String) -> Dictionary:
 		actual_flow_lps = 0.0
 	else:
 		var route: Dictionary = _atmospheric_route_for_unit(unit_id)
-		if route.is_empty() or route["pump"] != unit_id:
-			return _result(false, "%s er ikke del av den komplette prosesslinjen." % pump["name"])
-		if not _route_has_feed_access(route):
-			return _result(false, "Velg denne ruten på Crude Feed Header før %s startes." % pump["name"])
-		if _resolved_route(route).is_empty():
-			return _result(false, "Velg produkttank på Product Routing Header før %s startes." % pump["name"])
+		if route.is_empty():
+			var vacuum_route := _vacuum_route_for_unit(unit_id)
+			if vacuum_route.is_empty() or vacuum_route["primary_pump"] != unit_id:
+				return _result(false, "%s er ikke del av en komplett prosesslinje." % pump["name"])
+		else:
+			if route["pump"] != unit_id:
+				return _result(false, "%s er ikke del av den komplette prosesslinjen." % pump["name"])
+			if not _route_has_feed_access(route):
+				return _result(false, "Velg denne ruten på Crude Feed Header før %s startes." % pump["name"])
+			if _resolved_route(route).is_empty():
+				return _result(false, "Velg produkttank på Product Routing Header før %s startes." % pump["name"])
 		pump["running"] = true
 	last_status = "%s er %s." % [pump["name"], "startet" if pump["running"] else "stoppet"]
 	return _result(true, last_status)
@@ -2529,6 +2651,8 @@ func _contents_name(contents: String) -> String:
 		"light": "NAPHTHA",
 		"diesel": "DIESEL",
 		"heavy": "TUNG REST",
+		"vacuum_gas_oil": "VACUUM GAS OIL",
+		"vacuum_residue": "VAKUUMREST",
 	}.get(contents, contents.to_upper())
 
 

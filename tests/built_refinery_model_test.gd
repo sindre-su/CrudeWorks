@@ -51,6 +51,7 @@ func _run_tests() -> void:
 	_test_persisted_material_intent()
 	_test_atomic_vacuum_distillation()
 	_test_vacuum_capacity_and_multi_stage_processing()
+	_test_player_facing_vacuum_operation_and_dispatch()
 
 
 func _test_invalid_network_cannot_start() -> void:
@@ -1229,7 +1230,22 @@ func _test_vacuum_capacity_and_multi_stage_processing() -> void:
 	staged.equipment["vacuum_pump"]["running"] = true
 	staged.tick(1.0)
 	_expect(heavy_before > 0.001 and is_equal_approx(staged.equipment["source"]["volume_l"], 890.0) and staged.equipment["heavy_tank"]["volume_l"] < heavy_before and is_equal_approx(staged.equipment["vgo_tank"]["volume_l"], 6.0) and is_equal_approx(staged.equipment["vacuum_residue_tank"]["volume_l"], 4.0), "atmospheric Heavy Residue in the same physical tank can feed VDU during simultaneous typed processing without a hidden batch")
-	_expect(staged.operations_snapshot()["trains"].size() == 1 and staged.active_connection_keys().size() == 7, "vacuum operation remains isolated from atmospheric console and pipe consumers")
+	_expect(staged.operations_snapshot()["trains"].size() == 1 and staged.active_connection_keys().size() == 11, "vacuum operation keeps LS-201 atmospheric-only while its running pipes receive flow feedback")
+
+
+func _test_player_facing_vacuum_operation_and_dispatch() -> void:
+	var model = _vacuum_model(1000.0)
+	model.commissioning_contract_complete = true
+	var start: Dictionary = model.interact("vacuum_pump")
+	_expect(start["ok"] and model.equipment["vacuum_pump"]["running"], "a complete player VDU route starts through its ordinary feed-pump interaction")
+	model.tick(100.0)
+	_expect(model.unit_status("vdu") == "NO FEED" and "60 % Vacuum Gas Oil" in model.inspect_unit("vdu"), "VDU inspection explains its simplified feed, yields and status")
+	var orders: Array[Dictionary] = model.available_product_orders()
+	_expect(orders.size() == 2 and orders[0]["product"] == "vacuum_gas_oil" and orders[1]["product"] == "vacuum_residue", "VGO and Vacuum Residue appear as distinct physical product deliveries")
+	var vgo_sale: Dictionary = model.dispatch_product_from_tank("vgo_tank")
+	var residue_sale: Dictionary = model.dispatch_product_from_tank("vacuum_residue_tank")
+	_expect(vgo_sale["ok"] and vgo_sale["revenue"] == 2400 and residue_sale["ok"] and residue_sale["revenue"] == 400, "VDU products dispatch once from their own tanks at the provisional 4 and 1 kr/L values")
+	_expect(not model.dispatch_product_from_tank("vgo_tank")["ok"], "empty VGO inventory cannot be dispatched repeatedly")
 
 
 func _take_and_analyze(model) -> Dictionary:

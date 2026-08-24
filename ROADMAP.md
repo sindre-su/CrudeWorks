@@ -2,7 +2,7 @@
 
 ## Current stable baseline
 
-Version 0.20 has a tested pilot plant and multiple independent player-built
+Version 0.21 has a tested pilot plant and multiple independent player-built
 Area 02 refinery trains. The built loop covers construction, directed pipes, valve troubleshooting,
 Sour-diesel treatment, physical diesel sampling, LAB-101, LS-201, 5/10/15 L/s
 pump targets and separate Naphtha/heavy-residue deliveries.
@@ -35,10 +35,10 @@ temperature and flow commands through existing safety-checked APIs.
 
 ## Current priority
 
-**Hands-on 1280 x 720 usability pass.** Verify port aiming, valve readability,
-alarm visibility, treatment readability, product-delivery modal layout and
-terminal feedback in the running game.
-Headless tests cannot replace this check.
+**Hands-on 1280 x 720 usability pass.** Verify VDU port aiming, the ninth
+build-menu slot, valve readability, secondary-product delivery layout and
+terminal feedback in the running game. Headless tests cannot replace this
+check.
 
 ## Architecture preparation
 
@@ -49,11 +49,10 @@ Headless tests cannot replace this check.
 - Keep FeedAllocation, Crude Feed Header, Product Routing Header, LAB-101,
   operator alarms and LS-201 explicitly atmospheric until an additional
   process family supplies its own routing and operating semantics.
-- The VDU skeleton is intentionally outside the player build menu. It has no
-  player interaction or economy yet. v0.21D persists tank material intent and
-  performs an atomic 60/40 Heavy Residue → VGO/Vacuum Residue transfer. It
-  must not reuse atmospheric valve, heater, column or three-product
-  assumptions.
+- VDU-301 is now build-menu item 9. Its feed pump is the sole field control,
+  while its typed outlets establish empty VGO/Vacuum Residue tank intent and
+  use the existing atomic 60/40 transfer. It must not inherit atmospheric
+  valve, heater, column, quality or LAB assumptions.
 
 ## Next milestones
 
@@ -63,9 +62,8 @@ Headless tests cannot replace this check.
    product-value balance before expanding into broader manifolds.
 3. Consider the next constrained routing decision only after the header's
    manual selection and source ownership are proven understandable in play.
-4. Expose VDU construction, field operation and VGO/Vacuum Residue economy
-   only after the interaction pass; retain the existing atomic typed transfer
-   and do not add atmospheric semantics to the VDU.
+4. Playtest VDU capital cost and VGO/Vacuum Residue value before adding more
+   secondary units, product headers or automation.
 
 ## Task context rules
 
