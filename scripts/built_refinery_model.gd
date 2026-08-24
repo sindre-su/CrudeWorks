@@ -731,10 +731,14 @@ func tick(delta: float) -> void:
 		last_status = network.validate_configuration()["message"]
 		return
 	for route in routes:
-		_tick_route(route, delta)
+		match String(route.get("process_type", ProcessNetworkScript.ATMOSPHERIC_DISTILLATION)):
+			ProcessNetworkScript.ATMOSPHERIC_DISTILLATION:
+				_tick_atmospheric_route(route, delta)
 
 
-func _tick_route(route: Dictionary, delta: float) -> void:
+func _tick_atmospheric_route(route: Dictionary, delta: float) -> void:
+
+
 	var pump: Dictionary = equipment[route["pump"]]
 	var source: Dictionary = equipment[route["source"]]
 	if feed_allocations.has(route["source"]):

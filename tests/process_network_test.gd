@@ -34,6 +34,7 @@ func _test_valid_topology() -> void:
 	_expect(validation["valid"], "complete refinery topology is accepted")
 	_expect(network.connection_count() == 7, "complete refinery uses seven directed connections including the manual valve")
 	_expect(validation["route"]["valve"] == "valve", "complete route exposes the required manual valve")
+	_expect(validation["route"].get("process_type", "") == ProcessNetworkScript.ATMOSPHERIC_DISTILLATION, "complete route is explicitly typed as atmospheric distillation")
 	_expect(validation["route"]["products"].size() == 3, "route resolves three distinct product tanks")
 
 

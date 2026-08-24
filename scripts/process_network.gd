@@ -1,6 +1,9 @@
 class_name ProcessNetwork
 extends RefCounted
 
+const ATMOSPHERIC_DISTILLATION := "atmospheric_distillation"
+const VACUUM_DISTILLATION := "vacuum_distillation"
+
 const Catalog = preload("res://scripts/equipment_catalog.gd")
 
 signal topology_changed
@@ -272,6 +275,14 @@ func routes_for_product_header(header_id: String) -> Array[Dictionary]:
 
 
 func find_complete_routes() -> Array[Dictionary]:
+	var routes := _find_atmospheric_routes()
+	# Vacuum discovery is intentionally not enabled until its equipment and
+	# runtime semantics are introduced. Keeping aggregation here makes the next
+	# process family additive without weakening atmospheric traversal.
+	return routes
+
+
+func _find_atmospheric_routes() -> Array[Dictionary]:
 	var routes: Array[Dictionary] = []
 	var feed_paths: Array[Dictionary] = []
 	for edge in connections:
@@ -344,6 +355,7 @@ func find_complete_routes() -> Array[Dictionary]:
 				break
 		if complete:
 			routes.append({
+				"process_type": ATMOSPHERIC_DISTILLATION,
 				"source": source_id,
 				"header": feed_path["header"],
 				"header_outlet": feed_path["header_outlet"],
