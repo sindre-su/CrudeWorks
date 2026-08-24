@@ -194,9 +194,12 @@ func _test_placement_and_connections(world: Node3D, controller) -> void:
 	_expect(controller.connections.size() == 1, "OUT-to-IN connection creates one pipe record")
 	_expect(controller._connection_exists(tank.output_port, pump.input_port), "created connection can be detected")
 	_expect(tank.output_port.connected and pump.input_port.connected, "connected ports retain per-port connection feedback")
-	var active_keys := {controller.connections[0]["key"]: true}
+	var active_keys := {controller.connections[0]["key"]: 0.25}
 	controller.set_process_flow(10.0, 10.0, active_keys)
 	_expect(controller.connections[0]["flow_visual"].visible, "active-route pipe displays moving flow markers")
+	_expect(is_equal_approx(controller.connections[0]["flow_visual"].speed, 0.55), "pipe marker rate uses its route-local normalized flow rather than the global total")
+	controller.set_process_flow(10.0, 10.0, {})
+	_expect(not controller.connections[0]["flow_visual"].visible, "a globally active process does not animate an unlisted stopped route")
 	var duplicate: Dictionary = controller._connect_ports(tank.output_port, pump.input_port)
 	_expect(not duplicate["ok"], "controller surfaces logical duplicate-connection rejection")
 	_expect(controller._disconnect_port(tank.output_port), "a focused port can disconnect a mistaken pipe")

@@ -319,14 +319,17 @@ func _create_connection_visual(from_port, to_port) -> void:
 func set_process_flow(
 	flow_lps: float,
 	maximum_flow_lps: float,
-	active_connection_keys := {}
+	active_connection_flows := {}
 ) -> void:
-	var enabled := flow_lps > 0.01
-	var normalized := clampf(flow_lps / maximum_flow_lps, 0.0, 1.0) if maximum_flow_lps > 0.0 else 0.0
+	var fallback_normalized := clampf(flow_lps / maximum_flow_lps, 0.0, 1.0) if maximum_flow_lps > 0.0 else 0.0
 	for connection in connections:
 		var flow_visual = connection["flow_visual"]
 		if is_instance_valid(flow_visual):
-			flow_visual.set_flow(enabled and active_connection_keys.has(connection["key"]), normalized)
+			var connection_flow = active_connection_flows.get(connection["key"], 0.0)
+			# Bool entries retain compatibility with older callers while the runtime
+			# supplies each connection's own normalized measured flow.
+			var normalized := fallback_normalized if connection_flow is bool and connection_flow else float(connection_flow)
+			flow_visual.set_flow(normalized > 0.01, clampf(normalized, 0.0, 1.0))
 
 
 static func _connection_key(

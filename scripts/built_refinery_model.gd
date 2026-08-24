@@ -2280,21 +2280,23 @@ func _update_pump_fault_progress(pump: Dictionary, processed_l: float) -> bool:
 func active_connection_keys() -> Dictionary:
 	var keys := {}
 	for route in network.atmospheric_routes():
-		if not _route_has_feed_access(route):
+		var pump_id: String = network.get_route_primary_pump(route)
+		var normalized_flow := _normalized_pump_flow(pump_id)
+		if not _route_has_feed_access(route) or normalized_flow <= 0.01:
 			continue
 		if not String(route.get("header", "")).is_empty():
-			_add_connection_key(keys, route["source"], "output", route["header"], "input")
-			_add_connection_key(keys, route["header"], route["header_outlet"], route["pump"], "input")
+			_add_connection_key(keys, route["source"], "output", route["header"], "input", normalized_flow)
+			_add_connection_key(keys, route["header"], route["header_outlet"], route["pump"], "input", normalized_flow)
 		else:
-			_add_connection_key(keys, route["source"], "output", route["pump"], "input")
-		_add_connection_key(keys, route["pump"], "output", route["valve"], "input")
-		_add_connection_key(keys, route["valve"], "output", route["heater"], "input")
-		_add_connection_key(keys, route["heater"], "output", route["column"], "input")
+			_add_connection_key(keys, route["source"], "output", route["pump"], "input", normalized_flow)
+		_add_connection_key(keys, route["pump"], "output", route["valve"], "input", normalized_flow)
+		_add_connection_key(keys, route["valve"], "output", route["heater"], "input", normalized_flow)
+		_add_connection_key(keys, route["heater"], "output", route["column"], "input", normalized_flow)
 		for product_name in ["light", "diesel", "heavy"]:
 			var source_unit: String = route["column"]
 			var source_port: String = product_name
 			if product_name == "diesel" and not String(route.get("treatment", "")).is_empty():
-				_add_connection_key(keys, route["column"], "diesel", route["treatment"], "input")
+				_add_connection_key(keys, route["column"], "diesel", route["treatment"], "input", normalized_flow)
 				source_unit = route["treatment"]
 				source_port = "output"
 			if route.get("product_headers", {}).has(product_name):
@@ -2308,28 +2310,36 @@ func active_connection_keys() -> Dictionary:
 						outlet_id = destination["outlet"]
 				if outlet_id.is_empty():
 					continue
-				_add_connection_key(keys, source_unit, source_port, product_header_id, "input")
-				_add_connection_key(keys, product_header_id, outlet_id, allocation.selected_tank_id, "input")
+				_add_connection_key(keys, source_unit, source_port, product_header_id, "input", normalized_flow)
+				_add_connection_key(keys, product_header_id, outlet_id, allocation.selected_tank_id, "input", normalized_flow)
 				continue
-			_add_connection_key(keys, source_unit, source_port, route["products"][product_name], "input")
+			_add_connection_key(keys, source_unit, source_port, route["products"][product_name], "input", normalized_flow)
 	for route in network.filter_routes_by_process_type(network.find_complete_routes(), ProcessNetworkScript.VACUUM_DISTILLATION):
 		var pump_id: String = route["primary_pump"]
-		if not equipment.has(pump_id) or not equipment[pump_id]["running"]:
+		var vdu_normalized_flow := _normalized_pump_flow(pump_id)
+		if vdu_normalized_flow <= 0.01:
 			continue
-		_add_connection_key(keys, route["source"], "output", pump_id, "input")
-		_add_connection_key(keys, pump_id, "output", route["vdu"], "input")
-		_add_connection_key(keys, route["vdu"], "vgo", route["outputs"]["vacuum_gas_oil"], "input")
-		_add_connection_key(keys, route["vdu"], "vacuum_residue", route["outputs"]["vacuum_residue"], "input")
+		_add_connection_key(keys, route["source"], "output", pump_id, "input", vdu_normalized_flow)
+		_add_connection_key(keys, pump_id, "output", route["vdu"], "input", vdu_normalized_flow)
+		_add_connection_key(keys, route["vdu"], "vgo", route["outputs"]["vacuum_gas_oil"], "input", vdu_normalized_flow)
+		_add_connection_key(keys, route["vdu"], "vacuum_residue", route["outputs"]["vacuum_residue"], "input", vdu_normalized_flow)
 	for route in network.filter_routes_by_process_type(network.find_complete_routes(), ProcessNetworkScript.CATALYTIC_CRACKING):
 		var fcc_pump_id: String = route["primary_pump"]
-		if not equipment.has(fcc_pump_id) or not equipment[fcc_pump_id]["running"]:
+		var fcc_normalized_flow := _normalized_pump_flow(fcc_pump_id)
+		if fcc_normalized_flow <= 0.01:
 			continue
-		_add_connection_key(keys, route["source"], "output", fcc_pump_id, "input")
-		_add_connection_key(keys, fcc_pump_id, "output", route["fcc"], "input")
-		_add_connection_key(keys, route["fcc"], "gasoline", route["outputs"]["gasoline_blendstock"], "input")
-		_add_connection_key(keys, route["fcc"], "lpg", route["outputs"]["lpg"], "input")
-		_add_connection_key(keys, route["fcc"], "lco", route["outputs"]["light_cycle_oil"], "input")
+		_add_connection_key(keys, route["source"], "output", fcc_pump_id, "input", fcc_normalized_flow)
+		_add_connection_key(keys, fcc_pump_id, "output", route["fcc"], "input", fcc_normalized_flow)
+		_add_connection_key(keys, route["fcc"], "gasoline", route["outputs"]["gasoline_blendstock"], "input", fcc_normalized_flow)
+		_add_connection_key(keys, route["fcc"], "lpg", route["outputs"]["lpg"], "input", fcc_normalized_flow)
+		_add_connection_key(keys, route["fcc"], "lco", route["outputs"]["light_cycle_oil"], "input", fcc_normalized_flow)
 	return keys
+
+
+func _normalized_pump_flow(pump_id: String) -> float:
+	if not equipment.has(pump_id):
+		return 0.0
+	return clampf(float(equipment[pump_id].get("actual_flow_lps", 0.0)) / PUMP_MAX_FLOW_LPS, 0.0, 1.0)
 
 
 func _route_has_feed_access(route: Dictionary) -> bool:
@@ -2954,9 +2964,13 @@ func _add_connection_key(
 	from_unit_id: String,
 	from_port_id: String,
 	to_unit_id: String,
-	to_port_id: String
+	to_port_id: String,
+	normalized_flow := 1.0
 ) -> void:
-	keys["%s:%s>%s:%s" % [from_unit_id, from_port_id, to_unit_id, to_port_id]] = true
+	var key := "%s:%s>%s:%s" % [from_unit_id, from_port_id, to_unit_id, to_port_id]
+	# A shared header's inlet represents the sum of its active branches; every
+	# route-specific branch keeps only its own measured intensity.
+	keys[key] = clampf(float(keys.get(key, 0.0)) + normalized_flow, 0.0, 1.0)
 
 
 func _result(ok: bool, message: String) -> Dictionary:

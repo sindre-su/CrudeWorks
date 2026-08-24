@@ -769,5 +769,15 @@
   pump is commanded on, making a running motor readable independently of the
   existing build/connection highlight.
 - Validation: focused building/Main integration coverage passed. The remaining
-  1280×720 first-person readability and interaction-feel check still needs a
-  human playtest and is not claimed as complete.
+ 1280×720 first-person readability and interaction-feel check still needs a
+ human playtest and is not claimed as complete.
+
+## v0.24.2 — Route-Local Pipe Flow
+
+- Corrected Area 02 flow markers to use each route's measured pump flow rather
+  than one refinery-wide total. A stopped, blocked or full train now keeps its
+  pipes still while another train can continue to show movement.
+- Shared-feed branches retain their own intensity; a shared inlet reflects the
+  combined moving branches. VDU and FCC pipes also stay still at zero flow.
+- Validation: focused route-flow coverage plus the full regression gate passed.
+  Human QA still needs to confirm marker readability at walking distance.

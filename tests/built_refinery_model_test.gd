@@ -196,7 +196,7 @@ func _test_shared_source_runtime_allocation() -> void:
 func _test_manual_valve_low_flow() -> void:
 	var model = _complete_model()
 	_expect(not model.equipment["valve"]["open"], "new built valve defaults closed")
-	_expect(model.active_connection_keys().size() == 7, "active route exposes all seven valve-inclusive pipe segments")
+	_expect(model.active_connection_keys().is_empty(), "a complete but stopped route exposes no moving pipe segments")
 	_expect("åpne" in model.interaction_prompt("valve"), "closed valve prompt offers the correct action")
 	model.register_unit("spare_valve", "valve", "V-299")
 	model.interact("spare_valve")
@@ -835,6 +835,8 @@ func _test_independent_process_trains() -> void:
 	model.equipment["light_tank"]["contents"] = "light"
 	model.tick(1.0)
 	_expect(is_equal_approx(model.equipment["pump"]["actual_flow_lps"], 0.0) and model.equipment["b_pump"]["actual_flow_lps"] > 0.01, "a full Train A product tank blocks only Train A")
+	var active_flows: Dictionary = model.active_connection_keys()
+	_expect(not active_flows.has("source:output>pump:input") and active_flows.has("b_source:output>b_pump:input") and is_equal_approx(float(active_flows["b_source:output>b_pump:input"]), float(model.equipment["b_pump"]["actual_flow_lps"]) / BuiltRefineryModelScript.PUMP_MAX_FLOW_LPS), "visual flow keys and intensity stay local to the moving Train B when Train A is blocked")
 	model.equipment["pump"]["flow_setpoint_lps"] = 15.0
 	model.equipment["light_tank"]["volume_l"] = 0.0
 	model.equipment["light_tank"]["contents"] = "empty"
@@ -1270,6 +1272,19 @@ func _test_vacuum_capacity_and_multi_stage_processing() -> void:
 	staged.tick(1.0)
 	_expect(heavy_before > 0.001 and is_equal_approx(staged.equipment["source"]["volume_l"], 890.0) and staged.equipment["heavy_tank"]["volume_l"] < heavy_before and is_equal_approx(staged.equipment["vgo_tank"]["volume_l"], 6.0) and is_equal_approx(staged.equipment["vacuum_residue_tank"]["volume_l"], 4.0), "atmospheric Heavy Residue in the same physical tank can feed VDU during simultaneous typed processing without a hidden batch")
 	_expect(staged.operations_snapshot()["trains"].size() == 1 and staged.active_connection_keys().size() == 11, "vacuum operation keeps LS-201 atmospheric-only while its running pipes receive flow feedback")
+	var blocked_vdu = _complete_model()
+	blocked_vdu.set_tank_material_intent("heavy_tank", "heavy")
+	_add_vacuum_route(blocked_vdu, "heavy_tank")
+	blocked_vdu.load_crude_batch("source")
+	blocked_vdu.equipment["heater"]["temperature_c"] = 200.0
+	blocked_vdu.equipment["valve"]["open"] = true
+	blocked_vdu.equipment["pump"]["running"] = true
+	blocked_vdu.equipment["vacuum_pump"]["running"] = true
+	blocked_vdu.equipment["vgo_tank"]["contents"] = "vacuum_gas_oil"
+	blocked_vdu.equipment["vgo_tank"]["volume_l"] = 1000.0
+	blocked_vdu.tick(1.0)
+	var blocked_vdu_flows: Dictionary = blocked_vdu.active_connection_keys()
+	_expect(blocked_vdu.equipment["pump"]["actual_flow_lps"] > 0.01 and is_equal_approx(blocked_vdu.equipment["vacuum_pump"]["actual_flow_lps"], 0.0) and blocked_vdu_flows.has("source:output>pump:input") and not blocked_vdu_flows.has("heavy_tank:output>vacuum_pump:input"), "a blocked VDU stays visually still while a concurrent atmospheric route moves")
 
 
 func _test_player_facing_vacuum_operation_and_dispatch() -> void:
