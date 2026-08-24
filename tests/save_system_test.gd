@@ -26,6 +26,7 @@ func _run_tests() -> void:
 	await _test_startup_continue(snapshot)
 	await _test_main_round_trip(snapshot, source_main)
 	await _test_vacuum_intent_and_processing_round_trip()
+	await _test_fcc_processing_round_trip()
 	_test_startup_confirmation(source_main)
 	_cleanup_test_files()
 
@@ -425,6 +426,57 @@ func _test_vacuum_intent_and_processing_round_trip() -> void:
 	var mass_before := _total_tank_volume(restored)
 	restored_model.tick(1.0)
 	_expect(is_equal_approx(restored_model.equipment["built_tank_1"]["volume_l"], 70.0) and is_equal_approx(restored_model.equipment["built_tank_4"]["volume_l"], 18.0) and is_equal_approx(restored_model.equipment["built_tank_5"]["volume_l"], 12.0) and is_equal_approx(_total_tank_volume(restored), mass_before), "restored VDU route continues with one mass-conserving atomic transaction")
+	source.queue_free()
+	restored.queue_free()
+
+
+func _test_fcc_processing_round_trip() -> void:
+	var source = MainScene.instantiate()
+	source.persistence_enabled = false
+	root.add_child(source)
+	await process_frame
+	for entry in [
+		["tank", Vector3(-13.0, 1.96, 35.0), 0, 1],
+		["pump", Vector3(-9.0, 0.86, 35.0), 0, 2],
+		["catalytic_cracking", Vector3(-3.0, 2.86, 35.0), 0, 3],
+		["tank", Vector3(5.0, 1.96, 30.0), 0, 4],
+		["tank", Vector3(5.0, 1.96, 35.0), 0, 5],
+		["tank", Vector3(12.0, 1.96, 30.0), 0, 6],
+	]:
+		_expect(source._create_built_unit(entry[0], entry[1], entry[2], entry[3], false)["ok"], "headless FCC fixture creates normal buildable equipment")
+	var model = source.built_refinery_model
+	model.set_tank_material_intent("built_tank_1", "vacuum_gas_oil")
+	var feed = source.build_controller.registered_unit_by_id("built_tank_1")
+	var pump = source.build_controller.registered_unit_by_id("built_pump_2")
+	var fcc = source.build_controller.registered_unit_by_id("built_catalytic_cracking_3")
+	var gasoline = source.build_controller.registered_unit_by_id("built_tank_4")
+	var lpg = source.build_controller.registered_unit_by_id("built_tank_5")
+	var lco = source.build_controller.registered_unit_by_id("built_tank_6")
+	source.build_controller._connect_ports(feed.get_port("output"), pump.get_port("input"))
+	source.build_controller._connect_ports(pump.get_port("output"), fcc.get_port("input"))
+	source.build_controller._connect_ports(fcc.get_port("gasoline"), gasoline.get_port("input"))
+	source.build_controller._connect_ports(fcc.get_port("lpg"), lpg.get_port("input"))
+	source.build_controller._connect_ports(fcc.get_port("lco"), lco.get_port("input"))
+	model.equipment[feed.unit_id]["contents"] = "vacuum_gas_oil"
+	model.equipment[feed.unit_id]["volume_l"] = 100.0
+	model.equipment[pump.unit_id]["running"] = true
+	model.tick(2.0)
+	var snapshot: Dictionary = source._build_snapshot()
+	var validation: Dictionary = SaveSystemScript.validate_snapshot(snapshot)
+	_expect(validation["ok"], "partial FCC inventory and typed material intents validate as a normal save snapshot: %s" % validation["message"])
+	var restored = MainScene.instantiate()
+	restored.persistence_enabled = false
+	root.add_child(restored)
+	await process_frame
+	var restore_result: Dictionary = restored._apply_snapshot(snapshot)
+	_expect(restore_result["ok"], "fresh Main restores FCC construction and VGO upgrading state")
+	var restored_model = restored.built_refinery_model
+	_expect(restored_model.network.filter_routes_by_process_type(restored_model.network.find_complete_routes(), "catalytic_cracking").size() == 1 and restored_model.equipment["built_tank_1"]["material_intent"] == "vacuum_gas_oil" and restored_model.equipment["built_tank_4"]["material_intent"] == "gasoline_blendstock" and restored_model.equipment["built_tank_5"]["material_intent"] == "lpg" and restored_model.equipment["built_tank_6"]["material_intent"] == "light_cycle_oil", "restored FCC route preserves every typed output destination")
+	_expect(is_equal_approx(restored_model.equipment["built_tank_1"]["volume_l"], 80.0) and is_equal_approx(restored_model.equipment["built_tank_4"]["volume_l"], 11.0) and is_equal_approx(restored_model.equipment["built_tank_5"]["volume_l"], 5.0) and is_equal_approx(restored_model.equipment["built_tank_6"]["volume_l"], 4.0), "FCC save/load preserves exact partial 55/25/20 inventory")
+	restored_model.equipment["built_pump_2"]["running"] = true
+	var mass_before := _total_tank_volume(restored)
+	restored_model.tick(1.0)
+	_expect(is_equal_approx(restored_model.equipment["built_tank_1"]["volume_l"], 70.0) and is_equal_approx(restored_model.equipment["built_tank_4"]["volume_l"], 16.5) and is_equal_approx(restored_model.equipment["built_tank_5"]["volume_l"], 7.5) and is_equal_approx(restored_model.equipment["built_tank_6"]["volume_l"], 6.0) and is_equal_approx(_total_tank_volume(restored), mass_before), "restored FCC route continues with one mass-conserving atomic transaction")
 	source.queue_free()
 	restored.queue_free()
 

@@ -3,6 +3,7 @@ extends RefCounted
 
 const ATMOSPHERIC_DISTILLATION := "atmospheric_distillation"
 const VACUUM_DISTILLATION := "vacuum_distillation"
+const CATALYTIC_CRACKING := "catalytic_cracking"
 
 const Catalog = preload("res://scripts/equipment_catalog.gd")
 
@@ -94,10 +95,10 @@ func try_connect(
 		"to_port": to_port_id,
 	}
 	connections.append(new_edge)
-	# The two VDU outlets are explicitly typed. Marking an empty destination
+	# The typed secondary-process outlets mark their empty destination tanks.
 	# tank here lets a normal player-built route become discoverable without a
 	# separate configuration menu.
-	if from_type == "vacuum_distillation" and to_type == "tank" and tank_intended_material(to_unit_id).is_empty():
+	if from_type in ["vacuum_distillation", "catalytic_cracking"] and to_type == "tank" and tank_intended_material(to_unit_id).is_empty():
 		set_tank_intended_material(to_unit_id, String(from_port["material"]), false)
 	topology_changed.emit()
 	return _result(true, "%s %s er koblet til %s IN." % [
@@ -329,6 +330,7 @@ func routes_for_product_header(header_id: String) -> Array[Dictionary]:
 func find_complete_routes() -> Array[Dictionary]:
 	var routes := _find_atmospheric_routes()
 	routes.append_array(_find_vacuum_routes())
+	routes.append_array(_find_fcc_routes())
 	return routes
 
 
@@ -473,6 +475,45 @@ func _find_vacuum_routes() -> Array[Dictionary]:
 			},
 			"equipment_ids": [source_id, pump_id, vdu_id, vgo_tank, residue_tank],
 		})
+	return routes
+
+
+func _find_fcc_routes() -> Array[Dictionary]:
+	var routes: Array[Dictionary] = []
+	for edge in connections:
+		if _unit_type(edge["from_unit"]) != "tank" or _unit_type(edge["to_unit"]) != "pump":
+			continue
+		var source_id: String = edge["from_unit"]
+		if tank_intended_material(source_id) != "vacuum_gas_oil":
+			continue
+		var pump_id: String = edge["to_unit"]
+		var pump_edge := outgoing_edge(pump_id, "output")
+		if pump_edge.is_empty() or _unit_type(pump_edge["to_unit"]) != "catalytic_cracking":
+			continue
+		var fcc_id: String = pump_edge["to_unit"]
+		var outputs := {}
+		var complete := true
+		for output_id in ["gasoline", "lpg", "lco"]:
+			var output_edge := outgoing_edge(fcc_id, output_id)
+			if output_edge.is_empty() or _unit_type(output_edge["to_unit"]) != "tank":
+				complete = false
+				break
+			var tank_id: String = output_edge["to_unit"]
+			var material: String = String(Catalog.port_definition("catalytic_cracking", output_id)["material"])
+			if tank_intended_material(tank_id) != material:
+				complete = false
+				break
+			outputs[material] = tank_id
+		if complete:
+			routes.append({
+				"process_type": CATALYTIC_CRACKING,
+				"route_id": "fcc:%s" % pump_id,
+				"source": source_id,
+				"primary_pump": pump_id,
+				"fcc": fcc_id,
+				"outputs": outputs,
+				"equipment_ids": [source_id, pump_id, fcc_id, outputs["gasoline_blendstock"], outputs["lpg"], outputs["light_cycle_oil"]],
+			})
 	return routes
 
 

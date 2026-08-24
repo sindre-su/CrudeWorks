@@ -742,6 +742,11 @@ func _update_unit_statuses() -> void:
 				and active_route.get("column", "") == built_unit.unit_id,
 				Color("75ddff")
 			)
+		elif state.get("type", "") == "catalytic_cracking":
+			built_unit.set_active(
+				built_refinery_model.unit_status(built_unit.unit_id) == "RUNNING",
+				Color("f0a866")
+			)
 		elif state.get("type", "") == "treatment":
 			built_unit.set_active(state["running"], Color("7fc8ff"))
 		elif state.get("type", "") == "header":

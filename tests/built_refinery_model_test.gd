@@ -52,6 +52,7 @@ func _run_tests() -> void:
 	_test_atomic_vacuum_distillation()
 	_test_vacuum_capacity_and_multi_stage_processing()
 	_test_player_facing_vacuum_operation_and_dispatch()
+	_test_atomic_fcc_upgrading_and_dispatch()
 	_test_electrical_power_capacity()
 
 
@@ -1285,6 +1286,34 @@ func _test_player_facing_vacuum_operation_and_dispatch() -> void:
 	_expect(not model.dispatch_product_from_tank("vgo_tank")["ok"], "empty VGO inventory cannot be dispatched repeatedly")
 
 
+func _test_atomic_fcc_upgrading_and_dispatch() -> void:
+	var model = _fcc_model(1000.0)
+	model.commissioning_contract_complete = true
+	var start: Dictionary = model.interact("fcc_pump")
+	_expect(start["ok"] and model.equipment["fcc_pump"]["running"], "a complete FCC route starts through its ordinary VGO feed-pump interaction")
+	_expect(is_equal_approx(model.power_status()["demand_kw"], 65.0), "a running FCC train adds its 40 kW auxiliary load to the 25 kW feed pump")
+	var mass_before := _total_tank_volume(model)
+	model.tick(100.0)
+	_expect(is_equal_approx(model.equipment["fcc_source"]["volume_l"], 0.0) and is_equal_approx(model.equipment["gasoline_tank"]["volume_l"], 550.0) and is_equal_approx(model.equipment["lpg_tank"]["volume_l"], 250.0) and is_equal_approx(model.equipment["lco_tank"]["volume_l"], 200.0), "running FCC converts VGO with the fixed 55/25/20 Gasoline Blendstock, LPG and LCO yields")
+	_expect(is_equal_approx(_total_tank_volume(model), mass_before) and model.equipment["gasoline_tank"]["contents"] == "gasoline_blendstock" and model.equipment["lpg_tank"]["contents"] == "lpg" and model.equipment["lco_tank"]["contents"] == "light_cycle_oil", "FCC transfer conserves mass and preserves each upgraded product identity")
+	var blocked = _fcc_model(20.0)
+	blocked.equipment["lpg_tank"]["contents"] = "lpg"
+	blocked.equipment["lpg_tank"]["volume_l"] = 1000.0
+	blocked.equipment["fcc_pump"]["running"] = true
+	blocked.tick(10.0)
+	_expect(is_equal_approx(blocked.equipment["fcc_source"]["volume_l"], 20.0) and is_equal_approx(blocked.equipment["gasoline_tank"]["volume_l"], 0.0) and "full" in blocked.last_status.to_lower(), "one full FCC destination blocks the entire atomic upgrade without consuming VGO")
+	var orders: Array[Dictionary] = model.available_product_orders()
+	_expect(orders.size() == 3 and orders[0]["product"] == "gasoline_blendstock" and orders[1]["product"] == "lpg" and orders[2]["product"] == "light_cycle_oil", "FCC products appear as three distinct physical deliveries")
+	var gasoline_sale: Dictionary = model.dispatch_product_from_tank("gasoline_tank")
+	var lpg_sale: Dictionary = model.dispatch_product_from_tank("lpg_tank")
+	var lco_sale: Dictionary = model.dispatch_product_from_tank("lco_tank")
+	_expect(gasoline_sale["ok"] and gasoline_sale["revenue"] == 3850 and lpg_sale["ok"] and lpg_sale["revenue"] == 1250 and lco_sale["ok"] and lco_sale["revenue"] == 600, "FCC products dispatch once from their own tanks at 7, 5 and 3 kr/L")
+	var saved: Dictionary = _fcc_model(10.0).save_state()
+	var restored = _fcc_model(0.0)
+	restored.apply_saved_state(saved)
+	_expect(restored.equipment["fcc_source"]["material_intent"] == "vacuum_gas_oil" and restored.network.filter_routes_by_process_type(restored.network.find_complete_routes(), restored.network.CATALYTIC_CRACKING).size() == 1, "FCC equipment, VGO intent and typed route survive save/load")
+
+
 func _take_and_analyze(model) -> Dictionary:
 	var sample: Dictionary = model.take_diesel_sample("diesel_tank")
 	if not sample["ok"]:
@@ -1335,6 +1364,25 @@ func _vacuum_model(feed_l := 0.0):
 	if feed_l > 0.0:
 		model.equipment["vacuum_source"]["contents"] = "heavy"
 		model.equipment["vacuum_source"]["volume_l"] = feed_l
+	return model
+
+
+func _fcc_model(feed_l := 0.0):
+	var model = BuiltRefineryModelScript.new()
+	model.register_unit("fcc_source", "tank", "VT-301", "vacuum_gas_oil")
+	model.register_unit("fcc_pump", "pump", "FP-401")
+	model.register_unit("fcc", "catalytic_cracking", "FCC-401")
+	model.register_unit("gasoline_tank", "tank", "FT-401", "gasoline_blendstock")
+	model.register_unit("lpg_tank", "tank", "FT-402", "lpg")
+	model.register_unit("lco_tank", "tank", "FT-403", "light_cycle_oil")
+	model.network.try_connect("fcc_source", "output", "fcc_pump", "input")
+	model.network.try_connect("fcc_pump", "output", "fcc", "input")
+	model.network.try_connect("fcc", "gasoline", "gasoline_tank", "input")
+	model.network.try_connect("fcc", "lpg", "lpg_tank", "input")
+	model.network.try_connect("fcc", "lco", "lco_tank", "input")
+	if feed_l > 0.0:
+		model.equipment["fcc_source"]["contents"] = "vacuum_gas_oil"
+		model.equipment["fcc_source"]["volume_l"] = feed_l
 	return model
 
 

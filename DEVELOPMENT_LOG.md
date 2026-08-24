@@ -706,4 +706,21 @@
 ## Next Best Work
 
 - Perform the deferred human 1280×720 playtest: confirm the new HUD spacing,
-  expanded build-pad readability and long modal text in the actual running game.
+  expanded build-pad readability, FCC port labels and long modal text in the
+  actual running game.
+
+## v0.23.0 — FCC-401 Catalytic Cracking and VGO Upgrading
+
+- Added FCC-401 as the normal 2,200 kr Area 02 build-menu unit with one typed
+  VGO input and Gasoline Blendstock, LPG and LCO outputs.
+- Added a separate typed FCC route: VGO tank → pump → FCC-401 → three typed
+  storage tanks. The running feed pump commits an atomic fixed 55/25/20 split;
+  blocked or incompatible output storage leaves the VGO source untouched.
+- Added physical dispatch orders worth 7 kr/L (Gasoline Blendstock), 5 kr/L
+  (LPG) and 3 kr/L (LCO). Each dispatch consumes only its own storage tank.
+- FCC adds 40 kW auxiliary demand to its running pump's normal 25 kW, so the
+  existing electrical-capacity system now makes expansion a real constraint.
+- Persisted FCC equipment, typed VGO/product tank intent, processed totals and
+  partial material inventory through the standard snapshot system.
+- Validation: test-first FCC route discovery, focused building/refinery/save
+  tests and the full Godot regression/headless checks passed before checkpoint.

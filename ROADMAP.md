@@ -2,7 +2,7 @@
 
 ## Current stable baseline
 
-Version 0.22.1 has a tested pilot plant and multiple independent player-built
+Version 0.23.0 has a tested pilot plant and multiple independent player-built
 Area 02 refinery trains. The built loop covers construction, directed pipes, valve troubleshooting,
 Sour-diesel treatment, physical diesel sampling, LAB-101, LS-201, 5/10/15 L/s
 pump targets and separate Naphtha/heavy-residue deliveries.
@@ -38,13 +38,18 @@ utility provides 100 kW; buildable PU-101 Power Units add 100 kW each. Pumps,
 HT-201 and the VDU auxiliary load consume capacity only while operating, so new
 starts are rejected safely when the available capacity is insufficient.
 
+FCC-401 is the first VGO upgrading route: a typed VGO tank → pump → FCC route
+atomically produces Gasoline Blendstock, LPG and Light Cycle Oil. It remains
+separate from atmospheric control systems and the VDU route, while using the
+same tank intent, material identity, electrical capacity and save/load rules.
+
 Area 02 construction space is now approximately twice its original footprint.
 The original pilot plant and starter positions remain unchanged; the added pad
 space supports larger layouts without introducing a new process system.
 
 ## Current priority
 
-**Hands-on 1280 x 720 usability pass.** Verify VDU and PU-101 placement,
+**Hands-on 1280 x 720 usability pass.** Verify VDU, FCC-401 and PU-101 placement,
 build-menu readability, valve readability, power feedback, the expanded Area 02
 boundary and terminal layout in the running game. Headless tests cannot replace
 this check.
@@ -62,6 +67,10 @@ this check.
   while its typed outlets establish empty VGO/Vacuum Residue tank intent and
   use the existing atomic 60/40 transfer. It must not inherit atmospheric
   valve, heater, column, quality or LAB assumptions.
+- FCC-401 is build-menu item `-`. Its VGO feed pump is the sole field control;
+  it requires three typed product tanks and atomically applies the fixed
+  55/25/20 Gasoline Blendstock/LPG/LCO split. Its 40 kW auxiliary load is
+  added to the running feed pump's normal 25 kW demand.
 
 ## Next milestones
 
@@ -71,8 +80,8 @@ this check.
    product-value balance before expanding into broader manifolds.
 3. Consider the next constrained routing decision only after the header's
    manual selection and source ownership are proven understandable in play.
-4. Playtest VDU capital cost and VGO/Vacuum Residue value before adding more
-   secondary units, product headers or automation.
+4. Playtest the VDU → FCC capital chain, product values and 65 kW FCC load
+   before adding more secondary units, product headers or automation.
 
 ## Task context rules
 

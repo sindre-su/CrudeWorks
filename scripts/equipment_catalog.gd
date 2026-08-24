@@ -1,7 +1,7 @@
 class_name EquipmentCatalog
 extends RefCounted
 
-const ORDER := ["tank", "pump", "heater", "column", "valve", "treatment", "header", "product_header", "vacuum_distillation", "power_unit"]
+const ORDER := ["tank", "pump", "heater", "column", "valve", "treatment", "header", "product_header", "vacuum_distillation", "power_unit", "catalytic_cracking"]
 
 
 static func definition(equipment_type: String) -> Dictionary:
@@ -116,6 +116,17 @@ static func definition(equipment_type: String) -> Dictionary:
 				"has_input": false,
 				"has_output": false,
 			}
+		"catalytic_cracking":
+			return {
+				"name": "Fluid Catalytic Cracking",
+				"tag": "FCC-401",
+				"cost": 2200,
+				"size": Vector3(4.2, 5.4, 3.8),
+				"color": Color("875b42"),
+				"shape": "cylinder",
+				"has_input": true,
+				"has_output": true,
+			}
 	return {}
 
 
@@ -163,6 +174,13 @@ static func port_definitions(equipment_type: String) -> Array[Dictionary]:
 		]
 	if equipment_type == "power_unit":
 		return []
+	if equipment_type == "catalytic_cracking":
+		return [
+			_port("input", "input", "vacuum_gas_oil", "IN", Vector3(0.0, y, z)),
+			_port("gasoline", "output", "gasoline_blendstock", "GAS", Vector3(-0.9, y, -z)),
+			_port("lpg", "output", "lpg", "LPG", Vector3(0.0, y, -z)),
+			_port("lco", "output", "light_cycle_oil", "LCO", Vector3(0.9, y, -z)),
+		]
 
 	var material_type := "any" if equipment_type in ["tank", "pump"] else "crude"
 	return [
@@ -208,12 +226,14 @@ static func process_order_allows(from_type: String, to_type: String) -> bool:
 		or (from_type == "product_header" and to_type == "tank")
 		or (from_type == "pump" and to_type == "valve")
 		or (from_type == "pump" and to_type == "vacuum_distillation")
+		or (from_type == "pump" and to_type == "catalytic_cracking")
 		or (from_type == "valve" and to_type == "heater")
 		or (from_type == "heater" and to_type == "column")
 		or (from_type == "column" and to_type == "tank")
 		or (from_type == "column" and to_type == "treatment")
 		or (from_type == "treatment" and to_type == "tank")
 		or (from_type == "vacuum_distillation" and to_type == "tank")
+		or (from_type == "catalytic_cracking" and to_type == "tank")
 	)
 
 
@@ -237,6 +257,6 @@ static func menu_text() -> String:
 	var lines: Array[String] = []
 	for index in ORDER.size():
 		var data := definition(ORDER[index])
-		var key_label := "0" if index == 9 else str(index + 1)
+		var key_label := "0" if index == 9 else ("-" if index == 10 else str(index + 1))
 		lines.append("%s  %-22s %4d kr" % [key_label, data["name"], data["cost"]])
 	return "\n".join(lines)

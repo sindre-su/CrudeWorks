@@ -30,6 +30,7 @@ func _run_tests() -> void:
 	_test_vacuum_route_discovery_and_contract()
 	_test_vacuum_route_validation_and_invalidation()
 	_test_mixed_atmospheric_and_vacuum_routes()
+	_test_fcc_route_discovery_contract()
 
 
 func _test_valid_topology() -> void:
@@ -137,6 +138,26 @@ func _test_mixed_atmospheric_and_vacuum_routes() -> void:
 	_expect(network.eligible_routes_for_source("vacuum_source").is_empty(), "Crude Feed allocation ignores a real vacuum route")
 	network.unregister_unit("column")
 	_expect(network.filter_routes_by_process_type(network.find_complete_routes(), ProcessNetworkScript.VACUUM_DISTILLATION).size() == 2, "an unrelated atmospheric route failure does not invalidate vacuum route discovery")
+
+
+func _test_fcc_route_discovery_contract() -> void:
+	var network = ProcessNetworkScript.new()
+	_register(network, "fcc_source", "tank", "FCC-T1", "vacuum_gas_oil")
+	_register(network, "fcc_pump", "pump", "FCC-P1")
+	_register(network, "fcc", "catalytic_cracking", "FCC-401")
+	_register(network, "gasoline_tank", "tank", "FCC-T2", "gasoline_blendstock")
+	_register(network, "lpg_tank", "tank", "FCC-T3", "lpg")
+	_register(network, "lco_tank", "tank", "FCC-T4", "light_cycle_oil")
+	network.try_connect("fcc_source", "output", "fcc_pump", "input")
+	network.try_connect("fcc_pump", "output", "fcc", "input")
+	network.try_connect("fcc", "gasoline", "gasoline_tank", "input")
+	network.try_connect("fcc", "lpg", "lpg_tank", "input")
+	network.try_connect("fcc", "lco", "lco_tank", "input")
+	var routes: Array[Dictionary] = network.find_complete_routes()
+	_expect(
+		not network.filter_routes_by_process_type(routes, "catalytic_cracking").is_empty(),
+		"VGO tank → pump → FCC → gasoline/LPG/LCO is discovered as an independent typed route"
+	)
 
 
 func _test_direction_and_order() -> void:

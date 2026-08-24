@@ -3,7 +3,7 @@ extends RefCounted
 
 const DEFAULT_ID := "standard"
 const ORDER := ["standard", "heavy", "sour"]
-const PRODUCT_ORDER := ["light", "heavy", "vacuum_gas_oil", "vacuum_residue"]
+const PRODUCT_ORDER := ["light", "heavy", "vacuum_gas_oil", "vacuum_residue", "gasoline_blendstock", "lpg", "light_cycle_oil"]
 
 
 static func product_order_definition(product_id: String) -> Dictionary:
@@ -44,6 +44,12 @@ static func product_order_definition(product_id: String) -> Dictionary:
 				"price_per_l": 1.0,
 				"description": "sekundærprodukt • 1 kr/L",
 			}
+		"gasoline_blendstock":
+			return {"product": "gasoline_blendstock", "product_name": "Gasoline Blendstock", "order_name": "GASOLINELEVERANSE", "target_l": 100.0, "price_per_l": 7.0, "description": "FCC-produkt • 7 kr/L"}
+		"lpg":
+			return {"product": "lpg", "product_name": "LPG", "order_name": "LPG-LEVERANSE", "target_l": 100.0, "price_per_l": 5.0, "description": "FCC-produkt • 5 kr/L"}
+		"light_cycle_oil":
+			return {"product": "light_cycle_oil", "product_name": "Light Cycle Oil", "order_name": "LCO-LEVERANSE", "target_l": 100.0, "price_per_l": 3.0, "description": "FCC-produkt • 3 kr/L"}
 	return {}
 
 

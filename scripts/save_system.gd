@@ -416,12 +416,12 @@ static func _validate_equipment_state(state: Dictionary) -> Dictionary:
 					return _result(false, "En lagret tank har ugyldig %s." % field)
 			if not _in_range(state["volume_l"], 0.0, 1000.0):
 				return _result(false, "En lagret tank overskrider kapasiteten.")
-			if state.get("contents") not in ["empty", "crude", "light", "diesel", "heavy", "vacuum_gas_oil", "vacuum_residue"]:
+			if state.get("contents") not in ["empty", "crude", "light", "diesel", "heavy", "vacuum_gas_oil", "vacuum_residue", "gasoline_blendstock", "lpg", "light_cycle_oil"]:
 				return _result(false, "En lagret tank har ukjent innhold.")
 			if float(state["volume_l"]) > 0.001 and state["contents"] == "empty":
 				return _result(false, "En lagret tank har volum uten innhold.")
 			if state.has("material_intent"):
-				if typeof(state["material_intent"]) != TYPE_STRING or state["material_intent"] not in ["", "crude", "light", "diesel", "heavy", "vacuum_gas_oil", "vacuum_residue"]:
+				if typeof(state["material_intent"]) != TYPE_STRING or state["material_intent"] not in ["", "crude", "light", "diesel", "heavy", "vacuum_gas_oil", "vacuum_residue", "gasoline_blendstock", "lpg", "light_cycle_oil"]:
 					return _result(false, "En lagret tank har ukjent materialintensjon.")
 				if float(state["volume_l"]) > 0.001 and state["material_intent"] != "" and state["material_intent"] != state["contents"]:
 					return _result(false, "En lagret tank har innhold som ikke stemmer med materialintensjonen.")
@@ -468,7 +468,7 @@ static func _validate_equipment_state(state: Dictionary) -> Dictionary:
 		"treatment":
 			if typeof(state.get("running")) != TYPE_BOOL or not _finite_number(state.get("processed_total_l")) or float(state["processed_total_l"]) < 0.0:
 				return _result(false, "En lagret dieselbehandler har ugyldig tilstand.")
-		"vacuum_distillation":
+		"vacuum_distillation", "catalytic_cracking":
 			if not _finite_number(state.get("processed_total_l")) or float(state["processed_total_l"]) < 0.0:
 				return _result(false, "En lagret vakuumdestillasjon har ugyldig prosessteller.")
 		"header", "product_header", "power_unit":
