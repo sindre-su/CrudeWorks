@@ -94,6 +94,17 @@ static func definition(equipment_type: String) -> Dictionary:
 				"has_input": true,
 				"has_output": true,
 			}
+		"vacuum_distillation":
+			return {
+				"name": "Vacuum Distillation Unit",
+				"tag": "VDU-301",
+				"cost": 0,
+				"size": Vector3(3.6, 5.2, 3.4),
+				"color": Color("6b607e"),
+				"shape": "cylinder",
+				"has_input": true,
+				"has_output": true,
+			}
 	return {}
 
 
@@ -133,8 +144,14 @@ static func port_definitions(equipment_type: String) -> Array[Dictionary]:
 			_port("out_a", "output", "any", "OUT A", Vector3(-0.78, y, -z)),
 			_port("out_b", "output", "any", "OUT B", Vector3(0.78, y, -z)),
 		]
+	if equipment_type == "vacuum_distillation":
+		return [
+			_port("input", "input", "heavy", "IN", Vector3(0.0, y, z)),
+			_port("vgo", "output", "vacuum_gas_oil", "VGO", Vector3(-0.78, y, -z)),
+			_port("vacuum_residue", "output", "vacuum_residue", "VAKUUMREST", Vector3(0.78, y, -z)),
+		]
 
-	var material_type := "any" if equipment_type == "tank" else "crude"
+	var material_type := "any" if equipment_type in ["tank", "pump"] else "crude"
 	return [
 		_port("input", "input", material_type, "IN", Vector3(0.0, y, z)),
 		_port("output", "output", material_type, "OUT", Vector3(0.0, y, -z)),
@@ -177,11 +194,13 @@ static func process_order_allows(from_type: String, to_type: String) -> bool:
 		or (from_type == "treatment" and to_type == "product_header")
 		or (from_type == "product_header" and to_type == "tank")
 		or (from_type == "pump" and to_type == "valve")
+		or (from_type == "pump" and to_type == "vacuum_distillation")
 		or (from_type == "valve" and to_type == "heater")
 		or (from_type == "heater" and to_type == "column")
 		or (from_type == "column" and to_type == "tank")
 		or (from_type == "column" and to_type == "treatment")
 		or (from_type == "treatment" and to_type == "tank")
+		or (from_type == "vacuum_distillation" and to_type == "tank")
 	)
 
 

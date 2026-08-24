@@ -12,7 +12,7 @@ var units: Dictionary = {}
 var connections: Array[Dictionary] = []
 
 
-func register_unit(unit_id: String, equipment_type: String, display_name := "") -> Dictionary:
+func register_unit(unit_id: String, equipment_type: String, display_name := "", intended_material := "") -> Dictionary:
 	if unit_id.is_empty() or not Catalog.is_valid(equipment_type):
 		return _result(false, "Ukjent prosessutstyr kan ikke registreres.")
 	if units.has(unit_id):
@@ -20,6 +20,7 @@ func register_unit(unit_id: String, equipment_type: String, display_name := "") 
 	units[unit_id] = {
 		"type": equipment_type,
 		"name": display_name if not display_name.is_empty() else unit_id,
+		"intended_material": intended_material,
 	}
 	topology_changed.emit()
 	return _result(true, "%s er registrert." % _unit_name(unit_id))
@@ -197,7 +198,7 @@ func get_route_source(route: Dictionary) -> String:
 
 
 func get_route_primary_pump(route: Dictionary) -> String:
-	return String(route.get("pump", ""))
+	return String(route.get("primary_pump", route.get("pump", "")))
 
 
 func route_contains_unit(route: Dictionary, unit_id: String) -> bool:
@@ -322,10 +323,12 @@ func routes_for_product_header(header_id: String) -> Array[Dictionary]:
 
 func find_complete_routes() -> Array[Dictionary]:
 	var routes := _find_atmospheric_routes()
-	# Vacuum discovery is intentionally not enabled until its equipment and
-	# runtime semantics are introduced. Keeping aggregation here makes the next
-	# process family additive without weakening atmospheric traversal.
+	routes.append_array(_find_vacuum_routes())
 	return routes
+
+
+func tank_intended_material(unit_id: String) -> String:
+	return String(units.get(unit_id, {}).get("intended_material", "")) if _unit_type(unit_id) == "tank" else ""
 
 
 func _find_atmospheric_routes() -> Array[Dictionary]:
@@ -403,6 +406,7 @@ func _find_atmospheric_routes() -> Array[Dictionary]:
 			routes.append({
 				"process_type": ATMOSPHERIC_DISTILLATION,
 				"route_id": "atmospheric:%s" % pump_id,
+				"primary_pump": pump_id,
 				"source": source_id,
 				"header": feed_path["header"],
 				"header_outlet": feed_path["header_outlet"],
@@ -414,6 +418,47 @@ func _find_atmospheric_routes() -> Array[Dictionary]:
 				"products": products,
 				"product_headers": product_headers,
 			})
+	return routes
+
+
+func _find_vacuum_routes() -> Array[Dictionary]:
+	var routes: Array[Dictionary] = []
+	for edge in connections:
+		if _unit_type(edge["from_unit"]) != "tank" or _unit_type(edge["to_unit"]) != "pump":
+			continue
+		var source_id: String = edge["from_unit"]
+		if tank_intended_material(source_id) != "heavy":
+			continue
+		var pump_id: String = edge["to_unit"]
+		var pump_edge := outgoing_edge(pump_id, "output")
+		if pump_edge.is_empty() or _unit_type(pump_edge["to_unit"]) != "vacuum_distillation":
+			continue
+		var vdu_id: String = pump_edge["to_unit"]
+		var vgo_edge := outgoing_edge(vdu_id, "vgo")
+		var residue_edge := outgoing_edge(vdu_id, "vacuum_residue")
+		if vgo_edge.is_empty() or residue_edge.is_empty():
+			continue
+		var vgo_tank: String = vgo_edge["to_unit"]
+		var residue_tank: String = residue_edge["to_unit"]
+		if (
+			_unit_type(vgo_tank) != "tank"
+			or _unit_type(residue_tank) != "tank"
+			or tank_intended_material(vgo_tank) != "vacuum_gas_oil"
+			or tank_intended_material(residue_tank) != "vacuum_residue"
+		):
+			continue
+		routes.append({
+			"process_type": VACUUM_DISTILLATION,
+			"route_id": "vacuum:%s" % pump_id,
+			"source": source_id,
+			"primary_pump": pump_id,
+			"vdu": vdu_id,
+			"outputs": {
+				"vacuum_gas_oil": vgo_tank,
+				"vacuum_residue": residue_tank,
+			},
+			"equipment_ids": [source_id, pump_id, vdu_id, vgo_tank, residue_tank],
+		})
 	return routes
 
 

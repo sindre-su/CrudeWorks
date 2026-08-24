@@ -48,6 +48,7 @@ func _run_tests() -> void:
 	_test_product_header_allocation_and_capacity()
 	_test_product_header_preserves_treated_diesel_and_save_state()
 	_test_sparse_future_route_is_ignored_by_atmospheric_consumers()
+	_test_real_vacuum_route_is_not_simulated()
 
 
 func _test_invalid_network_cannot_start() -> void:
@@ -1131,6 +1132,26 @@ func _test_sparse_future_route_is_ignored_by_atmospheric_consumers() -> void:
 	_expect(model._operator_alarms_for_route(vacuum_route).is_empty(), "operator alarms ignore a sparse non-atmospheric route without reading atmospheric fields")
 	_expect(model._resolved_route(vacuum_route).is_empty(), "atmospheric product routing does not resolve a future route without its own semantics")
 	_expect(model.operations_snapshot()["trains"].size() == 1, "LS-201 exposes only the supported atmospheric train set")
+
+
+func _test_real_vacuum_route_is_not_simulated() -> void:
+	var model = BuiltRefineryModelScript.new()
+	model.register_unit("vacuum_source", "tank", "VT-201", "heavy")
+	model.register_unit("vacuum_pump", "pump", "VP-201")
+	model.register_unit("vdu", "vacuum_distillation", "VDU-301")
+	model.register_unit("vgo_tank", "tank", "VT-202", "vacuum_gas_oil")
+	model.register_unit("vacuum_residue_tank", "tank", "VT-203", "vacuum_residue")
+	model.network.try_connect("vacuum_source", "output", "vacuum_pump", "input")
+	model.network.try_connect("vacuum_pump", "output", "vdu", "input")
+	model.network.try_connect("vdu", "vgo", "vgo_tank", "input")
+	model.network.try_connect("vdu", "vacuum_residue", "vacuum_residue_tank", "input")
+	model.equipment["vacuum_source"]["contents"] = "heavy"
+	model.equipment["vacuum_source"]["volume_l"] = 100.0
+	model.equipment["vacuum_pump"]["running"] = true
+	model.tick(10.0)
+	_expect(model.network.filter_routes_by_process_type(model.network.find_complete_routes(), model.network.VACUUM_DISTILLATION).size() == 1, "BuiltRefineryModel sees the real discovered vacuum route")
+	_expect(is_equal_approx(model.equipment["vacuum_source"]["volume_l"], 100.0) and is_equal_approx(model.equipment["vgo_tank"]["volume_l"], 0.0) and is_equal_approx(model.equipment["vacuum_residue_tank"]["volume_l"], 0.0), "tick skips vacuum material flow until its atomic simulation is implemented")
+	_expect(model.operations_snapshot()["trains"].is_empty() and model.operator_alarms().is_empty() and model.active_connection_keys().is_empty(), "real vacuum route stays out of atmospheric console, alarms and pipe visuals")
 
 
 func _take_and_analyze(model) -> Dictionary:

@@ -68,6 +68,9 @@ func _test_catalog() -> void:
 		var definition: Dictionary = Catalog.definition(equipment_type)
 		_expect(not definition.is_empty(), "%s has a catalog definition" % equipment_type)
 		_expect(definition["cost"] > 0, "%s has a positive price" % equipment_type)
+	var vdu_ports: Array[Dictionary] = Catalog.port_definitions("vacuum_distillation")
+	_expect(not Catalog.definition("vacuum_distillation").is_empty() and vdu_ports.size() == 3, "VDU skeleton exists outside the current player build catalog")
+	_expect(Catalog.port_definition("vacuum_distillation", "input")["material"] == "heavy" and Catalog.port_definition("vacuum_distillation", "vgo")["material"] == "vacuum_gas_oil" and Catalog.port_definition("vacuum_distillation", "vacuum_residue")["material"] == "vacuum_residue", "VDU skeleton exposes typed Heavy Residue, VGO and Vacuum Residue ports")
 
 
 func _test_units_and_footprints(world: Node3D) -> void:
@@ -94,6 +97,10 @@ func _test_units_and_footprints(world: Node3D) -> void:
 	product_header.configure_buildable("product_header", 13)
 	world.add_child(product_header)
 	_expect(product_header.get_port("input") != null and product_header.get_port("out_a") != null and product_header.get_port("out_b") != null, "Product Routing Header exposes IN, OUT A and OUT B ports")
+	var vdu = BuildableUnitScript.new()
+	vdu.configure_buildable("vacuum_distillation", 14)
+	world.add_child(vdu)
+	_expect(vdu.get_port("input") != null and vdu.get_port("vgo") != null and vdu.get_port("vacuum_residue") != null, "VDU skeleton uses the normal buildable port and rotation conventions")
 	var valve = BuildableUnitScript.new()
 	valve.configure_buildable("valve", 10)
 	world.add_child(valve)

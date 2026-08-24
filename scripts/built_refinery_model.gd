@@ -154,8 +154,8 @@ func apply_saved_state(state: Dictionary) -> void:
 	last_status = "Spill lastet. Alle pumper er stoppet av sikkerhetshensyn."
 
 
-func register_unit(unit_id: String, equipment_type: String, display_name := "") -> Dictionary:
-	var graph_result: Dictionary = network.register_unit(unit_id, equipment_type, display_name)
+func register_unit(unit_id: String, equipment_type: String, display_name := "", intended_material := "") -> Dictionary:
+	var graph_result: Dictionary = network.register_unit(unit_id, equipment_type, display_name, intended_material)
 	if not graph_result["ok"]:
 		return graph_result
 	var state := {

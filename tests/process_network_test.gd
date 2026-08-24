@@ -27,6 +27,9 @@ func _run_tests() -> void:
 	_test_optional_diesel_treatment_route()
 	_test_product_header_destination_discovery()
 	_test_typed_route_envelope()
+	_test_vacuum_route_discovery_and_contract()
+	_test_vacuum_route_validation_and_invalidation()
+	_test_mixed_atmospheric_and_vacuum_routes()
 
 
 func _test_valid_topology() -> void:
@@ -83,6 +86,57 @@ func _test_typed_route_envelope() -> void:
 	_expect(network.route_contains_unit(vacuum, "vdu") and not network.route_contains_unit(vacuum, "heater"), "generic route membership does not require atmospheric equipment fields")
 	var atmospheric_only: Array[Dictionary] = network.filter_routes_by_process_type([vacuum, atmospheric], ProcessNetworkScript.ATMOSPHERIC_DISTILLATION)
 	_expect(atmospheric_only.size() == 1 and atmospheric_only[0]["pump"] == "pump", "atmospheric consumers can explicitly ignore a sparse future route")
+
+
+func _test_vacuum_route_discovery_and_contract() -> void:
+	var network = _complete_vacuum_network()
+	var routes: Array[Dictionary] = network.find_complete_routes()
+	var route: Dictionary = routes[0] if not routes.is_empty() else {}
+	_expect(routes.size() == 1 and network.get_process_type(route) == ProcessNetworkScript.VACUUM_DISTILLATION, "complete Heavy Residue to VDU topology discovers one typed vacuum route")
+	_expect(network.get_route_id(route) == "vacuum:vacuum_pump" and network.get_route_source(route) == "vacuum_source" and network.get_route_primary_pump(route) == "vacuum_pump", "vacuum route identity is stable and anchored to its feed pump")
+	_expect(route.get("vdu", "") == "vacuum_vdu" and route.get("outputs", {}) == {"vacuum_gas_oil": "vacuum_vgo", "vacuum_residue": "vacuum_residue"}, "vacuum payload exposes only the VDU and its two destinations")
+	_expect(not route.has("valve") and not route.has("heater") and not route.has("column") and not route.has("products"), "vacuum route does not inherit atmospheric-only route fields")
+	_expect(network.route_contains_unit(route, "vacuum_source") and network.route_contains_unit(route, "vacuum_pump") and network.route_contains_unit(route, "vacuum_vdu") and network.route_contains_unit(route, "vacuum_vgo") and network.route_contains_unit(route, "vacuum_residue"), "vacuum route membership includes every required equipment endpoint")
+	_expect(network.tank_intended_material("vacuum_source") == "heavy", "empty Heavy Residue source intent is sufficient for structural vacuum discovery")
+	_expect(network.find_complete_routes()[0]["route_id"] == network.get_route_id(route), "vacuum rediscovery retains the same route identity")
+
+
+func _test_vacuum_route_validation_and_invalidation() -> void:
+	var missing_vgo = _complete_vacuum_network()
+	missing_vgo.disconnect_ports("vacuum_vdu", "vgo", "vacuum_vgo", "input")
+	_expect(missing_vgo.filter_routes_by_process_type(missing_vgo.find_complete_routes(), ProcessNetworkScript.VACUUM_DISTILLATION).is_empty(), "VDU route with only Vacuum Residue storage is incomplete")
+	var missing_residue = _complete_vacuum_network()
+	missing_residue.disconnect_ports("vacuum_vdu", "vacuum_residue", "vacuum_residue", "input")
+	_expect(missing_residue.filter_routes_by_process_type(missing_residue.find_complete_routes(), ProcessNetworkScript.VACUUM_DISTILLATION).is_empty(), "VDU route with only VGO storage is incomplete")
+	for feed in ["crude", "light", "diesel", "vacuum_gas_oil", "vacuum_residue"]:
+		var wrong_feed = _complete_vacuum_network(feed)
+		_expect(wrong_feed.filter_routes_by_process_type(wrong_feed.find_complete_routes(), ProcessNetworkScript.VACUUM_DISTILLATION).is_empty(), "%s cannot become a Heavy Residue vacuum feed route" % feed)
+	var missing_pump = _complete_vacuum_network()
+	missing_pump.unregister_unit("vacuum_pump")
+	_expect(missing_pump.filter_routes_by_process_type(missing_pump.find_complete_routes(), ProcessNetworkScript.VACUUM_DISTILLATION).is_empty(), "removing the vacuum feed pump removes its route safely")
+	var missing_vgo_tank = _complete_vacuum_network()
+	missing_vgo_tank.unregister_unit("vacuum_vgo")
+	_expect(missing_vgo_tank.filter_routes_by_process_type(missing_vgo_tank.find_complete_routes(), ProcessNetworkScript.VACUUM_DISTILLATION).is_empty(), "removing VGO storage removes its route safely")
+	var missing_residue_tank = _complete_vacuum_network()
+	missing_residue_tank.unregister_unit("vacuum_residue")
+	_expect(missing_residue_tank.filter_routes_by_process_type(missing_residue_tank.find_complete_routes(), ProcessNetworkScript.VACUUM_DISTILLATION).is_empty(), "removing Vacuum Residue storage removes its route safely")
+	var invalidated = _complete_vacuum_network()
+	invalidated.unregister_unit("vacuum_vdu")
+	_expect(invalidated.filter_routes_by_process_type(invalidated.find_complete_routes(), ProcessNetworkScript.VACUUM_DISTILLATION).is_empty(), "removing the VDU removes its route without stale references")
+
+
+func _test_mixed_atmospheric_and_vacuum_routes() -> void:
+	var network = _complete_network()
+	_add_vacuum_route(network, "vacuum", "heavy")
+	_add_vacuum_route(network, "vacuum_b", "heavy")
+	var routes: Array[Dictionary] = network.find_complete_routes()
+	var atmospheric: Array[Dictionary] = network.filter_routes_by_process_type(routes, ProcessNetworkScript.ATMOSPHERIC_DISTILLATION)
+	var vacuum: Array[Dictionary] = network.filter_routes_by_process_type(routes, ProcessNetworkScript.VACUUM_DISTILLATION)
+	_expect(atmospheric.size() == 1 and vacuum.size() == 2, "atmospheric and two independent vacuum trains coexist without route-family confusion")
+	_expect(vacuum[0]["route_id"] != vacuum[1]["route_id"], "multiple vacuum trains retain distinct stable identities")
+	_expect(network.eligible_routes_for_source("vacuum_source").is_empty(), "Crude Feed allocation ignores a real vacuum route")
+	network.unregister_unit("column")
+	_expect(network.filter_routes_by_process_type(network.find_complete_routes(), ProcessNetworkScript.VACUUM_DISTILLATION).size() == 2, "an unrelated atmospheric route failure does not invalidate vacuum route discovery")
 
 
 func _test_direction_and_order() -> void:
@@ -214,6 +268,24 @@ func _complete_network():
 	return network
 
 
+func _complete_vacuum_network(source_material := "heavy"):
+	var network = ProcessNetworkScript.new()
+	_add_vacuum_route(network, "vacuum", source_material)
+	return network
+
+
+func _add_vacuum_route(network, prefix: String, source_material: String) -> void:
+	_register(network, prefix + "_source", "tank", prefix.to_upper() + "-T1", source_material)
+	_register(network, prefix + "_pump", "pump", prefix.to_upper() + "-P1")
+	_register(network, prefix + "_vdu", "vacuum_distillation", prefix.to_upper() + "-VDU")
+	_register(network, prefix + "_vgo", "tank", prefix.to_upper() + "-T2", "vacuum_gas_oil")
+	_register(network, prefix + "_residue", "tank", prefix.to_upper() + "-T3", "vacuum_residue")
+	_expect(network.try_connect(prefix + "_source", "output", prefix + "_pump", "input")["ok"], "vacuum source connects to its feed pump")
+	_expect(network.try_connect(prefix + "_pump", "output", prefix + "_vdu", "input")["ok"], "vacuum feed pump connects to VDU IN")
+	_expect(network.try_connect(prefix + "_vdu", "vgo", prefix + "_vgo", "input")["ok"], "VDU VGO OUT connects to compatible storage")
+	_expect(network.try_connect(prefix + "_vdu", "vacuum_residue", prefix + "_residue", "input")["ok"], "VDU Vacuum Residue OUT connects to compatible storage")
+
+
 func _register_route(network, prefix: String) -> void:
 	_register(network, prefix + "_source", "tank", prefix.to_upper() + "-T1")
 	_register(network, prefix + "_pump", "pump", prefix.to_upper() + "-P1")
@@ -225,8 +297,8 @@ func _register_route(network, prefix: String) -> void:
 	_register(network, prefix + "_heavy", "tank", prefix.to_upper() + "-T4")
 
 
-func _register(network, unit_id: String, equipment_type: String, display_name: String) -> void:
-	var result: Dictionary = network.register_unit(unit_id, equipment_type, display_name)
+func _register(network, unit_id: String, equipment_type: String, display_name: String, intended_material := "") -> void:
+	var result: Dictionary = network.register_unit(unit_id, equipment_type, display_name, intended_material)
 	_expect(result["ok"], "%s registers in the process graph" % display_name)
 
 

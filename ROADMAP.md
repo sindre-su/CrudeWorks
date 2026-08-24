@@ -43,13 +43,17 @@ Headless tests cannot replace this check.
 ## Architecture preparation
 
 - Keep `ProcessNetwork` route discovery additive. Atmospheric distillation is
-  the only discoverable and executable process family today.
+  executable today; v0.21C also discovers a structural vacuum route using
+  explicit tank intent: Heavy Residue source → pump → VDU → VGO and Vacuum
+  Residue storage.
 - Keep FeedAllocation, Crude Feed Header, Product Routing Header, LAB-101,
   operator alarms and LS-201 explicitly atmospheric until an additional
   process family supplies its own routing and operating semantics.
-- The next VDU work must add discovery and a typed runtime consumer before
-  adding equipment, materials or UI. It must not reuse atmospheric valve,
-  heater, column or three-product assumptions.
+- The VDU skeleton is intentionally outside the player build menu. It has no
+  material simulation or saved tank-intent metadata yet. The next VDU work
+  must add atomic runtime transfer and persist intended material before it is
+  exposed to players. It must not reuse atmospheric valve, heater, column or
+  three-product assumptions.
 
 ## Next milestones
 
@@ -59,6 +63,8 @@ Headless tests cannot replace this check.
    product-value balance before expanding into broader manifolds.
 3. Consider the next constrained routing decision only after the header's
    manual selection and source ownership are proven understandable in play.
+4. After the interaction pass, implement atomic VDU material transfer only
+   when source/destination ownership and save persistence are ready.
 
 ## Task context rules
 

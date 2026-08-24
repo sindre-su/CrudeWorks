@@ -608,8 +608,30 @@
   Main integration and save-system suites passed; headless main launch, editor
   resource scan and `git diff --check` passed.
 
+## v0.21C — Vacuum Route Contract and Discovery
+
+- Added the non-menu VDU-301 equipment skeleton with one Heavy Residue input
+  and explicit VGO and Vacuum Residue outputs. It is deliberately not a
+  purchasable/player-placeable machine yet.
+- `ProcessNetwork` now discovers a bounded `vacuum_distillation` route when
+  intended tank material forms Heavy Residue tank → pump → VDU → VGO tank and
+  Vacuum Residue tank. Discovery is structural, so an empty source remains a
+  valid planned route.
+- Vacuum routes use their own compact payload (`vdu` and two outputs) plus the
+  common route envelope. They do not inherit atmospheric valve/heater/column
+  assumptions. Existing atmospheric consumers ignore them safely, and the
+  runtime makes no VDU material transfer yet.
+- Focused tests cover discovery, stable identity, empty-source intent,
+  wrong-feed rejection, missing pump/VDU/output invalidation, mixed route
+  families and no-op runtime handling. Existing generic saves remain valid.
+- Validation: all six regression suites passed; headless main launch, editor
+  resource scan and `git diff --check` passed.
+- Known deliberate gap: intended tank material is currently runtime discovery
+  metadata, not persisted save data. Do not expose VDU construction or atomic
+  VDU processing until that metadata and transaction state are saved.
+
 ## Next Best Work
 
-- Add VDU discovery only after defining its typed route contract and an atomic
-  material-transfer path. Keep the deferred hands-on 1280×720 interaction
-  pass independent of that architecture work.
+- Implement atomic VDU material transfer only after persisting intended tank
+  material and defining source/output state ownership. Keep the deferred
+  hands-on 1280×720 interaction pass independent of that architecture work.
