@@ -172,8 +172,8 @@ func _input(event: InputEvent) -> void:
 		if not active:
 			return
 		match event.keycode:
-			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9:
-				var index := int(event.keycode) - int(KEY_1)
+			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9, KEY_0:
+				var index := 9 if event.keycode == KEY_0 else int(event.keycode) - int(KEY_1)
 				if index < Catalog.ORDER.size():
 					selected_type = Catalog.ORDER[index]
 				mode = "place"
@@ -553,9 +553,11 @@ func _rebuild_ghost() -> void:
 	ghost_material.emission_enabled = true
 	ghost_body.material_override = ghost_material
 	ghost.add_child(ghost_body)
-	for port_data in Catalog.port_definitions(selected_type):
+	var ports: Array[Dictionary] = Catalog.port_definitions(selected_type)
+	for port_data in ports:
 		_add_ghost_port(port_data)
-	_add_flow_direction_marker(size)
+	if not ports.is_empty():
+		_add_flow_direction_marker(size)
 	ghost.visible = active and mode == "place"
 	add_child(ghost)
 

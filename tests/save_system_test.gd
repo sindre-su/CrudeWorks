@@ -330,6 +330,7 @@ func _test_vacuum_intent_and_processing_round_trip() -> void:
 		["vacuum_distillation", Vector3(-2.0, 2.76, 27.0), 0, 3],
 		["tank", Vector3(5.0, 1.96, 22.0), 0, 4],
 		["tank", Vector3(5.0, 1.96, 27.0), 0, 5],
+		["power_unit", Vector3(-10.0, 1.36, 17.0), 0, 6],
 	]:
 		_expect(source._create_built_unit(entry[0], entry[1], entry[2], entry[3], false)["ok"], "headless VDU fixture restores a buildable unit")
 	var model = source.built_refinery_model
@@ -339,6 +340,8 @@ func _test_vacuum_intent_and_processing_round_trip() -> void:
 	var vdu = source.build_controller.registered_unit_by_id("built_vacuum_distillation_3")
 	var vgo = source.build_controller.registered_unit_by_id("built_tank_4")
 	var residue = source.build_controller.registered_unit_by_id("built_tank_5")
+	var power = source.build_controller.registered_unit_by_id("built_power_unit_6")
+	_expect(power != null and is_equal_approx(model.power_status()["capacity_kw"], 200.0), "Power Unit participates in normal construction and raises saved refinery capacity")
 	source.build_controller._connect_ports(feed.get_port("output"), pump.get_port("input"))
 	source.build_controller._connect_ports(pump.get_port("output"), vdu.get_port("input"))
 	source.build_controller._connect_ports(vdu.get_port("vgo"), vgo.get_port("input"))
@@ -358,6 +361,7 @@ func _test_vacuum_intent_and_processing_round_trip() -> void:
 	_expect(restore_result["ok"], "fresh Main restores VDU construction and material-intent state")
 	var restored_model = restored.built_refinery_model
 	_expect(restored_model.network.filter_routes_by_process_type(restored_model.network.find_complete_routes(), "vacuum_distillation").size() == 1 and restored_model.equipment["built_tank_1"]["material_intent"] == "heavy" and restored_model.equipment["built_tank_4"]["material_intent"] == "vacuum_gas_oil" and restored_model.equipment["built_tank_5"]["material_intent"] == "vacuum_residue", "restored VDU routes preserve source and typed-output tank intent without a configuration menu")
+	_expect(restored.build_controller.registered_unit_by_id("built_power_unit_6") != null and is_equal_approx(restored_model.power_status()["capacity_kw"], 200.0), "Power Unit placement restores through the normal snapshot path without a separate utility save format")
 	_expect(is_equal_approx(restored_model.equipment["built_tank_1"]["volume_l"], 80.0) and is_equal_approx(restored_model.equipment["built_tank_4"]["volume_l"], 12.0) and is_equal_approx(restored_model.equipment["built_tank_5"]["volume_l"], 8.0), "VDU save/load preserves exact partial atomic inventory")
 	restored_model.equipment["built_pump_2"]["running"] = true
 	var mass_before := _total_tank_volume(restored)

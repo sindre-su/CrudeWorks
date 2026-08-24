@@ -52,6 +52,7 @@ func _run_tests() -> void:
 	_test_atomic_vacuum_distillation()
 	_test_vacuum_capacity_and_multi_stage_processing()
 	_test_player_facing_vacuum_operation_and_dispatch()
+	_test_electrical_power_capacity()
 
 
 func _test_invalid_network_cannot_start() -> void:
@@ -61,6 +62,42 @@ func _test_invalid_network_cannot_start() -> void:
 	_expect(not result["ok"], "pump cannot start on a disconnected network")
 	_expect(not model.equipment["pump"]["running"], "rejected start leaves pump stopped")
 	_expect(not result["message"].is_empty(), "rejected start gives actionable player feedback")
+
+
+func _test_electrical_power_capacity() -> void:
+	var model = _vacuum_model(100.0)
+	_add_power_atmospheric_route(model, "main")
+	model.commissioning_batch_available = false
+	model.commissioning_contract_complete = true
+	var base_power: Dictionary = model.power_status()
+	_expect(is_equal_approx(base_power["capacity_kw"], 100.0) and is_equal_approx(base_power["demand_kw"], 0.0), "Area 02 begins with a small fixed electrical capacity and no idle demand")
+	_expect(model.interact("main_pump")["ok"], "a normal atmospheric pump start remains within starter electrical capacity")
+	_expect(is_equal_approx(model.power_status()["demand_kw"], 25.0), "a running process pump contributes its stated electrical demand")
+	_expect(model.interact("vacuum_pump")["ok"], "VDU feed pump starts when its combined pump and VDU load fits capacity")
+	_expect(is_equal_approx(model.power_status()["demand_kw"], 75.0), "a running VDU train adds its auxiliary electrical load exactly once")
+	model.register_unit("treatment", "treatment", "HT-201")
+	_expect(model.interact("treatment")["ok"], "treatment can start at the exact remaining 25 kW capacity boundary")
+	_expect(is_equal_approx(model.power_status()["demand_kw"], 95.0) and model.power_status()["high_load"], "high electrical load is visible without interrupting a safe running refinery")
+	_add_power_atmospheric_route(model, "spare")
+	var blocked: Dictionary = model.interact("spare_pump")
+	_expect(not blocked["ok"] and "INSUFFICIENT POWER CAPACITY" in blocked["message"] and not model.equipment["spare_pump"]["running"], "insufficient power rejects a new pump start atomically without stopping existing equipment")
+	model.register_unit("power", "power_unit", "PU-101")
+	_expect(is_equal_approx(model.power_status()["capacity_kw"], 200.0), "each placed Power Unit adds one stackable capacity increment")
+	_expect(model.interact("spare_pump")["ok"] and model.equipment["spare_pump"]["running"], "added capacity unlocks the previously rejected electrical start")
+	_expect(not model.can_remove("power")["ok"], "an in-use Power Unit cannot be removed while remaining capacity would be overloaded")
+	model.interact("spare_pump")
+	model.interact("treatment")
+	model.interact("vacuum_pump")
+	model.interact("main_pump")
+	_expect(model.can_remove("power")["ok"], "an idle Power Unit can be removed safely after electrical demand is stopped")
+	var saved: Dictionary = model.save_state()
+	var restored = _vacuum_model(0.0)
+	_add_power_atmospheric_route(restored, "main")
+	restored.register_unit("treatment", "treatment", "HT-201")
+	_add_power_atmospheric_route(restored, "spare")
+	restored.register_unit("power", "power_unit", "PU-101")
+	restored.apply_saved_state(saved)
+	_expect(is_equal_approx(restored.power_status()["capacity_kw"], 200.0) and is_equal_approx(restored.power_status()["demand_kw"], 0.0), "Power Unit construction persists while load restores safely stopped")
 
 
 func _test_feed_allocation_foundation() -> void:
@@ -1310,6 +1347,24 @@ func _add_vacuum_route(model, source_id: String) -> void:
 	model.network.try_connect("vacuum_pump", "output", "vdu", "input")
 	model.network.try_connect("vdu", "vgo", "vgo_tank", "input")
 	model.network.try_connect("vdu", "vacuum_residue", "vacuum_residue_tank", "input")
+
+
+func _add_power_atmospheric_route(model, prefix: String) -> void:
+	model.register_unit(prefix + "_source", "tank", prefix + " T-201")
+	model.register_unit(prefix + "_pump", "pump", prefix + " P-201")
+	model.register_unit(prefix + "_valve", "valve", prefix + " V-201")
+	model.register_unit(prefix + "_heater", "heater", prefix + " H-201")
+	model.register_unit(prefix + "_column", "column", prefix + " D-201")
+	model.register_unit(prefix + "_light", "tank", prefix + " T-202")
+	model.register_unit(prefix + "_diesel", "tank", prefix + " T-203")
+	model.register_unit(prefix + "_heavy", "tank", prefix + " T-204")
+	model.network.try_connect(prefix + "_source", "output", prefix + "_pump", "input")
+	model.network.try_connect(prefix + "_pump", "output", prefix + "_valve", "input")
+	model.network.try_connect(prefix + "_valve", "output", prefix + "_heater", "input")
+	model.network.try_connect(prefix + "_heater", "output", prefix + "_column", "input")
+	model.network.try_connect(prefix + "_column", "light", prefix + "_light", "input")
+	model.network.try_connect(prefix + "_column", "diesel", prefix + "_diesel", "input")
+	model.network.try_connect(prefix + "_column", "heavy", prefix + "_heavy", "input")
 
 
 func _add_diesel_product_header(model, after_treatment := false) -> void:

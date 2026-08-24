@@ -1,7 +1,7 @@
 class_name EquipmentCatalog
 extends RefCounted
 
-const ORDER := ["tank", "pump", "heater", "column", "valve", "treatment", "header", "product_header", "vacuum_distillation"]
+const ORDER := ["tank", "pump", "heater", "column", "valve", "treatment", "header", "product_header", "vacuum_distillation", "power_unit"]
 
 
 static func definition(equipment_type: String) -> Dictionary:
@@ -105,6 +105,17 @@ static func definition(equipment_type: String) -> Dictionary:
 				"has_input": true,
 				"has_output": true,
 			}
+		"power_unit":
+			return {
+				"name": "Power Unit",
+				"tag": "PU-101",
+				"cost": 700,
+				"size": Vector3(2.8, 2.4, 2.4),
+				"color": Color("d5a63c"),
+				"shape": "box",
+				"has_input": false,
+				"has_output": false,
+			}
 	return {}
 
 
@@ -150,6 +161,8 @@ static func port_definitions(equipment_type: String) -> Array[Dictionary]:
 			_port("vgo", "output", "vacuum_gas_oil", "VGO", Vector3(-0.78, y, -z)),
 			_port("vacuum_residue", "output", "vacuum_residue", "VAKUUMREST", Vector3(0.78, y, -z)),
 		]
+	if equipment_type == "power_unit":
+		return []
 
 	var material_type := "any" if equipment_type in ["tank", "pump"] else "crude"
 	return [
@@ -224,5 +237,6 @@ static func menu_text() -> String:
 	var lines: Array[String] = []
 	for index in ORDER.size():
 		var data := definition(ORDER[index])
-		lines.append("%d  %-22s %4d kr" % [index + 1, data["name"], data["cost"]])
+		var key_label := "0" if index == 9 else str(index + 1)
+		lines.append("%s  %-22s %4d kr" % [key_label, data["name"], data["cost"]])
 	return "\n".join(lines)

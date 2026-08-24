@@ -93,7 +93,7 @@ func _run_test() -> void:
 	main._on_unit_interacted("area02_control")
 	_expect(main.control_station_visible and main.player.input_blocked and main.build_controller.input_blocked, "unlocked LS-201 opens a live modal and blocks field/build controls")
 	main._update_user_interface()
-	_expect("REFINERY OPERATIONS" in main.control_station_label.text and "Pumpe:" in main.control_station_label.text and "TIC:" in main.control_station_label.text, "operations console presents centralized train flow and temperature instruments")
+	_expect("REFINERY OPERATIONS" in main.control_station_label.text and "POWER:" in main.control_station_label.text and "Pumpe:" in main.control_station_label.text and "TIC:" in main.control_station_label.text, "operations console presents centralized power, flow and temperature instruments")
 	_expect("Feed: INGEN" in main.control_station_label.text and "STOPPED" in main.control_station_label.text, "idle operations console clearly shows an unloaded stopped train")
 	main._update_unit_statuses()
 	_expect("VENTER — RÅOLJE" in main.units["area02_control"].status_label.text, "idle LS-201 world status points the player toward the next delivery")

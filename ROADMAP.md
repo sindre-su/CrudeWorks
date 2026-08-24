@@ -2,7 +2,7 @@
 
 ## Current stable baseline
 
-Version 0.21 has a tested pilot plant and multiple independent player-built
+Version 0.22 has a tested pilot plant and multiple independent player-built
 Area 02 refinery trains. The built loop covers construction, directed pipes, valve troubleshooting,
 Sour-diesel treatment, physical diesel sampling, LAB-101, LS-201, 5/10/15 L/s
 pump targets and separate Naphtha/heavy-residue deliveries.
@@ -33,12 +33,16 @@ LS-201 Refinery Operations discovers every complete train from the same model
 state, provides an overview plus selected-train detail, and routes limited pump,
 temperature and flow commands through existing safety-checked APIs.
 
+Area 02 now has a small refinery-wide electrical-capacity layer. The starter
+utility provides 100 kW; buildable PU-101 Power Units add 100 kW each. Pumps,
+HT-201 and the VDU auxiliary load consume capacity only while operating, so new
+starts are rejected safely when the available capacity is insufficient.
+
 ## Current priority
 
-**Hands-on 1280 x 720 usability pass.** Verify VDU port aiming, the ninth
-build-menu slot, valve readability, secondary-product delivery layout and
-terminal feedback in the running game. Headless tests cannot replace this
-check.
+**Hands-on 1280 x 720 usability pass.** Verify VDU and PU-101 placement,
+build-menu readability, valve readability, power feedback and terminal layout
+in the running game. Headless tests cannot replace this check.
 
 ## Architecture preparation
 
@@ -56,8 +60,8 @@ check.
 
 ## Next milestones
 
-1. Hands-on 1280 x 720 interaction pass: verify port aiming, valve readability,
-   alarm visibility and modal layout in the running game.
+1. Hands-on 1280 x 720 interaction pass: verify port aiming, PU-101 placement,
+   valve readability, alarm visibility and modal layout in the running game.
 2. Playtest both header types, TIC-201/alarm readability and multi-train
    product-value balance before expanding into broader manifolds.
 3. Consider the next constrained routing decision only after the header's

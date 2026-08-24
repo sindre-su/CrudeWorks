@@ -24,6 +24,12 @@ const AUTO_OUTPUT_RESPONSE_PERCENT_PER_SECOND := 45.0
 const AUTO_ERROR_GAIN_PERCENT_PER_C := 0.9
 const VACUUM_GAS_OIL_YIELD := 0.60
 const VACUUM_RESIDUE_YIELD := 0.40
+const STARTER_POWER_CAPACITY_KW := 100.0
+const POWER_UNIT_CAPACITY_KW := 100.0
+const PUMP_POWER_KW := 25.0
+const TREATMENT_POWER_KW := 20.0
+const VACUUM_DISTILLATION_POWER_KW := 25.0
+const HIGH_POWER_LOAD_RATIO := 0.85
 const TANK_MATERIALS := ["", "crude", "light", "diesel", "heavy", "vacuum_gas_oil", "vacuum_residue"]
 
 var network
@@ -222,6 +228,8 @@ func register_unit(unit_id: String, equipment_type: String, display_name := "", 
 			state.merge({"running": false, "processed_total_l": 0.0})
 		"vacuum_distillation":
 			state["processed_total_l"] = 0.0
+		"power_unit":
+			pass
 		"header", "product_header":
 			pass
 	equipment[unit_id] = state
@@ -491,6 +499,10 @@ func can_remove(unit_id: String) -> Dictionary:
 		return _result(false, "Stopp %s før den fjernes." % state["name"])
 	if state["type"] == "treatment" and state["running"]:
 		return _result(false, "Stopp %s før den fjernes." % state["name"])
+	if state["type"] == "power_unit":
+		var power := power_status()
+		if power["demand_kw"] > power["capacity_kw"] - POWER_UNIT_CAPACITY_KW + 0.001:
+			return _result(false, "Stopp nok elektrisk utstyr før %s fjernes." % state["name"])
 	if _any_pump_running() or actual_flow_lps > 0.01:
 		return _result(false, "Stopp prosessen før utstyr fjernes.")
 	return _result(true, "%s kan fjernes." % state["name"])
@@ -518,6 +530,8 @@ func interact(unit_id: String, can_pay_for_crude := false) -> Dictionary:
 		"product_header":
 			return cycle_product_header(unit_id)
 		"vacuum_distillation":
+			return _result(true, inspect_unit(unit_id))
+		"power_unit":
 			return _result(true, inspect_unit(unit_id))
 		"tank":
 			if _is_route_source(unit_id) and equipment[unit_id]["volume_l"] <= 0.001:
@@ -568,6 +582,8 @@ func interaction_prompt(unit_id: String) -> String:
 			return "E — bytt produkttank (A → B → ingen)"
 		"vacuum_distillation":
 			return "E — inspiser VDU-301"
+		"power_unit":
+			return "E — inspiser strømkapasitet"
 		"column":
 			return "E — inspiser destillasjon"
 		"tank":
@@ -1556,6 +1572,11 @@ func inspect_unit(unit_id: String) -> String:
 			if not vacuum_route.is_empty():
 				details.append("%.0f L totalt prosessert." % state["processed_total_l"])
 			return "\n".join(details)
+		"power_unit":
+			var power := power_status()
+			return "%s: %.0f kW kapasitet. Refinery: %.0f / %.0f kW (%s)." % [
+				state["name"], POWER_UNIT_CAPACITY_KW, power["demand_kw"], power["capacity_kw"], power["status"],
+			]
 	return "Bygd prosessutstyr."
 
 
@@ -1603,6 +1624,9 @@ func unit_status(unit_id: String) -> String:
 			return _product_header_status(unit_id)
 		"vacuum_distillation":
 			return _vacuum_status(unit_id)
+		"power_unit":
+			var power := power_status()
+			return "+%.0f kW | %s" % [POWER_UNIT_CAPACITY_KW, power["status"]]
 	return "KLAR"
 
 
@@ -1915,7 +1939,12 @@ func operations_snapshot() -> Dictionary:
 			"feed_route": "A" if route.get("header_outlet", "") == "out_a" else ("B" if route.get("header_outlet", "") == "out_b" else "DIRECT"),
 			"products": products, "alarms": route_alarms,
 		})
-	return {"unlocked": commissioning_contract_complete, "trains": trains, "alarms": operator_alarms()}
+	return {
+		"unlocked": commissioning_contract_complete,
+		"trains": trains,
+		"alarms": operator_alarms(),
+		"power": power_status(),
+	}
 
 
 func remote_toggle_route_pump() -> Dictionary:
@@ -2191,6 +2220,9 @@ func _toggle_pump(unit_id: String) -> Dictionary:
 				return _result(false, "Velg denne ruten på Crude Feed Header før %s startes." % pump["name"])
 			if _resolved_route(route).is_empty():
 				return _result(false, "Velg produkttank på Product Routing Header før %s startes." % pump["name"])
+		var power_check := _can_start_electrical_load(unit_id)
+		if not power_check["ok"]:
+			return power_check
 		pump["running"] = true
 	last_status = "%s er %s." % [pump["name"], "startet" if pump["running"] else "stoppet"]
 	return _result(true, last_status)
@@ -2205,6 +2237,10 @@ func _toggle_valve(unit_id: String) -> Dictionary:
 
 func _toggle_treatment(unit_id: String) -> Dictionary:
 	var treatment: Dictionary = equipment[unit_id]
+	if not treatment["running"]:
+		var power_check := _can_start_electrical_load(unit_id)
+		if not power_check["ok"]:
+			return power_check
 	treatment["running"] = not treatment["running"]
 	last_status = "%s er %s." % [treatment["name"], "startet" if treatment["running"] else "stoppet"]
 	return _result(true, last_status)
@@ -2447,6 +2483,55 @@ func _any_pump_running() -> bool:
 		if state["type"] == "pump" and state["running"]:
 			return true
 	return false
+
+
+func power_status() -> Dictionary:
+	var units := 0
+	var demand_kw := 0.0
+	for state in equipment.values():
+		match String(state["type"]):
+			"power_unit":
+				units += 1
+			"pump":
+				if state["running"]:
+					demand_kw += PUMP_POWER_KW
+			"treatment":
+				if state["running"]:
+					demand_kw += TREATMENT_POWER_KW
+	for route in network.filter_routes_by_process_type(network.find_complete_routes(), ProcessNetworkScript.VACUUM_DISTILLATION):
+		var pump_id: String = network.get_route_primary_pump(route)
+		if equipment.has(pump_id) and equipment[pump_id]["running"]:
+			demand_kw += VACUUM_DISTILLATION_POWER_KW
+	var capacity_kw := STARTER_POWER_CAPACITY_KW + units * POWER_UNIT_CAPACITY_KW
+	var ratio := demand_kw / capacity_kw if capacity_kw > 0.0 else 1.0
+	return {
+		"capacity_kw": capacity_kw,
+		"demand_kw": demand_kw,
+		"available_kw": maxf(0.0, capacity_kw - demand_kw),
+		"power_units": units,
+		"high_load": ratio >= HIGH_POWER_LOAD_RATIO,
+		"status": "HØY BELASTNING" if ratio >= HIGH_POWER_LOAD_RATIO else "NORMAL",
+	}
+
+
+func _can_start_electrical_load(unit_id: String) -> Dictionary:
+	if not equipment.has(unit_id):
+		return _result(false, "Ukjent elektrisk utstyr.")
+	var requested_kw := 0.0
+	match String(equipment[unit_id]["type"]):
+		"pump":
+			requested_kw = PUMP_POWER_KW
+			var vacuum_route := _vacuum_route_for_unit(unit_id)
+			if not vacuum_route.is_empty() and vacuum_route["primary_pump"] == unit_id:
+				requested_kw += VACUUM_DISTILLATION_POWER_KW
+		"treatment":
+			requested_kw = TREATMENT_POWER_KW
+	var power := power_status()
+	if power["demand_kw"] + requested_kw > power["capacity_kw"] + 0.001:
+		return _result(false, "INSUFFICIENT POWER CAPACITY — %.0f kW ledig, %.0f kW kreves." % [
+			power["available_kw"], requested_kw,
+		])
+	return _result(true, "Strømkapasitet er tilgjengelig.")
 
 
 func _reset_report_tracking() -> void:

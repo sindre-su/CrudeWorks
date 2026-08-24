@@ -724,6 +724,8 @@ func _update_unit_statuses() -> void:
 			built_unit.set_active("RUTE " in built_refinery_model.unit_status(built_unit.unit_id), Color("75ddff"))
 		elif state.get("type", "") == "product_header":
 			built_unit.set_active("RUTE " in built_refinery_model.unit_status(built_unit.unit_id), Color("ffc975"))
+		elif state.get("type", "") == "power_unit":
+			built_unit.set_active(true, Color("f6cf63"))
 
 
 func _update_process_visuals(delta: float) -> void:
@@ -1286,6 +1288,10 @@ func _update_control_station_text() -> void:
 	if not trains.is_empty():
 		control_station_train_index = clampi(control_station_train_index, 0, trains.size() - 1)
 		var selected: Dictionary = trains[control_station_train_index]
+		var power: Dictionary = overview.get("power", {})
+		var power_line := "POWER: %.0f / %.0f kW — %s\n" % [
+			float(power.get("demand_kw", 0.0)), float(power.get("capacity_kw", 0.0)), String(power.get("status", "NORMAL")),
+		]
 		var overview_lines := ""
 		for train in trains:
 			overview_lines += "%s  %s  %d ALARMER\n" % [train["name"], train["status"], train["alarms"].size()]
@@ -1296,7 +1302,7 @@ func _update_control_station_text() -> void:
 		if not selected["alarms"].is_empty():
 			selected_alarms = "\n".join(selected["alarms"].map(func(alarm): return "%s — %s" % [alarm["equipment_name"], alarm["message"]]))
 		control_station_label.text = (
-			"REFINERY OPERATIONS\n\n" + overview_lines + "\n"
+			"REFINERY OPERATIONS\n\n" + power_line + overview_lines + "\n"
 			+ "VALGT TOG: %s — %s\n" % [selected["name"], selected["status"]]
 			+ "Feed: %s  |  %.0f/%.0f L  |  rute %s\n" % [selected["crude_name"], selected["source_volume_l"], selected["source_capacity_l"], selected["feed_route"]]
 			+ "Pumpe: %s  |  %.1f / %.1f L/s\n" % ["RUN" if selected["pump_running"] else "STOP", selected["actual_flow_lps"], selected["target_flow_lps"]]

@@ -463,7 +463,7 @@ static func _validate_equipment_state(state: Dictionary) -> Dictionary:
 		"vacuum_distillation":
 			if not _finite_number(state.get("processed_total_l")) or float(state["processed_total_l"]) < 0.0:
 				return _result(false, "En lagret vakuumdestillasjon har ugyldig prosessteller.")
-		"header", "product_header":
+		"header", "product_header", "power_unit":
 			pass
 		_:
 			return _result(false, "Ukjent lagret utstyrstype.")

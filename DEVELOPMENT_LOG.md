@@ -665,3 +665,18 @@
   own tank inventory.
 - Validation: all six Godot suites, headless main launch, editor resource scan
   and `git diff --check` passed. Human 1280×720 playtesting remains deferred.
+
+## v0.22.0 — Electrical Utilities and Refinery Capacity
+
+- Added the normal buildable PU-101 Power Unit. It contributes 100 kW to the
+  Area 02 starter capacity, has no process ports and persists through existing
+  construction/state snapshots without a new save schema.
+- Added derived electrical load checks to ordinary pump and diesel-treatment
+  start commands. A VDU feed pump correctly includes both pump and VDU load;
+  a rejected command changes no running equipment or material state.
+- Added a small `POWER` line to Refinery Operations and clear field inspection
+  for PU-101. High load is informative only; it does not invent a blackout or
+  override existing process safety rules.
+- Validation: focused building/refinery/Main/save coverage plus full Godot
+  regression, headless main/editor scans and `git diff --check` pending final
+  checkpoint. Deferred: human 1280×720 interaction test.

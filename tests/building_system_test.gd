@@ -54,6 +54,12 @@ func _run_tests() -> void:
 	controller._input(vdu_key)
 	_expect(controller.selected_type == "vacuum_distillation", "key 9 selects the player-buildable VDU-301")
 	_expect(_ghost_has_port(controller.ghost, "vgo") and _ghost_has_port(controller.ghost, "vacuum_residue"), "VDU preview exposes both readable secondary-product outlets")
+	var power_key := InputEventKey.new()
+	power_key.keycode = KEY_0
+	power_key.pressed = true
+	controller._input(power_key)
+	_expect(controller.selected_type == "power_unit", "key 0 selects the player-buildable PU-101")
+	_expect(controller.ghost.get_child_count() == 1, "Power Unit preview has no misleading process ports or flow arrow")
 	controller.set_build_mode(false)
 
 	_test_catalog()
@@ -69,7 +75,7 @@ func _run_tests() -> void:
 
 
 func _test_catalog() -> void:
-	_expect(Catalog.ORDER.size() == 9, "catalog exposes both headers and the player-buildable VDU alongside refinery machines")
+	_expect(Catalog.ORDER.size() == 10, "catalog exposes both headers, VDU and the Power Unit alongside refinery machines")
 	for equipment_type in Catalog.ORDER:
 		var definition: Dictionary = Catalog.definition(equipment_type)
 		_expect(not definition.is_empty(), "%s has a catalog definition" % equipment_type)
@@ -77,6 +83,7 @@ func _test_catalog() -> void:
 	var vdu_ports: Array[Dictionary] = Catalog.port_definitions("vacuum_distillation")
 	_expect(Catalog.ORDER.has("vacuum_distillation") and Catalog.definition("vacuum_distillation")["cost"] > Catalog.definition("pump")["cost"] and vdu_ports.size() == 3, "VDU is a purchasable normal build-menu unit with three typed ports")
 	_expect(Catalog.port_definition("vacuum_distillation", "input")["material"] == "heavy" and Catalog.port_definition("vacuum_distillation", "vgo")["material"] == "vacuum_gas_oil" and Catalog.port_definition("vacuum_distillation", "vacuum_residue")["material"] == "vacuum_residue", "VDU skeleton exposes typed Heavy Residue, VGO and Vacuum Residue ports")
+	_expect(Catalog.port_definitions("power_unit").is_empty() and Catalog.definition("power_unit")["cost"] > 0, "Power Unit is a normal purchasable utility with no process ports")
 
 
 func _ghost_has_port(ghost: Node3D, target_port_id: String) -> bool:
