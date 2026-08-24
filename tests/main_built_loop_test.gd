@@ -176,9 +176,22 @@ func _test_heavy_contract_through_main() -> void:
 	var heater = _unit(main, "built_heater_4")
 	var valve = _unit(main, "built_valve_3")
 	var pump = _unit(main, "built_pump_2")
+	main.player.secondary_interacted.emit(pump.unit_id)
+	_expect(
+		is_equal_approx(main.built_refinery_model.equipment[pump.unit_id]["flow_setpoint_lps"], 15.0)
+		and "mindre temperaturmargin" in main.notification_label.text,
+		"field Q interaction selects high flow and explains its quality tradeoff"
+	)
 	main.built_refinery_model.equipment[heater.unit_id]["temperature_c"] = 230.0
 	main.built_refinery_model.equipment[heater.unit_id]["setpoint_c"] = 230.0
 	main._on_unit_interacted("area02_control")
+	_expect("mål 15" in main.control_station_label.text and "HØY" in main.control_station_label.text, "LS-201 distinguishes actual flow from the selected high-flow target")
+	var remote_flow := InputEventKey.new()
+	remote_flow.keycode = KEY_3
+	remote_flow.pressed = true
+	main._unhandled_input(remote_flow)
+	main._unhandled_input(remote_flow)
+	_expect(is_equal_approx(main.built_refinery_model.equipment[pump.unit_id]["flow_setpoint_lps"], 10.0), "LS-201 key 3 cycles the same pump target back to normal flow")
 	var remote_start := InputEventKey.new()
 	remote_start.keycode = KEY_1
 	remote_start.pressed = true
@@ -221,14 +234,14 @@ func _test_heavy_contract_through_main() -> void:
 	main._on_unit_interacted("sales_terminal")
 	_expect(main.lab_analysis_panel.visible and main.player.input_blocked and main.build_controller.input_blocked, "LAB analysis opens a modal and blocks field/build controls")
 	_expect(main.discard_confirmation_time_left <= 0.0, "opening a lab analysis also cancels stale disposal intent")
-	_expect("P-001 — TUNG" in main.lab_analysis_panel.result_label.text and "TUNG LEVERANSE" in main.lab_analysis_panel.result_label.text and "Tung fraksjon" in main.lab_analysis_panel.result_label.text and "630 L / krav 600 L" in main.lab_analysis_panel.result_label.text and "GODKJENT" in main.lab_analysis_panel.result_label.text and "2 760 kr" in main.lab_analysis_panel.result_label.text, "Heavy lab separates diesel QC from the ordered heavy-fraction target")
+	_expect("P-001 — TUNG" in main.lab_analysis_panel.result_label.text and "TUNG LEVERANSE" in main.lab_analysis_panel.result_label.text and "Tung fraksjon" in main.lab_analysis_panel.result_label.text and "630 L / krav 600 L" in main.lab_analysis_panel.result_label.text and "flow 10.0 L/s" in main.lab_analysis_panel.result_label.text and "GODKJENT" in main.lab_analysis_panel.result_label.text and "2 760 kr" in main.lab_analysis_panel.result_label.text, "Heavy lab separates diesel QC and average flow from the ordered heavy-fraction target")
 	var dispatch_event := InputEventKey.new()
 	dispatch_event.keycode = KEY_ENTER
 	dispatch_event.pressed = true
 	main._unhandled_input(dispatch_event)
 	_expect(not main.lab_analysis_panel.visible and main.batch_report_visible, "approved lab Enter transitions directly to the existing batch report")
 	_expect(main.process_model.money == 3580, "Main Heavy sample dispatch credits 1 760 kr product revenue and one 1 000 kr bonus")
-	_expect("BATCH GODKJENT — TUNG LEVERANSE" in main.batch_report_label.text and "Tung fraksjon 630 / 600 L" in main.batch_report_label.text and "Kontraktbonus" in main.batch_report_label.text, "Heavy batch report records the fulfilled order and its bonus")
+	_expect("BATCH GODKJENT — TUNG LEVERANSE" in main.batch_report_label.text and "Tung fraksjon 630 / 600 L" in main.batch_report_label.text and "flow 10.0 L/s" in main.batch_report_label.text and "Kontraktbonus" in main.batch_report_label.text, "Heavy batch report records the fulfilled order, average flow and its bonus")
 	main._on_unit_interacted("sales_terminal")
 	_expect(main.process_model.money == 3580, "repeated Main terminal use cannot duplicate the Heavy bonus")
 	main.queue_free()

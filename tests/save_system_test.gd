@@ -90,6 +90,17 @@ func _test_schema_validation(snapshot: Dictionary, live_main) -> void:
 	fractional_serial["construction"]["units"][0]["serial"] = 1.5
 	_expect(not SaveSystemScript.validate_snapshot(fractional_serial)["ok"], "fractional serial numbers are rejected instead of truncated")
 
+	var invalid_flow := snapshot.duplicate(true)
+	invalid_flow["built_refinery"]["equipment"]["built_pump_2"]["flow_setpoint_lps"] = 12.0
+	_expect(not SaveSystemScript.validate_snapshot(invalid_flow)["ok"], "unknown saved pump flow targets are rejected")
+	var invalid_flow_history := snapshot.duplicate(true)
+	invalid_flow_history["built_refinery"]["report_flow_total"] = 999999.0
+	_expect(not SaveSystemScript.validate_snapshot(invalid_flow_history)["ok"], "impossible accumulated flow history is rejected")
+	var legacy_flow := snapshot.duplicate(true)
+	legacy_flow["built_refinery"].erase("report_flow_total")
+	legacy_flow["built_refinery"]["equipment"]["built_pump_2"].erase("flow_setpoint_lps")
+	_expect(SaveSystemScript.validate_snapshot(legacy_flow)["ok"], "older v2 saves without adjustable-flow fields remain valid")
+
 
 func _test_optional_delivery_report_validation(snapshot: Dictionary) -> void:
 	var with_order := snapshot.duplicate(true)
@@ -111,6 +122,7 @@ func _test_optional_delivery_report_validation(snapshot: Dictionary) -> void:
 		"diesel_quality_percent": 100.0,
 		"spec_status": "GODKJENT",
 		"average_temperature_c": 200.0,
+		"average_flow_lps": 10.0,
 		"product_revenue": 2800,
 		"delivery_bonus": 0,
 		"revenue": 2800,
@@ -118,6 +130,9 @@ func _test_optional_delivery_report_validation(snapshot: Dictionary) -> void:
 		"net_profit": 2500,
 	}
 	_expect(SaveSystemScript.validate_snapshot(with_order)["ok"], "current save accepts a catalog-derived delivery-order report")
+	var bad_report_flow := with_order.duplicate(true)
+	bad_report_flow["built_refinery"]["last_batch_report"]["average_flow_lps"] = 16.0
+	_expect(not SaveSystemScript.validate_snapshot(bad_report_flow)["ok"], "batch reports reject an impossible average flow")
 	var tampered := with_order.duplicate(true)
 	tampered["built_refinery"]["last_batch_report"]["delivery_product"] = "heavy"
 	_expect(not SaveSystemScript.validate_snapshot(tampered)["ok"], "save validation rejects a report whose ordered product was edited")
@@ -163,6 +178,10 @@ func _test_v1_to_v2_contract_migration(snapshot: Dictionary) -> void:
 	legacy["format_version"] = 1
 	legacy["built_refinery"].erase("active_contract_id")
 	legacy["built_refinery"].erase("active_contract_bonus_available")
+	legacy["built_refinery"].erase("report_flow_total")
+	for equipment_state in legacy["built_refinery"]["equipment"].values():
+		if equipment_state["type"] == "pump":
+			equipment_state.erase("flow_setpoint_lps")
 	var legacy_file := FileAccess.open(LEGACY_PATH, FileAccess.WRITE)
 	if legacy_file == null:
 		_expect(false, "legacy migration fixture can create its save file")
@@ -221,11 +240,13 @@ func _test_startup_continue(snapshot: Dictionary) -> void:
 
 
 func _test_main_round_trip(snapshot: Dictionary, source_main) -> void:
+	var restored_snapshot := snapshot.duplicate(true)
+	restored_snapshot["built_refinery"]["equipment"]["built_pump_2"]["flow_setpoint_lps"] = 15.0
 	var restored = MainScene.instantiate()
 	restored.persistence_enabled = false
 	root.add_child(restored)
 	await process_frame
-	var restore_result: Dictionary = restored._apply_snapshot(snapshot)
+	var restore_result: Dictionary = restored._apply_snapshot(restored_snapshot)
 	_expect(restore_result["ok"], "fresh Main restores a fully validated snapshot")
 	_expect(restored.process_model.money == source_main.process_model.money, "load replaces economy exactly without charging or refunding")
 	_expect(restored.build_serial_number == 8, "maximum build serial is restored")
@@ -234,6 +255,7 @@ func _test_main_round_trip(snapshot: Dictionary, source_main) -> void:
 	_expect(restored.build_controller.registered_unit_by_id("built_valve_3").rotation_quadrants == 2, "saved equipment rotation and port orientation are preserved")
 	_expect(restored.built_refinery_model.equipment["built_valve_3"]["open"], "manual valve state restores")
 	_expect(not restored.built_refinery_model.equipment["built_pump_2"]["running"] and is_equal_approx(restored.built_refinery_model.actual_flow_lps, 0.0), "all pumps and derived flow are stopped on load")
+	_expect(is_equal_approx(restored.built_refinery_model.equipment["built_pump_2"]["flow_setpoint_lps"], 15.0), "saved pump flow target restores while the pump remains stopped")
 	_expect(not restored.control_station_visible, "transient LS-201 panel state is never restored from a save")
 	_expect(not restored.lab_analysis_panel.visible and not restored.built_refinery_model.lab_dispatch_status().get("sample_current", false), "transient lab panel and sample authorization are never restored from a save")
 	_expect(restored.player.position.is_equal_approx(Vector3(-4.0, 0.1, 17.0)) and is_equal_approx(restored.player.rotation.y, 1.25), "valid player position and direction restore")
@@ -244,7 +266,7 @@ func _test_main_round_trip(snapshot: Dictionary, source_main) -> void:
 	_expect(is_equal_approx(_total_tank_volume(restored), _total_tank_volume(source_main)), "mid-batch total mass is identical after load")
 	var money_before_repeat: int = restored.process_model.money
 	var units_before_repeat: int = restored.build_controller.registered_units.size()
-	_expect(not restored._apply_snapshot(snapshot)["ok"], "a save cannot be applied over a populated live refinery")
+	_expect(not restored._apply_snapshot(restored_snapshot)["ok"], "a save cannot be applied over a populated live refinery")
 	_expect(restored.process_model.money == money_before_repeat and restored.build_controller.registered_units.size() == units_before_repeat, "rejected repeated load is atomic and leaves live state unchanged")
 
 	var restored_pump = restored.build_controller.registered_unit_by_id("built_pump_2")
@@ -255,8 +277,9 @@ func _test_main_round_trip(snapshot: Dictionary, source_main) -> void:
 	restored.built_refinery_model.interact(restored_pump.unit_id)
 	restored._on_unit_interacted("sales_terminal")
 	var report: Dictionary = restored.built_refinery_model.last_batch_report
-	_expect(report["crude_processed_l"] > 580.0 and report["crude_processed_l"] < 590.0, "report tracking continues from the pre-save partial batch")
+	_expect(report["crude_processed_l"] > 760.0 and report["crude_processed_l"] < 765.0, "report tracking continues from the pre-save partial batch at the restored 15 L/s target")
 	_expect(report["crude_cost"] == int(round(report["crude_processed_l"] * 0.3)), "paid crude cost accumulator survives the round trip")
+	_expect(report["average_flow_lps"] > 13.4 and report["average_flow_lps"] < 13.5, "report preserves legacy 10 L/s history and weights new 15 L/s operation by processed volume")
 
 	restored.batch_report_visible = false
 	restored.player.set_input_blocked(false)

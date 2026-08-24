@@ -41,7 +41,10 @@ func show_analysis(result: Dictionary) -> void:
 		+ "Prøve        %s — %s\n" % [analysis["sample_id"], String(analysis["contract_name"]).to_upper()]
 		+ "Diesel i tank %6.0f L / minimum %.0f L\n" % [analysis["volume_l"], analysis["required_volume_l"]]
 		+ "Kvalitet     %6.1f %% / krav ≥ %.1f %%\n" % [analysis["quality_percent"], analysis["required_quality_percent"]]
-		+ "Prosess      %6.0f °C snitt / %.0f °C mål\n\n" % [analysis["average_temperature_c"], analysis["ideal_temperature_c"]]
+		+ "Prosess snitt %5.0f °C | flow %.1f L/s  (mål %.0f °C)\n\n" % [
+			analysis["average_temperature_c"], analysis.get("average_flow_lps", 10.0),
+			analysis["ideal_temperature_c"],
+		]
 		+ "ORDRE        %s\n" % analysis.get("order_name", analysis["contract_name"])
 		+ "%s  %6.0f L / krav %.0f L\n" % [
 			analysis.get("delivery_product_name", "Diesel"),

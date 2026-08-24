@@ -9,6 +9,8 @@ const TANK_CAPACITY_L := 1000.0
 const BATCH_VOLUME_L := 1000.0
 const CRUDE_BATCH_COST := 300
 const PUMP_CAPACITY_LPS := 10.0
+const PUMP_MAX_FLOW_LPS := 15.0
+const PUMP_FLOW_STEPS := [5.0, 10.0, 15.0]
 const DIESEL_TARGET_L := 200.0
 const APPROVED_QUALITY_PERCENT := 90.0
 const DIESEL_PRICE_PER_L := 8.0
@@ -26,6 +28,7 @@ var actual_flow_lps := 0.0
 var last_status := "Bygg og valider prosesslinjen."
 var _report_crude_processed_l := 0.0
 var _report_temperature_total := 0.0
+var _report_flow_total := 0.0
 var _report_crude_cost := 0.0
 var _remote_guard_pump_id := ""
 var _remote_guard_trip_message := ""
@@ -49,6 +52,8 @@ func save_state() -> Dictionary:
 					saved_state[field] = state[field]
 			"valve":
 				saved_state["open"] = state["open"]
+			"pump":
+				saved_state["flow_setpoint_lps"] = state["flow_setpoint_lps"]
 			"heater":
 				saved_state["setpoint_c"] = state["setpoint_c"]
 				saved_state["temperature_c"] = state["temperature_c"]
@@ -65,6 +70,7 @@ func save_state() -> Dictionary:
 		"product_inventory_revision": product_inventory_revision,
 		"report_crude_processed_l": _report_crude_processed_l,
 		"report_temperature_total": _report_temperature_total,
+		"report_flow_total": _report_flow_total,
 		"report_crude_cost": _report_crude_cost,
 		"equipment": saved_equipment,
 	}
@@ -80,6 +86,10 @@ func apply_saved_state(state: Dictionary) -> void:
 	product_inventory_revision = int(state["product_inventory_revision"])
 	_report_crude_processed_l = float(state["report_crude_processed_l"])
 	_report_temperature_total = float(state["report_temperature_total"])
+	_report_flow_total = float(state.get(
+		"report_flow_total",
+		_report_crude_processed_l * PUMP_CAPACITY_LPS
+	))
 	_report_crude_cost = float(state["report_crude_cost"])
 	var saved_equipment: Dictionary = state["equipment"]
 	for unit_id in equipment:
@@ -92,6 +102,10 @@ func apply_saved_state(state: Dictionary) -> void:
 			"pump":
 				target["running"] = false
 				target["actual_flow_lps"] = 0.0
+				target["flow_setpoint_lps"] = float(saved.get(
+					"flow_setpoint_lps",
+					PUMP_CAPACITY_LPS
+				))
 			"valve":
 				target["open"] = bool(saved["open"])
 			"heater":
@@ -128,7 +142,8 @@ func register_unit(unit_id: String, equipment_type: String, display_name := "") 
 		"pump":
 			state.merge({
 				"running": false,
-				"max_flow_lps": PUMP_CAPACITY_LPS,
+				"max_flow_lps": PUMP_MAX_FLOW_LPS,
+				"flow_setpoint_lps": PUMP_CAPACITY_LPS,
 				"actual_flow_lps": 0.0,
 			})
 		"valve":
@@ -203,7 +218,11 @@ func interaction_prompt(unit_id: String) -> String:
 	var state: Dictionary = equipment[unit_id]
 	match state["type"]:
 		"pump":
-			return "E — start/stopp bygd pumpe"
+			return (
+				"E — start/stopp pumpe  |  Q — endre flowmål (%.0f L/s)" % state["flow_setpoint_lps"]
+				if commissioning_contract_complete
+				else "E — start/stopp bygd pumpe"
+			)
 		"valve":
 			return "E — %s %s" % [
 				"steng" if state["open"] else "åpne",
@@ -384,7 +403,11 @@ func tick(delta: float) -> void:
 	var heater: Dictionary = equipment[route["heater"]]
 	var profile := contract_definition()
 	if pump["running"] and _remote_guard_pump_id == route["pump"]:
-		var safe_range := CrudeCatalog.approved_temperature_range(active_contract_id)
+		var safe_range := CrudeCatalog.approved_temperature_range(
+			active_contract_id,
+			pump["flow_setpoint_lps"],
+			PUMP_CAPACITY_LPS
+		)
 		if (
 			not CrudeCatalog.is_valid(active_contract_id)
 			or heater["temperature_c"] < safe_range.x
@@ -406,11 +429,15 @@ func tick(delta: float) -> void:
 			)
 		elif not CrudeCatalog.is_valid(active_contract_id):
 			last_status = "Råoljebatchen mangler gyldig type. Last en sikker lagring eller tøm batchen."
-		elif heater["temperature_c"] < CrudeCatalog.approved_temperature_range(active_contract_id).x:
+		elif heater["temperature_c"] < CrudeCatalog.approved_temperature_range(
+			active_contract_id, pump["flow_setpoint_lps"], PUMP_CAPACITY_LPS
+		).x:
 			last_status = "%s lastet. Varm anlegget til ca. %.0f °C før pumpen startes." % [
 				profile["short_name"], profile["ideal_temperature_c"],
 			]
-		elif heater["temperature_c"] > CrudeCatalog.approved_temperature_range(active_contract_id).y:
+		elif heater["temperature_c"] > CrudeCatalog.approved_temperature_range(
+			active_contract_id, pump["flow_setpoint_lps"], PUMP_CAPACITY_LPS
+		).y:
 			last_status = "Temperaturen er for høy. Senk %s mot ca. %.0f °C." % [
 				profile["short_name"], profile["ideal_temperature_c"],
 			]
@@ -431,7 +458,7 @@ func tick(delta: float) -> void:
 		return
 
 	var fractions := fractions_for_temperature(heater["temperature_c"], active_contract_id)
-	var safe_input := minf(source["volume_l"], pump["max_flow_lps"] * delta)
+	var safe_input := minf(source["volume_l"], pump["flow_setpoint_lps"] * delta)
 	var products: Dictionary = route["products"]
 	for product_name in ["light", "diesel", "heavy"]:
 		var tank: Dictionary = equipment[products[product_name]]
@@ -445,8 +472,15 @@ func tick(delta: float) -> void:
 		last_status = _full_product_message(route)
 		return
 
-	_process_input(route, safe_input, fractions, heater["temperature_c"])
-	actual_flow_lps = safe_input / delta if delta > 0.0 else 0.0
+	var process_flow_lps := safe_input / delta if delta > 0.0 else 0.0
+	_process_input(
+		route,
+		safe_input,
+		fractions,
+		heater["temperature_c"],
+		pump["flow_setpoint_lps"]
+	)
+	actual_flow_lps = process_flow_lps
 	pump["actual_flow_lps"] = actual_flow_lps
 	last_status = "Produksjon %.1f L/s ved %.0f °C." % [actual_flow_lps, heater["temperature_c"]]
 	if source["volume_l"] <= 0.001:
@@ -477,8 +511,10 @@ func take_diesel_sample(unit_id: String) -> Dictionary:
 		return _result(false, "Ingen diesel tilgjengelig for prøvetaking.")
 	_sample_sequence += 1
 	var average_temperature := 0.0
+	var average_flow := 0.0
 	if _report_crude_processed_l > 0.001:
 		average_temperature = _report_temperature_total / _report_crude_processed_l
+		average_flow = _report_flow_total / _report_crude_processed_l
 	_diesel_sample = {
 		"sample_id": "P-%03d" % _sample_sequence,
 		"revision": product_inventory_revision,
@@ -487,6 +523,7 @@ func take_diesel_sample(unit_id: String) -> Dictionary:
 		"volume_l": float(tank["volume_l"]),
 		"quality_percent": float(tank["quality_percent"]),
 		"average_temperature_c": average_temperature,
+		"average_flow_lps": average_flow,
 		"analyzed": false,
 	}
 	last_status = "Prøve %s tatt. Lever den til LAB / SALG." % _diesel_sample["sample_id"]
@@ -567,8 +604,10 @@ func sell_diesel() -> Dictionary:
 	var target_l := float(profile["diesel_target_l"])
 	var minimum_quality := float(profile["minimum_quality_percent"])
 	var average_temperature := 0.0
+	var average_flow := 0.0
 	if _report_crude_processed_l > 0.001:
 		average_temperature = _report_temperature_total / _report_crude_processed_l
+		average_flow = _report_flow_total / _report_crude_processed_l
 	if _report_crude_processed_l <= 0.001 and total_volume <= 0.001:
 		return _result(false, "Ingen diesel produsert. Varm anlegget og start prosessen.")
 	if total_volume < target_l:
@@ -620,6 +659,7 @@ func sell_diesel() -> Dictionary:
 		"diesel_quality_percent": quality,
 		"spec_status": "GODKJENT",
 		"average_temperature_c": average_temperature,
+		"average_flow_lps": average_flow,
 		"product_revenue": product_revenue,
 		"delivery_bonus": delivery_bonus,
 		"revenue": revenue,
@@ -698,11 +738,14 @@ func objective_text() -> String:
 		)
 	if pump["running"] and not valve["open"]:
 		return prefix + "finn årsaken til LOW FLOW"
-	if heater["temperature_c"] < CrudeCatalog.approved_temperature_range(active_contract_id).x and source["volume_l"] > 0.001:
+	var approved_range := CrudeCatalog.approved_temperature_range(
+		active_contract_id, pump["flow_setpoint_lps"], PUMP_CAPACITY_LPS
+	)
+	if heater["temperature_c"] < approved_range.x and source["volume_l"] > 0.001:
 		return prefix + "varm %s til ca. %.0f °C" % [
 			profile["short_name"], profile["ideal_temperature_c"],
 		]
-	if heater["temperature_c"] > CrudeCatalog.approved_temperature_range(active_contract_id).y and source["volume_l"] > 0.001:
+	if heater["temperature_c"] > approved_range.y and source["volume_l"] > 0.001:
 		return prefix + "%ssenk %s mot ca. %.0f °C" % [
 			"stopp pumpen og " if pump["running"] else "",
 			profile["short_name"], profile["ideal_temperature_c"],
@@ -780,9 +823,10 @@ func inspect_unit(unit_id: String) -> String:
 					details += ", kvalitet %.1f %%" % state["quality_percent"]
 			return details + "."
 		"pump":
-			return "Pumpe %s, faktisk flow %.1f L/s." % [
+			return "Pumpe %s, faktisk flow %.1f L/s, flowmål %.0f L/s." % [
 				"PÅ" if state["running"] else "AV",
 				state["actual_flow_lps"],
+				state["flow_setpoint_lps"],
 			]
 		"valve":
 			return "Manuell ventil %s." % ("ÅPEN" if state["open"] else "STENGT")
@@ -814,7 +858,11 @@ func unit_status(unit_id: String) -> String:
 					status += "  |  %.1f %%" % state["quality_percent"]
 			return status
 		"pump":
-			return "%s  |  %.1f L/s" % ["PÅ" if state["running"] else "AV", state["actual_flow_lps"]]
+			return "%s  |  faktisk %.1f L/s  |  mål %.0f" % [
+				"PÅ" if state["running"] else "AV",
+				state["actual_flow_lps"],
+				state["flow_setpoint_lps"],
+			]
 		"valve":
 			return "ÅPEN" if state["open"] else "STENGT"
 		"heater":
@@ -849,10 +897,13 @@ func summary_text() -> String:
 			]
 	var crude_text := "INGEN"
 	var target_text := "—"
+	var pump_target_text := "—"
 	if CrudeCatalog.is_valid(active_contract_id):
 		var profile := contract_definition()
 		crude_text = profile["short_name"]
 		target_text = "%.0f °C" % profile["ideal_temperature_c"]
+	if validation["valid"]:
+		pump_target_text = "%.0f L/s" % equipment[validation["route"]["pump"]]["flow_setpoint_lps"]
 	return (
 		"CRUDEWORKS — BYGGEOMRÅDE 02\n\n"
 		+ "Nettverk      %s\n" % (
@@ -861,7 +912,7 @@ func summary_text() -> String:
 			else ("FLERE LINJER" if network.find_complete_routes().size() > 1 else "UFULLSTENDIG")
 		)
 		+ "Råolje        %s  |  mål %s\n" % [crude_text, target_text]
-		+ "Flow          %6.1f L/s\n" % actual_flow_lps
+		+ "Flow          %6.1f L/s  |  pumpemål %s\n" % [actual_flow_lps, pump_target_text]
 		+ "Diesel        %6.0f L\n" % diesel_volume
 		+ "Kvalitet      %s\n\n" % quality_text
 		+ last_status
@@ -897,6 +948,13 @@ func control_snapshot() -> Dictionary:
 	var diesel_tank: Dictionary = equipment[products["diesel"]]
 	var heavy_tank: Dictionary = equipment[products["heavy"]]
 	var profile := contract_definition()
+	var safe_range := (
+		CrudeCatalog.approved_temperature_range(
+			active_contract_id, pump["flow_setpoint_lps"], PUMP_CAPACITY_LPS
+		)
+		if CrudeCatalog.is_valid(active_contract_id)
+		else Vector2.ZERO
+	)
 	return {
 		"unlocked": true,
 		"valid": true,
@@ -908,7 +966,10 @@ func control_snapshot() -> Dictionary:
 		"heater_temperature_c": float(heater["temperature_c"]),
 		"heater_setpoint_c": float(heater["setpoint_c"]),
 		"pump_running": bool(pump["running"]),
+		"pump_flow_setpoint_lps": float(pump["flow_setpoint_lps"]),
 		"actual_flow_lps": float(pump["actual_flow_lps"]),
+		"approved_temperature_min_c": safe_range.x,
+		"approved_temperature_max_c": safe_range.y,
 		"valve_open": bool(valve["open"]),
 		"light_volume_l": float(light_tank["volume_l"]),
 		"diesel_volume_l": float(diesel_tank["volume_l"]),
@@ -940,7 +1001,9 @@ func remote_toggle_route_pump() -> Dictionary:
 		return _result(false, "START SPERRET — LT-201 viser tom kildetank.")
 	var heater: Dictionary = equipment[route["heater"]]
 	var profile := contract_definition()
-	var safe_range := CrudeCatalog.approved_temperature_range(active_contract_id)
+	var safe_range := CrudeCatalog.approved_temperature_range(
+		active_contract_id, pump["flow_setpoint_lps"], PUMP_CAPACITY_LPS
+	)
 	if heater["temperature_c"] < safe_range.x or heater["temperature_c"] > safe_range.y:
 		last_status = "START SPERRET — TT-201 %.0f °C; %s krever %.0f–%.0f °C." % [
 			heater["temperature_c"], profile["short_name"], safe_range.x, safe_range.y,
@@ -963,6 +1026,43 @@ func remote_cycle_route_heater() -> Dictionary:
 	if result["ok"]:
 		_remote_guard_trip_message = ""
 	return result
+
+
+func remote_cycle_route_pump_flow() -> Dictionary:
+	if not commissioning_contract_complete:
+		return _result(false, "Flowstyring låses opp etter første godkjente Område 02-batch.")
+	var validation: Dictionary = network.validate_configuration()
+	if not validation["valid"]:
+		return _result(false, validation["message"])
+	return cycle_pump_flow(validation["route"]["pump"])
+
+
+func cycle_pump_flow(unit_id: String) -> Dictionary:
+	if not commissioning_contract_complete:
+		return _result(false, "Flowstyring låses opp etter første godkjente Område 02-batch.")
+	if not equipment.has(unit_id) or equipment[unit_id]["type"] != "pump":
+		return _result(false, "Flowmålet kan bare endres på en pumpe.")
+	var validation: Dictionary = network.validate_configuration()
+	if not validation["valid"]:
+		return _result(false, validation["message"])
+	if validation["route"]["pump"] != unit_id:
+		return _result(false, "%s er ikke del av den komplette prosesslinjen." % equipment[unit_id]["name"])
+	var pump: Dictionary = equipment[unit_id]
+	var current_index := PUMP_FLOW_STEPS.find(float(pump["flow_setpoint_lps"]))
+	if current_index < 0:
+		current_index = 1
+	pump["flow_setpoint_lps"] = PUMP_FLOW_STEPS[(current_index + 1) % PUMP_FLOW_STEPS.size()]
+	var mode_text := flow_mode_text(pump["flow_setpoint_lps"]).to_lower()
+	last_status = "Flowmål %.0f L/s — %s." % [pump["flow_setpoint_lps"], mode_text]
+	return _result(true, last_status)
+
+
+func flow_mode_text(flow_lps: float) -> String:
+	if flow_lps <= 5.1:
+		return "LAV — STØRRE TEMPERATURMARGIN"
+	if flow_lps >= 14.9:
+		return "HØY — MINDRE TEMPERATURMARGIN"
+	return "NORMAL"
 
 
 func active_connection_keys() -> Dictionary:
@@ -1057,7 +1157,9 @@ func _process_alarm_text() -> String:
 	var state: Dictionary = equipment[route["heater"]]
 	if not CrudeCatalog.is_valid(active_contract_id):
 		return ""
-	var approved_range := CrudeCatalog.approved_temperature_range(active_contract_id)
+	var approved_range := CrudeCatalog.approved_temperature_range(
+		active_contract_id, pump["flow_setpoint_lps"], PUMP_CAPACITY_LPS
+	)
 	var alarms: Array[String] = []
 	if state["temperature_c"] > approved_range.y:
 		alarms.append("HIGH TEMPERATURE — dieselkvalitet i fare")
@@ -1068,13 +1170,20 @@ func _process_alarm_text() -> String:
 	return "\n".join(alarms)
 
 
-func _process_input(route: Dictionary, input_l: float, fractions: Vector3, temperature_c: float) -> void:
+func _process_input(
+	route: Dictionary,
+	input_l: float,
+	fractions: Vector3,
+	temperature_c: float,
+	flow_lps: float
+) -> void:
 	var source: Dictionary = equipment[route["source"]]
 	_report_crude_processed_l += input_l
 	_report_temperature_total += input_l * temperature_c
+	_report_flow_total += input_l * flow_lps
 	_report_crude_cost += input_l * float(source.get("crude_cost_per_l", 0.0))
 	source["volume_l"] -= input_l
-	var diesel_quality := _diesel_quality(temperature_c, PUMP_CAPACITY_LPS)
+	var diesel_quality := _diesel_quality(temperature_c, flow_lps)
 	for product_name in ["light", "diesel", "heavy"]:
 		var product_l := input_l * _fraction_value(fractions, product_name)
 		var tank: Dictionary = equipment[route["products"][product_name]]
@@ -1187,6 +1296,7 @@ func _any_pump_running() -> bool:
 func _reset_report_tracking() -> void:
 	_report_crude_processed_l = 0.0
 	_report_temperature_total = 0.0
+	_report_flow_total = 0.0
 	_report_crude_cost = 0.0
 
 
@@ -1284,6 +1394,7 @@ func _build_sample_analysis() -> Dictionary:
 	var required_volume := float(profile["diesel_target_l"])
 	var required_quality := float(profile["minimum_quality_percent"])
 	var average_temperature := float(_diesel_sample["average_temperature_c"])
+	var average_flow := float(_diesel_sample.get("average_flow_lps", PUMP_CAPACITY_LPS))
 	var route: Dictionary = network.find_complete_route()
 	var delivery := _delivery_terms(route, String(_diesel_sample["contract_id"]))
 	var delivery_ready := float(delivery["volume_l"]) + 0.01 >= float(delivery["target_l"])
@@ -1321,6 +1432,8 @@ func _build_sample_analysis() -> Dictionary:
 				absf(temperature_difference),
 				"over" if temperature_difference > 0.0 else "under",
 			]
+			if average_flow > PUMP_CAPACITY_LPS + 0.1:
+				quality_deviation += " ved høy flow; høy flow reduserte temperaturmarginen"
 		status = "OFF-SPEC"
 		deviation = quality_deviation + "." if missing.is_empty() and off_route_message.is_empty() else deviation + " " + quality_deviation + "."
 	var product_revenue := int(round(volume_l * float(profile["diesel_price_per_l"])))
@@ -1347,6 +1460,7 @@ func _build_sample_analysis() -> Dictionary:
 		"quality_percent": quality,
 		"required_quality_percent": required_quality,
 		"average_temperature_c": average_temperature,
+		"average_flow_lps": average_flow,
 		"ideal_temperature_c": float(profile["ideal_temperature_c"]),
 		"status": status,
 		"deviation": deviation,

@@ -4,6 +4,7 @@ extends RefCounted
 const EquipmentCatalogScript = preload("res://scripts/equipment_catalog.gd")
 const ProcessNetworkScript = preload("res://scripts/process_network.gd")
 const CrudeCatalogScript = preload("res://scripts/crude_contract_catalog.gd")
+const BuiltRefineryModelScript = preload("res://scripts/built_refinery_model.gd")
 
 const FORMAT_VERSION := 2
 const DEFAULT_PATH := "user://crudeworks_save.json"
@@ -316,6 +317,17 @@ static func _validate_built_refinery(state: Dictionary, unit_types: Dictionary) 
 	for field in ["report_crude_processed_l", "report_temperature_total", "report_crude_cost"]:
 		if not _finite_number(state.get(field)) or float(state[field]) < 0.0:
 			return _result(false, "Ugyldig prosessverdi: %s." % field)
+	if state.has("report_flow_total"):
+		var processed_l := float(state["report_crude_processed_l"])
+		var minimum_flow_total := processed_l * float(BuiltRefineryModelScript.PUMP_FLOW_STEPS[0])
+		var maximum_flow_total := processed_l * BuiltRefineryModelScript.PUMP_MAX_FLOW_LPS
+		if (
+			not _finite_number(state["report_flow_total"])
+			or float(state["report_flow_total"]) < 0.0
+			or float(state["report_flow_total"]) < minimum_flow_total - 0.1
+			or float(state["report_flow_total"]) > maximum_flow_total + 0.1
+		):
+			return _result(false, "Ugyldig prosessverdi: report_flow_total.")
 	if typeof(state.get("last_batch_report")) != TYPE_DICTIONARY:
 		return _result(false, "Siste batchrapport har ugyldig format.")
 	if not _validate_report(state["last_batch_report"]):
@@ -347,6 +359,7 @@ static func _validate_built_refinery(state: Dictionary, unit_types: Dictionary) 
 	var has_tracking := (
 		float(state["report_crude_processed_l"]) > 0.001
 		or float(state["report_temperature_total"]) > 0.001
+		or float(state.get("report_flow_total", 0.0)) > 0.001
 		or float(state["report_crude_cost"]) > 0.001
 	)
 	if (has_material or has_tracking) and active_contract_id.is_empty():
@@ -373,7 +386,12 @@ static func _validate_equipment_state(state: Dictionary) -> Dictionary:
 			if not _in_range(state["crude_cost_per_l"], 0.0, 1000.0):
 				return _result(false, "En lagret tank har ugyldig råoljekost.")
 		"pump":
-			pass
+			if state.has("flow_setpoint_lps"):
+				if not _finite_number(state["flow_setpoint_lps"]):
+					return _result(false, "En lagret pumpe har ugyldig flowmål.")
+				var flow_setpoint := float(state["flow_setpoint_lps"])
+				if not BuiltRefineryModelScript.PUMP_FLOW_STEPS.has(flow_setpoint):
+					return _result(false, "En lagret pumpe har ukjent flowmål.")
 		"valve":
 			if typeof(state.get("open")) != TYPE_BOOL:
 				return _result(false, "En lagret ventil har ugyldig status.")
@@ -405,6 +423,12 @@ static func _validate_report(report: Dictionary) -> bool:
 		if float(report[field]) < 0.0:
 			return false
 	if not _in_range(report["diesel_quality_percent"], 0.0, 100.0):
+		return false
+	if report.has("average_flow_lps") and not _in_range(
+		report["average_flow_lps"],
+		float(BuiltRefineryModelScript.PUMP_FLOW_STEPS[0]),
+		BuiltRefineryModelScript.PUMP_MAX_FLOW_LPS
+	):
 		return false
 	if typeof(report.get("contract_id")) != TYPE_STRING or not CrudeCatalogScript.is_valid(report["contract_id"]):
 		return false

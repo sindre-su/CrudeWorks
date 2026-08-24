@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.10 – leveringsordrer og produktmål**
+**Prototypeversjon: 0.11 – justerbar pumpeflow**
 
 En liten 3D-prototype der spilleren driver et forenklet pilotraffineri. Første mål
 er å behandle 1 000 liter råolje og selge minst 200 liter diesel med 90 % eller
@@ -41,6 +41,8 @@ Den første komplette «vertical slice»-en inneholder:
   delvise utvidelser er fortsatt tillatt
 - to tydelige leveringsordrer: Standard prioriterer diesel, mens Tung krever
   både tungfraksjon og en godkjent dieselprøve
+- tre pumpetrinn på 5, 10 og 15 L/s etter godkjent oppstart, med en synlig
+  avveiing mellom produksjonstid og temperaturmargin
 
 Alle objekter er foreløpig bygget av Godots primitive 3D-former. Det gjør at vi
 kan teste gameplay før vi bruker tid på modeller og grafikk.
@@ -74,7 +76,7 @@ forsinkelse, og en stille prosess-snapshot tas omtrent hvert tolvte sekund. Ved
 neste oppstart kan spilleren velge `Enter` for å fortsette eller `N` for nytt
 spill. Nytt spill må bekreftes og den gamle filen arkiveres før den erstattes.
 
-Bygninger, rotasjon, rør, tankinnhold, temperatur, kvalitet, penger og progresjon
+Bygninger, rotasjon, rør, tankinnhold, temperatur, valgt pumpeflow, kvalitet, penger og progresjon
 gjenopprettes. Pumper og faktisk flow stoppes alltid ved lasting, slik at ingen
 prosess starter uten en bevisst handling. En siste kjent god backup beholdes, og
 ukjent eller skadet lagringsdata avvises før den kan endre spillet.
@@ -91,10 +93,11 @@ batch som Standard-råolje uten å gi en ny batch eller bonus.
 | Space | Hopp |
 | Ctrl eller C | Hold inne for å huke |
 | E | Bruk eller inspiser utstyr |
+| Q | Område 02: endre flowmål på pumpen du ser på |
 | R | Pilot: ny batch. Område 02: trykk to ganger for sikker produkttømming |
 | Enter | Send godkjent labbatch eller lukk batchrapport |
 | 1 / 2 | Velg Standard eller Tung råolje når leveransevinduet er åpent |
-| 1 / 2 | LS-201: start/stopp pumpe eller endre temperaturmål |
+| 1 / 2 / 3 | LS-201: start/stopp pumpe, endre temperaturmål eller flowmål |
 | Esc | Frigjør musepekeren |
 
 ### Byggemodus
@@ -170,7 +173,7 @@ Den første Område 02-oppstarten bruker fortsatt den enkle direktekontrollen ve
 `E` på dieseltanken i den aktive linjen for å ta en prøve. Før analyse vises
 produktkvaliteten som `IKKE ANALYSERT`; en prøve fra en frakoblet tank kan ikke
 brukes. Ved `LAB / SALG` viser LAB-101 faktisk dieselvolum og kvalitet mot
-kontraktskravet, samt gjennomsnittlig prosesstemperatur mot målet.
+kontraktskravet, samt gjennomsnittlig prosesstemperatur og pumpeflow.
 For Tung viser analysen dieselkvaliteten og tungfraksjonsmålet som to separate
 krav. En god dieselprøve kan derfor være godkjent selv om ordren ennå trenger
 mer tungfraksjon; videre produksjon krever deretter en ny prøve.
@@ -181,12 +184,21 @@ lasting gjør prøven ugyldig, og save/load krever alltid en ny fysisk prøve.
 
 Etter den første godkjente Område 02-leveransen låses **LS-201** opp på
 vestsiden av byggeområdet. Lokalstasjonen viser den aktive linjens kildenivå,
-temperatur, faktisk flow, dieselvolum, pumpe og ventil i sanntid. Tast `1`
-fjernstarter eller stopper pumpen, mens `2` endrer varmeenhetens temperaturmål.
+temperatur, faktisk flow, flowmål, dieselvolum, pumpe og ventil i sanntid. Tast
+`1` fjernstarter eller stopper pumpen, `2` endrer varmeenhetens temperaturmål,
+og `3` velger neste pumpetrinn.
 Ved fjernstart sperres en kald eller overopphetet prosess, og temperaturvernet
 stopper pumpen før mer materiale behandles dersom temperaturen forlater det
 godkjente området. Ventilen er fortsatt feltbetjent, slik at `LOW FLOW` må
 diagnostiseres og rettes ute i anlegget.
+
+Etter den første godkjente Område 02-leveransen kan spilleren også se på den
+bygde pumpen og trykke `Q` for å sykle `10 → 15 → 5 → 10 L/s`. Lav flow bruker
+lengre tid, men tåler et større temperaturavvik. Høy flow produserer raskere,
+men krever at temperaturen holdes nærmere råoljens mål. LAB-101 og
+batchrapporten viser volumvektet gjennomsnittsflow, slik at et kvalitetsavvik kan
+knyttes til både temperatur og valgt kapasitet. Første oppstart og pilotanlegget
+beholder fast 10 L/s.
 
 Område 02 driver foreløpig én komplett prosesslinje. Spilleren kan plassere
 reserveutstyr og forberede en delvis utvidelse, men den siste koblingen som

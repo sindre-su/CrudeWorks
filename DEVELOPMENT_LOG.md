@@ -14,8 +14,8 @@
 
 ## Current Roadmap
 
-1. **First flow/capacity choice** — add one controllable throughput tradeoff
-   with a clear quality consequence after sampling makes quality playable.
+1. **First flow/capacity choice — complete** — the built pump now offers a
+   controllable throughput tradeoff with a measured quality consequence.
 2. **Maintenance troubleshooting** — introduce one recoverable equipment fault
    that can be diagnosed from existing alarm and instrument feedback.
 3. **New treatment decision** — consider one actual treatment unit and Sour
@@ -152,6 +152,21 @@
     successful sale consumes only the three authorized active-route tanks.
   - New optional report fields are catalog-validated while older format-2
     reports without those fields remain valid.
+- Flow/capacity milestone completed:
+  - Added persistent 5, 10 and 15 L/s flow targets to the active built pump,
+    unlocked only after the first Area 02 commissioning delivery.
+  - Kept `E` as pump start/stop and added contextual field `Q` plus LS-201 key
+    `3`; both use the same model-owned cycle and reject spare/invalid routes.
+  - Preserved 10 L/s as the existing baseline. Low flow widens and high flow
+    narrows the temperature margin used by quality, alarms and the LS-201
+    remote-start permissive.
+  - Kept actual flow distinct from target flow during closed-valve LOW FLOW,
+    full-tank backpressure and source depletion.
+  - Added volume-weighted average flow to physical samples, LAB-101 results and
+    batch reports without revealing quality before analysis.
+  - Persisted the pump target and accumulated report history while still
+    restoring every pump stopped. Older format-2 states default safely to
+    10 L/s without a format bump.
 
 ## Validation
 
@@ -255,6 +270,18 @@
   - main scene and full editor/resource scan loaded successfully with no
     project parser, resource, runtime, or script errors. Only the known
     sandboxed macOS certificate/editor-settings warnings remain.
+- Final adjustable-flow regression with isolated log files:
+  - pilot/economy: 23 checks passed;
+  - process network: 87 checks passed;
+  - building system: 41 checks passed;
+  - built refinery: 196 checks passed;
+  - Main integration: 70 checks passed;
+  - save system: 57 checks passed;
+  - main scene and full editor/resource scan loaded successfully with no
+    project parser, resource, runtime, or script errors.
+  - Git checkpoint creation was attempted after validation, but the execution
+    environment rejected repository writes because its approval/usage limit
+    had been reached. All verified changes remain saved in the working tree.
 - Final Milestone 5 regression with isolated log files:
   - pilot/economy: 23 checks passed;
   - process network: 59 checks passed;
@@ -331,7 +358,7 @@
 
 ## Current Stable State
 
-- Version 0.10.0 is verified stable after the delivery-order milestone.
+- Version 0.11.0 is verified stable after the adjustable-flow milestone.
 - The original pilot loop and full player-built loop both pass regression.
 - The first valid Area 02 sale now has a durable achievement and informative
   result, while later paid batches remain repeatable.
@@ -350,6 +377,9 @@
   loop instead of exposing all quality data and selling in one interaction.
 - Standard and Heavy now produce different player goals: a Heavy batch can have
   good diesel quality while still needing more ordered heavy fraction.
+- After manual commissioning, the player can choose slower, normal or faster
+  pumping and see the capacity-versus-quality-margin consequence in both field
+  instruments and laboratory evidence.
 
 ## Known Issues
 
@@ -392,8 +422,12 @@
   validation blocks ambiguous imported topology.
 - Delivery orders remain derived from the batch-locked crude contract. A new
   independent order market was deliberately avoided until two orders prove fun.
+- Adjustable flow was added to the existing pump rather than introducing pump
+  tiers or a second simulation owner. The quality calculation uses the selected
+  operating point, so long frames and capacity-limited transfers cannot
+  accidentally improve product quality.
 
 ## Next Best Action
 
-- Add one player-controlled flow setting with an explicit throughput-versus-
-  quality consequence, visible on FT-201 and protected by the existing LAB.
+- Add one recoverable maintenance fault that can be diagnosed with the existing
+  LOW FLOW, tank, valve and LS-201 feedback before adding another crude type.

@@ -75,13 +75,18 @@ static func fractions_for_temperature(contract_id: String, temperature_c: float)
 	return Vector3(0.55, 0.20, 0.25)
 
 
-static func approved_temperature_range(contract_id: String) -> Vector2:
+static func approved_temperature_range(
+	contract_id: String,
+	flow_lps := 10.0,
+	rated_flow_lps := 10.0
+) -> Vector2:
 	var data := definition(contract_id)
 	if data.is_empty():
 		return Vector2.ZERO
+	var flow_factor := _quality_flow_factor(flow_lps, rated_flow_lps)
 	var maximum_deviation := (
 		(100.0 - float(data["minimum_quality_percent"]))
-		/ float(data["quality_penalty_per_degree"])
+		/ (float(data["quality_penalty_per_degree"]) * flow_factor)
 	)
 	return Vector2(
 		float(data["ideal_temperature_c"]) - maximum_deviation,
@@ -89,13 +94,19 @@ static func approved_temperature_range(contract_id: String) -> Vector2:
 	)
 
 
-static func diesel_quality(contract_id: String, temperature_c: float, flow_lps: float, maximum_flow_lps: float) -> float:
+static func diesel_quality(contract_id: String, temperature_c: float, flow_lps: float, rated_flow_lps: float) -> float:
 	var data := definition(contract_id)
 	if data.is_empty():
 		return 0.0
 	var temperature_penalty := (
 		absf(temperature_c - float(data["ideal_temperature_c"]))
 		* float(data["quality_penalty_per_degree"])
+		* _quality_flow_factor(flow_lps, rated_flow_lps)
 	)
-	var flow_penalty := maxf(flow_lps - maximum_flow_lps, 0.0) * 2.0
-	return clampf(100.0 - temperature_penalty - flow_penalty, 0.0, 100.0)
+	return clampf(100.0 - temperature_penalty, 0.0, 100.0)
+
+
+static func _quality_flow_factor(flow_lps: float, rated_flow_lps: float) -> float:
+	if rated_flow_lps <= 0.001:
+		return 1.0
+	return clampf(flow_lps / rated_flow_lps, 0.75, 1.5)

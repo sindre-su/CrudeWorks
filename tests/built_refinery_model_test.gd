@@ -36,6 +36,7 @@ func _run_tests() -> void:
 	_test_distinct_delivery_order_definitions()
 	_test_heavy_delivery_order_volume_gate()
 	_test_off_route_product_blocks_dispatch()
+	_test_adjustable_pump_flow_and_quality_tradeoff()
 
 
 func _test_invalid_network_cannot_start() -> void:
@@ -82,6 +83,92 @@ func _test_manual_valve_low_flow() -> void:
 	model.interact("valve")
 	model.tick(1.0)
 	_expect(is_equal_approx(model.equipment["source"]["volume_l"], 890.0), "reopening the valve resumes the still-running route without duplication")
+
+
+func _test_adjustable_pump_flow_and_quality_tradeoff() -> void:
+	var locked = _complete_model()
+	_expect(
+		not locked.cycle_pump_flow("pump")["ok"]
+		and is_equal_approx(locked.equipment["pump"]["flow_setpoint_lps"], 10.0),
+		"flow selection stays locked through the first Area 02 commissioning batch"
+	)
+
+	var losses := []
+	var qualities := []
+	for desired_flow in [5.0, 10.0, 15.0]:
+		var model = _complete_model()
+		model.commissioning_batch_available = false
+		model.commissioning_contract_complete = true
+		while not is_equal_approx(model.equipment["pump"]["flow_setpoint_lps"], desired_flow):
+			_expect(model.cycle_pump_flow("pump")["ok"], "active route pump accepts the next flow setting")
+		model.load_crude_batch("source", true, "standard")
+		model.equipment["heater"]["temperature_c"] = 208.0
+		model.equipment["heater"]["setpoint_c"] = 208.0
+		model.interact("valve")
+		model.interact("pump")
+		var mass_before := _total_tank_volume(model)
+		model.tick(10.0)
+		losses.append(1000.0 - float(model.equipment["source"]["volume_l"]))
+		qualities.append(float(model.equipment["diesel_tank"]["quality_percent"]))
+		_expect(is_equal_approx(_total_tank_volume(model), mass_before), "every selectable flow setting remains mass conserving")
+		_expect(is_equal_approx(model.actual_flow_lps, desired_flow), "actual flow matches the selected pump target when capacity is available")
+	_expect(
+		is_equal_approx(losses[0], 50.0) and is_equal_approx(losses[1], 100.0) and is_equal_approx(losses[2], 150.0),
+		"5, 10 and 15 L/s create visibly different production capacity"
+	)
+	_expect(
+		qualities[0] > qualities[1] and qualities[1] > qualities[2] and qualities[2] < 90.0,
+		"higher flow narrows the quality margin at the same off-target temperature"
+	)
+	var long_tick = _complete_model()
+	long_tick.commissioning_batch_available = false
+	long_tick.commissioning_contract_complete = true
+	long_tick.cycle_pump_flow("pump")
+	long_tick.load_crude_batch("source", true, "standard")
+	long_tick.equipment["heater"]["temperature_c"] = 208.0
+	long_tick.equipment["heater"]["setpoint_c"] = 208.0
+	long_tick.interact("valve")
+	long_tick.interact("pump")
+	long_tick.tick(100.0)
+	_expect(
+		is_equal_approx(long_tick.equipment["diesel_tank"]["quality_percent"], qualities[2]),
+		"a long final tick cannot improve high-flow quality by averaging source depletion over idle time"
+	)
+
+	var mixed = _complete_model()
+	mixed.commissioning_batch_available = false
+	mixed.commissioning_contract_complete = true
+	mixed.load_crude_batch("source", true, "standard")
+	mixed.equipment["heater"]["temperature_c"] = 200.0
+	mixed.equipment["heater"]["setpoint_c"] = 200.0
+	mixed.interact("valve")
+	mixed.cycle_pump_flow("pump")
+	mixed.interact("pump")
+	mixed.tick(10.0)
+	mixed.cycle_pump_flow("pump")
+	mixed.tick(10.0)
+	mixed.interact("pump")
+	var sample: Dictionary = mixed.take_diesel_sample("diesel_tank")
+	var analysis: Dictionary = mixed.analyze_diesel_sample()
+	_expect(sample["ok"] and analysis["ok"] and is_equal_approx(analysis["average_flow_lps"], 12.5), "lab records volume-weighted flow after a live 15-to-5 L/s change")
+	_expect(is_equal_approx(analysis["quality_percent"], 100.0), "high flow remains viable when temperature is held exactly on target")
+	var saved: Dictionary = mixed.save_state()
+	_expect(
+		is_equal_approx(saved["equipment"]["pump"]["flow_setpoint_lps"], 5.0)
+		and is_equal_approx(saved["report_flow_total"], 2500.0),
+		"pump target and accumulated flow history are persisted explicitly"
+	)
+
+	var guarded = _complete_model()
+	guarded.commissioning_batch_available = false
+	guarded.commissioning_contract_complete = true
+	guarded.load_crude_batch("source", true, "standard")
+	guarded.equipment["heater"]["temperature_c"] = 208.0
+	guarded.equipment["heater"]["setpoint_c"] = 200.0
+	guarded.cycle_pump_flow("pump")
+	_expect(not guarded.remote_toggle_route_pump()["ok"], "LS-201 blocks a high-flow remote start outside the narrower safe range")
+	guarded.remote_cycle_route_pump_flow()
+	_expect(guarded.remote_toggle_route_pump()["ok"], "lowering the flow target widens the guard range without bypassing the process model")
 
 
 func _test_mass_conserving_ideal_batch_and_sale() -> void:

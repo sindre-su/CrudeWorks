@@ -121,7 +121,7 @@ func _process(delta: float) -> void:
 	build_controller.set_available_money(process_model.money)
 	build_controller.set_process_flow(
 		built_refinery_model.actual_flow_lps,
-		BuiltRefineryModelScript.PUMP_CAPACITY_LPS,
+		BuiltRefineryModelScript.PUMP_MAX_FLOW_LPS,
 		built_refinery_model.active_connection_keys()
 	)
 	if process_model.objective_complete and not build_mode_unlocked:
@@ -274,6 +274,7 @@ func _build_player() -> void:
 	player.rotation_degrees.y = -18.0
 	add_child(player)
 	player.interacted.connect(_on_unit_interacted)
+	player.secondary_interacted.connect(_on_secondary_unit_interacted)
 	player.reset_requested.connect(_on_reset_requested)
 
 
@@ -499,7 +500,11 @@ func _update_user_interface() -> void:
 		hud_label.text = built_refinery_model.summary_text() + "\nPenger        %d kr" % process_model.money
 		objective_label.text = built_refinery_model.objective_text()
 		alarm_label.text = built_refinery_model.alarm_text()
-		help_label.text = "WASD  Gå\nMus  Se\nShift  Løp\nSpace  Hopp\nCtrl / C  Huk\nE  Bruk utstyr\nB  Byggemodus\nR x2  Sikker produkttømming\nEsc  Frigjør mus"
+		help_label.text = (
+			"WASD  Gå\nMus  Se\nShift  Løp\nSpace  Hopp\nCtrl / C  Huk\nE  Bruk utstyr"
+			+ ("\nQ  Endre pumpeflow" if built_refinery_model.commissioning_contract_complete else "")
+			+ "\nB  Byggemodus\nR x2  Sikker produkttømming\nEsc  Frigjør mus"
+		)
 	else:
 		hud_label.text = (
 			"CRUDEWORKS — PILOTANLEGG\n\n"
@@ -807,6 +812,16 @@ func _on_unit_interacted(unit_id: String) -> void:
 		_schedule_save()
 
 
+func _on_secondary_unit_interacted(unit_id: String) -> void:
+	if not unit_id.begins_with("built_"):
+		return
+	var before: Dictionary = built_refinery_model.save_state()
+	var result: Dictionary = built_refinery_model.cycle_pump_flow(unit_id)
+	_show_notification(result["message"])
+	if result["ok"] and before != built_refinery_model.save_state():
+		_schedule_save()
+
+
 func _on_reset_requested() -> void:
 	if process_model.objective_complete or build_mode_unlocked:
 		if batch_report_visible:
@@ -918,10 +933,11 @@ func _show_batch_report(report: Dictionary, completed_now: bool) -> void:
 	var order_name: String = String(report.get("order_name", short_name))
 	var heading := "OMRÅDE 02 — OPPSTART GODKJENT" if completed_now else "BATCH GODKJENT — %s" % order_name
 	var temperature: float = report.get("average_temperature_c", 0.0)
+	var average_flow: float = report.get("average_flow_lps", BuiltRefineryModelScript.PUMP_CAPACITY_LPS)
 	var process_result := "Prosessdata ikke tilgjengelig"
 	if temperature > 0.0:
-		process_result = "%.0f °C snitt / %.0f °C mål" % [
-			temperature, float(report.get("ideal_temperature_c", 200.0)),
+		process_result = "snitt %.0f / mål %.0f °C  |  flow %.1f L/s" % [
+			temperature, float(report.get("ideal_temperature_c", 200.0)), average_flow,
 		]
 	var net_profit: int = report["net_profit"]
 	var net_text := "+%d kr" % net_profit if net_profit >= 0 else "%d kr" % net_profit
@@ -1098,6 +1114,8 @@ func _handle_control_station_input(event: InputEventKey) -> void:
 		result = built_refinery_model.remote_toggle_route_pump()
 	elif event.keycode == KEY_2:
 		result = built_refinery_model.remote_cycle_route_heater()
+	elif event.keycode == KEY_3:
+		result = built_refinery_model.remote_cycle_route_pump_flow()
 	else:
 		return
 	control_station_feedback = result["message"]
@@ -1118,8 +1136,9 @@ func _update_control_station_text() -> void:
 		return
 	var temperature_state := "VENTER"
 	if snapshot["ideal_temperature_c"] > 0.0:
-		var safe_range := CrudeCatalogScript.approved_temperature_range(
-			built_refinery_model.active_contract_id
+		var safe_range := Vector2(
+			float(snapshot["approved_temperature_min_c"]),
+			float(snapshot["approved_temperature_max_c"])
 		)
 		if snapshot["heater_temperature_c"] < safe_range.x:
 			temperature_state = "LAV"
@@ -1165,16 +1184,18 @@ func _update_control_station_text() -> void:
 		+ "TT-201 TEMPERATUR      %4.0f °C / mål %3.0f °C    %s\n" % [
 			snapshot["heater_temperature_c"], snapshot["heater_setpoint_c"], temperature_state,
 		]
-		+ "FT-201 FLOW            %5.1f L/s             %s\n" % [
-			snapshot["actual_flow_lps"], flow_state,
+		+ "FT-201 FLOW            %5.1f L/s | mål %2.0f   %s\n" % [
+			snapshot["actual_flow_lps"], snapshot["pump_flow_setpoint_lps"], flow_state,
 		]
 		+ "LT-202 NIVÅ, DIESEL    %4.0f / 1000 L\n\n" % snapshot["diesel_volume_l"]
 		+ "P-201 PUMPE            %s\n" % ("PÅ" if snapshot["pump_running"] else "AV")
+		+ "FLOWMODUS              %s\n" % built_refinery_model.flow_mode_text(snapshot["pump_flow_setpoint_lps"])
 		+ "V-201 VENTIL           %s — FELT\n" % ("ÅPEN" if snapshot["valve_open"] else "STENGT")
 		+ "TEMPERATURVERN         %s\n\n" % guard_state
 		+ process_message + "\n\n"
 		+ "1 — start/stopp pumpe\n"
 		+ "2 — endre temperaturmål\n"
+		+ "3 — endre flowmål\n"
 		+ "Ventilen betjenes ute i anlegget\n"
 		+ "Esc — lukk"
 	)
