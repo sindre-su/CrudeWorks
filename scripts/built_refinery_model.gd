@@ -62,6 +62,9 @@ var _remote_guard_trip_message := ""
 var _diesel_sample: Dictionary = {}
 var _sample_sequence := 0
 var pending_intake_delivery := {"contract_id": "", "volume_l": 0.0}
+var first_intake_received := false
+var first_atmospheric_production := false
+var first_physical_dispatch_completed := false
 
 
 func _init(p_network = null) -> void:
@@ -113,7 +116,12 @@ func save_state() -> Dictionary:
 		"report_crude_cost": _report_crude_cost,
 		"feed_allocations": _save_feed_allocations(),
 		"product_allocations": _save_product_allocations(),
-		"site_logistics": {"pending_intake_delivery": pending_intake_delivery.duplicate(true)},
+		"site_logistics": {
+			"pending_intake_delivery": pending_intake_delivery.duplicate(true),
+			"first_intake_received": first_intake_received,
+			"first_atmospheric_production": first_atmospheric_production,
+			"first_physical_dispatch_completed": first_physical_dispatch_completed,
+		},
 		"equipment": saved_equipment,
 	}
 
@@ -135,7 +143,11 @@ func apply_saved_state(state: Dictionary) -> void:
 	_report_crude_cost = float(state["report_crude_cost"])
 	_restore_feed_allocations(state.get("feed_allocations", {}))
 	_restore_product_allocations(state.get("product_allocations", {}))
-	pending_intake_delivery = state.get("site_logistics", {}).get("pending_intake_delivery", {"contract_id": "", "volume_l": 0.0}).duplicate(true)
+	var logistics: Dictionary = state.get("site_logistics", {})
+	pending_intake_delivery = logistics.get("pending_intake_delivery", {"contract_id": "", "volume_l": 0.0}).duplicate(true)
+	first_intake_received = bool(logistics.get("first_intake_received", false))
+	first_atmospheric_production = bool(logistics.get("first_atmospheric_production", false))
+	first_physical_dispatch_completed = bool(logistics.get("first_physical_dispatch_completed", false))
 	var saved_equipment: Dictionary = state["equipment"]
 	for unit_id in equipment:
 		var target: Dictionary = equipment[unit_id]
@@ -183,6 +195,7 @@ func apply_saved_state(state: Dictionary) -> void:
 				target["processed_total_l"] = float(saved.get("processed_total_l", 0.0))
 			"vacuum_distillation", "catalytic_cracking":
 				target["processed_total_l"] = float(saved.get("processed_total_l", 0.0))
+	_infer_legacy_progression()
 	actual_flow_lps = 0.0
 	_remote_guard_pump_id = ""
 	_remote_guard_trip_message = ""
@@ -249,6 +262,20 @@ func register_unit(unit_id: String, equipment_type: String, display_name := "", 
 			pass
 	equipment[unit_id] = state
 	return {"ok": true, "message": "%s er klar for tilkobling." % state["name"]}
+
+
+func _infer_legacy_progression() -> void:
+	# v0.25 saves did not store onboarding milestones. Existing refinery state is
+	# sufficient to recognize established players without taking away equipment.
+	for state in equipment.values():
+		if state["type"] == "column" and float(state.get("processed_total_l", 0.0)) > 0.001:
+			first_atmospheric_production = true
+		if state["type"] == "tank" and String(state.get("contents", "")) in ["crude", "light", "diesel", "heavy"]:
+			first_intake_received = true
+		if state["type"] in ["treatment", "vacuum_distillation", "catalytic_cracking"]:
+			first_atmospheric_production = true
+	if successful_sales > 0:
+		first_physical_dispatch_completed = true
 
 
 func unregister_unit(unit_id: String) -> void:
@@ -833,6 +860,9 @@ func load_crude_batch(
 	_reset_route_report(tank)
 	tank["volume_l"] = BATCH_VOLUME_L
 	tank["contents"] = "crude"
+	# Internal fixtures and older integrations can still seed a valid source tank
+	# through this canonical model API; it represents the same onboarding state.
+	first_intake_received = true
 	if String(tank.get("material_intent", "")).is_empty():
 		tank["material_intent"] = "crude"
 		network.set_tank_intended_material(unit_id, "crude", false)
@@ -880,6 +910,7 @@ func receive_intake_delivery(contract_id: String, paid_batch := false) -> Dictio
 	else:
 		return _result(false, "%s koster %d kr." % [CrudeCatalog.definition(selected_id)["display_name"], contract_cost(selected_id)])
 	pending_intake_delivery = {"contract_id": selected_id, "volume_l": BATCH_VOLUME_L}
+	first_intake_received = true
 	var profile := CrudeCatalog.definition(selected_id)
 	last_status = "CI-101 mottok 1 000 L %s. Pump leveransen til en råoljetank." % profile["short_name"]
 	return {"ok": true, "message": last_status, "charge": charge, "contract_id": selected_id}
@@ -1067,6 +1098,7 @@ func _tick_atmospheric_route(route: Dictionary, delta: float) -> void:
 		heater["temperature_c"],
 		pump["flow_setpoint_lps"], contract_id
 	)
+	first_atmospheric_production = true
 	var condition_failed_now := _degrade_pump_condition(pump, safe_input)
 	var fault_triggered_now := _update_pump_fault_progress(pump, safe_input)
 	actual_flow_lps += process_flow_lps
@@ -1543,6 +1575,9 @@ func dispatch_product_from_terminal(dispatch_id: String, tank_id: String) -> Dic
 	var result: Dictionary = sell_diesel() if product_id == "diesel" else dispatch_product_from_tank(tank_id)
 	if not result["ok"]:
 		pump["running"] = true
+	else:
+		result["first_physical_dispatch_now"] = not first_physical_dispatch_completed
+		first_physical_dispatch_completed = true
 	return result
 
 
@@ -1704,6 +1739,12 @@ func objective_text() -> String:
 	var prefix := "MÅL 02: "
 	if commissioning_contract_complete:
 		prefix = "OMRÅDE 02 FULLFØRT — Frivillig: "
+	if not first_intake_received:
+		return prefix + "motta gratis Standard råolje ved CI-101"
+	if float(pending_intake_delivery.get("volume_l", 0.0)) > 0.001:
+		if network.crude_intake_routes().is_empty():
+			return prefix + "bygg CI-101 → pumpe → råoljetank"
+		return prefix + "start inntakspumpen og fyll råoljetanken"
 	var validation: Dictionary = network.validate_configuration()
 	if not validation["valid"]:
 		if network.atmospheric_routes().size() > 1:
@@ -1718,11 +1759,7 @@ func objective_text() -> String:
 	var valve: Dictionary = equipment[route["valve"]]
 	var profile := contract_definition()
 	if source["volume_l"] <= 0.001 and product_volume_l() <= 0.001:
-		return (
-			prefix + "velg Standard eller Tung råolje ved kildetanken"
-			if commissioning_contract_complete
-			else prefix + "avslutt bygging og last gratis oppstartsbatch"
-		)
+		return prefix + "motta neste råoljeleveranse ved CI-101"
 	if pump["running"] and not valve["open"]:
 		return prefix + "finn årsaken til LOW FLOW"
 	var approved_range := CrudeCatalog.approved_temperature_range(

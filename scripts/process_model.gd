@@ -199,6 +199,22 @@ func diesel_is_approved() -> bool:
 	)
 
 
+func pilot_objective_text() -> String:
+	if objective_complete:
+		return "PILOT FULLFØRT — GÅ TIL OMRÅDE 02"
+	if heater_setpoint_c < 199.0:
+		return "MÅL 01: SETT H-101 TIL 200 °C"
+	if heater_temperature_c < 195.0:
+		return "MÅL 01: VARM RÅOLJE TIL 200 °C"
+	if not feed_valve_open:
+		return "MÅL 01: ÅPNE V-101"
+	if not pump_running and crude_volume_l > 0.001:
+		return "MÅL 01: START P-101"
+	if not diesel_is_approved():
+		return "MÅL 01: PRODUSER GODKJENT DIESEL"
+	return "MÅL 01: SELG GODKJENT DIESEL"
+
+
 func sell_diesel() -> String:
 	if batch_sold:
 		return "Denne batchen er allerede solgt."

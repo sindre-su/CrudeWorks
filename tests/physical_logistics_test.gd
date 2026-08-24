@@ -64,7 +64,7 @@ func _test_product_dispatch_route() -> void:
 	_expect(not model.dispatch_product_from_terminal("pd", "product_tank")["ok"], "PD-101 refuses dispatch until its sales pump is running")
 	_expect(model.interact("sales_pump")["ok"], "physical sales pump starts on a valid product line")
 	var dispatch: Dictionary = model.dispatch_product_from_terminal("pd", "product_tank")
-	_expect(dispatch["ok"] and dispatch["revenue"] == 400 and is_equal_approx(model.equipment["product_tank"]["volume_l"], 0.0), "PD-101 dispatch consumes exactly its connected VGO tank once")
+	_expect(dispatch["ok"] and dispatch["revenue"] == 400 and dispatch.get("first_physical_dispatch_now", false) and is_equal_approx(model.equipment["product_tank"]["volume_l"], 0.0), "PD-101 dispatch consumes exactly its connected VGO tank once and records the first physical dispatch")
 	_expect(not model.dispatch_product_from_terminal("pd", "product_tank")["ok"], "repeated physical dispatch cannot generate duplicate revenue")
 
 

@@ -129,6 +129,7 @@ func _process(delta: float) -> void:
 		discard_confirmation_revision = -1
 	_update_autosave(delta)
 	build_controller.set_available_money(process_model.money)
+	build_controller.set_locked_equipment(_starter_equipment_locks())
 	build_controller.set_process_flow(
 		built_refinery_model.actual_flow_lps,
 		BuiltRefineryModelScript.PUMP_MAX_FLOW_LPS,
@@ -144,6 +145,35 @@ func _process(delta: float) -> void:
 	_update_process_visuals(delta)
 	_update_user_interface()
 	_update_unit_statuses()
+
+
+func _starter_equipment_locks() -> Dictionary:
+	# Basic tanks, pumps, valve, heater and column are always free-build tools.
+	# The remaining units become available when their process problem is visible.
+	var locks := {}
+	if not built_refinery_model.commissioning_contract_complete:
+		locks["treatment"] = "fullfør første Area 02-leveranse"
+		locks["header"] = "produser første batch"
+		locks["product_header"] = "produser første batch"
+		locks["power_unit"] = "etabler første prosesstog"
+		locks["vacuum_distillation"] = "produser Tung rest"
+		locks["catalytic_cracking"] = "produser Vacuum Gas Oil"
+		return locks
+	if not built_refinery_model.first_atmospheric_production:
+		locks["header"] = "produser første batch"
+		locks["product_header"] = "produser første batch"
+		locks["power_unit"] = "etabler første prosesstog"
+		locks["vacuum_distillation"] = "produser Tung rest"
+		locks["catalytic_cracking"] = "produser Vacuum Gas Oil"
+		return locks
+	var vgo_seen := false
+	for state in built_refinery_model.equipment.values():
+		if state["type"] == "vacuum_distillation" and float(state.get("processed_total_l", 0.0)) > 0.001:
+			vgo_seen = true
+			break
+	if not vgo_seen:
+		locks["catalytic_cracking"] = "produser Vacuum Gas Oil i VDU-301"
+	return locks
 
 
 func _build_environment() -> void:
@@ -586,7 +616,7 @@ func _update_user_interface() -> void:
 			+ "Kvalitet      %6.1f %% — %s\n" % [process_model.diesel_quality_percent, quality_status]
 			+ "Penger        %d kr" % process_model.money
 		)
-		objective_label.text = "MÅL: Produser og selg minst 200 L diesel med ≥ 90 % kvalitet"
+		objective_label.text = process_model.pilot_objective_text()
 		var alarms: Array[String] = process_model.active_alarms()
 		alarm_label.text = "\n".join(alarms)
 		help_label.text = "WASD  Gå\nMus  Se\nShift  Løp\nSpace  Hopp\nCtrl / C  Huk\nE  Bruk utstyr\nR  Start batch på nytt\nEsc  Frigjør mus"
@@ -1319,7 +1349,12 @@ func _handle_product_dispatch_input(event: InputEventKey) -> void:
 		return
 	process_model.credit(result["revenue"])
 	_close_product_dispatch()
-	_show_notification(result["message"], 6.0)
+	_show_notification(
+		"FØRSTE OMRÅDE 02-LEVERANSE FULLFØRT — +%d kr. Refinery operations established." % result["revenue"]
+		if result.get("first_physical_dispatch_now", false)
+		else result["message"],
+		7.0 if result.get("first_physical_dispatch_now", false) else 6.0
+	)
 	_schedule_save()
 
 

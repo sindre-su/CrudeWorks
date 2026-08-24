@@ -838,3 +838,30 @@
 - Validation: editor scan, focused logistics, save/load and Main loop passed.
   A human 1280×720 pass must still verify endpoint placement, port targeting
   and field-copy readability.
+
+## v0.26.0 — First-Hour Progression and Starter Economy
+
+- Replaced the broad Pilot instruction with short, authoritative objectives:
+  set temperature, reach temperature, open V-101, start P-101, produce
+  approved diesel and sell it. Actions completed early are recognized from
+  actual process state.
+- Area 02 now begins with CI-101: receive the protected free Standard delivery,
+  build CI-101 → pump → crude tank, then build the atmospheric train. The
+  objective updates from persisted physical material state, not interaction
+  history.
+- The build menu keeps basic refinery tools freely available and labels later
+  equipment with process-based locks: commissioning for treatment, heavy
+  residue for VDU-301 and VGO production for FCC-401. Existing equipment is
+  never removed; legacy saves infer established progression from their plant.
+- The first physical PD-101 delivery receives a concise one-time refinery
+  operations acknowledgement. Its persisted milestone cannot create money or
+  inventory by replaying it.
+- Economy audit: the 3,000 kr Pilot minimum exactly funds the 3,000 kr physical
+  starter line (four tanks, three pumps, valve, heater, column). The first
+  CI-101 Standard delivery remains free; later Standard batches cost 300 kr.
+  At target conditions, the 1,000 L Standard batch yields products worth about
+  5,000 kr before feed cost. No values were changed because this already avoids
+  an obvious early grind or money soft-lock; human pacing remains unverified.
+- Added focused progression coverage for Pilot sequence, out-of-order state
+  recognition, CI milestone persistence, legacy progression inference and
+  explanatory locked build-menu entries.

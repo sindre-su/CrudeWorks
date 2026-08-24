@@ -438,6 +438,9 @@ static func _validate_site_logistics(state) -> Dictionary:
 		return _result(false, "CI-101-leveransen mangler gyldig råoljetype.")
 	if float(volume_l) <= 0.001 and not contract_id.is_empty():
 		return _result(false, "Tom CI-101-leveranse kan ikke ha råoljetype.")
+	for field in ["first_intake_received", "first_atmospheric_production", "first_physical_dispatch_completed"]:
+		if state.has(field) and typeof(state[field]) != TYPE_BOOL:
+			return _result(false, "Terminalprogresjonen har ugyldig %s." % field)
 	return _result(true, "CI-101-leveranse er gyldig.")
 
 

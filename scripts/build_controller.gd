@@ -17,6 +17,7 @@ var player
 var unlocked := false
 var active := false
 var available_money := 0
+var locked_equipment: Dictionary = {}
 var selected_type := "tank"
 var rotation_quadrants := 0
 var mode := "place"
@@ -55,6 +56,13 @@ func set_unlocked(value: bool) -> void:
 
 func set_available_money(value: int) -> void:
 	available_money = value
+
+
+func set_locked_equipment(value: Dictionary) -> void:
+	locked_equipment = value.duplicate(true)
+	if locked_equipment.has(selected_type):
+		selected_type = "tank"
+		_rebuild_ghost()
 
 
 func set_input_blocked(value: bool) -> void:
@@ -193,7 +201,11 @@ func _input(event: InputEvent) -> void:
 			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9, KEY_0, KEY_MINUS:
 				var index := 10 if event.keycode == KEY_MINUS else (9 if event.keycode == KEY_0 else int(event.keycode) - int(KEY_1))
 				if index < Catalog.ORDER.size():
-					selected_type = Catalog.ORDER[index]
+					var candidate: String = Catalog.ORDER[index]
+					if locked_equipment.has(candidate):
+						notification_requested.emit("%s er låst — %s." % [Catalog.definition(candidate)["name"], locked_equipment[candidate]])
+					else:
+						selected_type = candidate
 				mode = "place"
 				_rebuild_ghost()
 			KEY_Q:
@@ -240,6 +252,9 @@ func _try_place() -> void:
 		notification_requested.emit("Kan ikke plassere utstyret her.")
 		return
 	var data: Dictionary = Catalog.definition(selected_type)
+	if locked_equipment.has(selected_type):
+		notification_requested.emit("%s er låst — %s." % [data["name"], locked_equipment[selected_type]])
+		return
 	if available_money < data["cost"]:
 		notification_requested.emit("Ikke nok penger til %s." % data["name"])
 		return
@@ -700,7 +715,7 @@ func _update_build_text() -> void:
 		connection_text = "\nValgt utløp: %s" % _port_display_name(connection_source)
 	build_label.text = (
 		"BYGGEMODUS — %s\nPenger: %d kr\n\n%s\n\n"
-		% [mode_name, available_money, Catalog.menu_text()]
+		% [mode_name, available_money, Catalog.menu_text(locked_equipment)]
 		+ "Valgt: %s (%d kr)%s\n" % [data["name"], data["cost"], connection_text]
 		+ "Retning: %d°  |  IN blå  |  OUT oransje\n\n" % (rotation_quadrants * 90)
 		+ "Nettverk: %s\n\n" % network_feedback

@@ -290,10 +290,15 @@ static func _port(
 	}
 
 
-static func menu_text() -> String:
+static func menu_text(locked_equipment: Dictionary = {}) -> String:
 	var lines: Array[String] = []
 	for index in ORDER.size():
 		var data := definition(ORDER[index])
 		var key_label := "0" if index == 9 else ("-" if index == 10 else str(index + 1))
-		lines.append("%s  %-22s %4d kr" % [key_label, data["name"], data["cost"]])
+		var lock_reason := String(locked_equipment.get(ORDER[index], ""))
+		lines.append(
+			"%s  %-22s LÅST — %s" % [key_label, data["name"], lock_reason]
+			if not lock_reason.is_empty()
+			else "%s  %-22s %4d kr" % [key_label, data["name"], data["cost"]]
+		)
 	return "\n".join(lines)

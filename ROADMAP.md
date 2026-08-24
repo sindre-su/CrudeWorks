@@ -2,7 +2,7 @@
 
 ## Current baseline
 
-Version 0.25.0 has a tested pilot plant and a substantial Area 02 refinery
+Version 0.26.0 has a tested pilot plant and a substantial Area 02 refinery
 slice: free building, directed process networks, multiple independent trains,
 shared-feed/product routing, Standard/Heavy/Sour crude, diesel treatment,
 quality/LAB dispatch, VDU-301, FCC-401, electrical capacity, controls, alarms,
@@ -23,9 +23,27 @@ pipe/valve readability, equipment interaction, alarms, tank levels, LAB-101,
 LS-201, power feedback, VDU/FCC placement and pump-condition pacing in the
 running game. Headless tests protect logic; they cannot replace human play.
 
-The next focused gameplay decision should be whether the initial physical
-intake/dispatch route is introduced clearly enough in the player objective and
-starter-economy flow. Do not add another process unit before that playtest.
+The first-hour flow now starts with state-based Pilot objectives, then asks the
+player to receive the free first Standard delivery at CI-101, build its
+physical intake, and establish the first atmospheric train. Advanced equipment
+is visible in the build menu but explains the refinery condition that unlocks
+it instead of using XP.
+
+### First-hour economy baseline
+
+| Step | Actual value | Meaning |
+| --- | ---: | --- |
+| Pilot sale | 3,000 kr minimum | Funds a complete physical starter line |
+| Physical starter line | 3,000 kr | 4 tanks, 3 pumps, valve, heater, column |
+| First Standard delivery | 0 kr | One protected commissioning batch via CI-101 |
+| Later Standard delivery | 300 kr | 1,000 L |
+| Standard gross output | ~5,000 kr | 300 L Naphtha, 350 L Diesel, 350 L Heavy Residue at target |
+| HT-201 / PU-101 / VDU-301 / FCC-401 | 800 / 700 / 1,200 / 2,200 kr | Reachable after a successful first physical delivery; exact feel still needs human QA |
+
+No economy values changed in v0.26: the initial free delivery and full refund
+of placed equipment already avoid an obvious early financial soft-lock. The
+next playtest should verify that the two required pumps are legible at
+1280×720 and that this provisional pace feels satisfying.
 
 ## Development phases
 
