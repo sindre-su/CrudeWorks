@@ -3,6 +3,7 @@ extends RefCounted
 
 const ProcessNetworkScript = preload("res://scripts/process_network.gd")
 const CrudeCatalog = preload("res://scripts/crude_contract_catalog.gd")
+const FeedAllocationScript = preload("res://scripts/feed_allocation.gd")
 
 const AMBIENT_TEMPERATURE_C := 20.0
 const TANK_CAPACITY_L := 1000.0
@@ -20,6 +21,7 @@ const DIESEL_PRICE_PER_L := 8.0
 
 var network
 var equipment: Dictionary = {}
+var feed_allocations: Dictionary = {}
 var commissioning_batch_available := true
 var commissioning_contract_complete := false
 var successful_sales := 0
@@ -80,6 +82,7 @@ func save_state() -> Dictionary:
 		"report_temperature_total": _report_temperature_total,
 		"report_flow_total": _report_flow_total,
 		"report_crude_cost": _report_crude_cost,
+		"feed_allocations": _save_feed_allocations(),
 		"equipment": saved_equipment,
 	}
 
@@ -99,6 +102,7 @@ func apply_saved_state(state: Dictionary) -> void:
 		_report_crude_processed_l * PUMP_CAPACITY_LPS
 	))
 	_report_crude_cost = float(state["report_crude_cost"])
+	_restore_feed_allocations(state.get("feed_allocations", {}))
 	var saved_equipment: Dictionary = state["equipment"]
 	for unit_id in equipment:
 		var target: Dictionary = equipment[unit_id]
@@ -196,6 +200,7 @@ func unregister_unit(unit_id: String) -> void:
 
 
 func _on_topology_changed() -> void:
+	_refresh_feed_allocations()
 	# A new, incomplete train must not interrupt an unrelated running train.
 	# Stop only pumps that no longer belong to a complete route.
 	var valid_pumps := {}
@@ -210,6 +215,68 @@ func _on_topology_changed() -> void:
 	_remote_guard_trip_message = ""
 	_diesel_sample = {}
 	last_status = network.validate_configuration()["message"]
+
+
+func configure_feed_allocation(source_id: String, eligible_train_ids: Array[String]) -> Dictionary:
+	if not equipment.has(source_id) or equipment[source_id]["type"] != "tank":
+		return _result(false, "Fôringsallokering må knyttes til en råoljetank.")
+	var allocation = feed_allocations.get(source_id)
+	if allocation == null:
+		allocation = FeedAllocationScript.new()
+		feed_allocations[source_id] = allocation
+	allocation.configure(source_id, eligible_train_ids)
+	return _result(true, "Fôringsruter er oppdatert.")
+
+
+func select_feed_train(source_id: String, train_pump_id: String) -> Dictionary:
+	if not feed_allocations.has(source_id):
+		return _result(false, "Denne råoljetanken har ingen delte fôringsruter.")
+	var allocation = feed_allocations[source_id]
+	var result: Dictionary = allocation.select(train_pump_id, _source_has_running_pump(source_id))
+	if result["ok"]:
+		last_status = result["message"]
+	return result
+
+
+func _source_has_running_pump(source_id: String) -> bool:
+	for route in network.find_complete_routes():
+		if route["source"] == source_id and bool(equipment[route["pump"]]["running"]):
+			return true
+	return false
+
+
+func _save_feed_allocations() -> Dictionary:
+	var saved := {}
+	for source_id in feed_allocations:
+		saved[source_id] = feed_allocations[source_id].save_state()
+	return saved
+
+
+func _restore_feed_allocations(saved: Dictionary) -> void:
+	feed_allocations = {}
+	for source_id in saved:
+		var data = saved[source_id]
+		if typeof(data) != TYPE_DICTIONARY or not equipment.has(source_id):
+			continue
+		var allocation = FeedAllocationScript.new()
+		var candidates: Array[String] = []
+		for candidate in data.get("eligible_train_ids", []):
+			if typeof(candidate) == TYPE_STRING:
+				candidates.append(candidate)
+		allocation.configure(source_id, candidates)
+		allocation.select(String(data.get("selected_train_id", "")), false)
+		feed_allocations[source_id] = allocation
+	_refresh_feed_allocations()
+
+
+func _refresh_feed_allocations() -> void:
+	for source_id in feed_allocations:
+		var allocation = feed_allocations[source_id]
+		var valid_candidates: Array[String] = []
+		for route in network.find_complete_routes():
+			if route["source"] == source_id and route["pump"] in allocation.eligible_train_ids:
+				valid_candidates.append(route["pump"])
+		allocation.configure(source_id, valid_candidates)
 
 
 func can_remove(unit_id: String) -> Dictionary:
@@ -485,6 +552,15 @@ func tick(delta: float) -> void:
 func _tick_route(route: Dictionary, delta: float) -> void:
 	var pump: Dictionary = equipment[route["pump"]]
 	var source: Dictionary = equipment[route["source"]]
+	if feed_allocations.has(route["source"]):
+		var allocation = feed_allocations[route["source"]]
+		if allocation.selected_train_id.is_empty():
+			pump["actual_flow_lps"] = 0.0
+			last_status = "NO VALID FEED ROUTE — velg en prosesslinje før pumpen startes."
+			return
+		if not allocation.is_selected(route["pump"]):
+			pump["actual_flow_lps"] = 0.0
+			return
 	var valve: Dictionary = equipment[route["valve"]]
 	var heater: Dictionary = equipment[route["heater"]]
 	var treatment: Dictionary = equipment[route["treatment"]] if not String(route.get("treatment", "")).is_empty() else {}

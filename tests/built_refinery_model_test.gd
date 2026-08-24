@@ -2,6 +2,7 @@ extends SceneTree
 
 const BuiltRefineryModelScript = preload("res://scripts/built_refinery_model.gd")
 const CrudeCatalogScript = preload("res://scripts/crude_contract_catalog.gd")
+const FeedAllocationScript = preload("res://scripts/feed_allocation.gd")
 
 var failures := 0
 
@@ -18,6 +19,7 @@ func _init() -> void:
 
 func _run_tests() -> void:
 	_test_invalid_network_cannot_start()
+	_test_feed_allocation_foundation()
 	_test_manual_valve_low_flow()
 	_test_mass_conserving_ideal_batch_and_sale()
 	_test_full_tank_backpressure()
@@ -49,6 +51,18 @@ func _test_invalid_network_cannot_start() -> void:
 	_expect(not result["ok"], "pump cannot start on a disconnected network")
 	_expect(not model.equipment["pump"]["running"], "rejected start leaves pump stopped")
 	_expect(not result["message"].is_empty(), "rejected start gives actionable player feedback")
+
+
+func _test_feed_allocation_foundation() -> void:
+	var allocation = FeedAllocationScript.new()
+	allocation.configure("shared_source", ["pump_a", "pump_b"])
+	_expect(allocation.selected_train_id.is_empty(), "shared source allocation starts with no implicit route owner")
+	_expect(allocation.select("pump_a", false)["ok"] and allocation.is_selected("pump_a"), "stopped source can allocate feed to Train A")
+	var blocked: Dictionary = allocation.select("pump_b", true)
+	_expect(not blocked["ok"] and allocation.is_selected("pump_a"), "running source cannot change feed ownership")
+	_expect(allocation.select("pump_b", false)["ok"] and allocation.is_selected("pump_b"), "stopped source can deterministically switch to Train B")
+	allocation.configure("shared_source", ["pump_a"])
+	_expect(allocation.selected_train_id.is_empty(), "invalidated selected train safely clears feed ownership instead of guessing")
 
 
 func _test_manual_valve_low_flow() -> void:
