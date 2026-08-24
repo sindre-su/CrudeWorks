@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.14 – Produktleveranser og hele-fat-økonomi**
+**Prototypeversjon: 0.15 – Uavhengige raffineringstog**
 
 En liten 3D-prototype der spilleren driver et forenklet pilotraffineri. Første mål
 er å behandle 1 000 liter råolje og selge minst 200 liter diesel med 90 % eller
@@ -21,7 +21,7 @@ Den første komplette «vertical slice»-en inneholder:
 - byggeområde som låses opp etter første godkjente salg
 - lesbar plassering, rotasjon, fjerning og trygg refusjon av tomt utstyr
 - retningsbestemte OUT-til-IN-rør med validering og frakobling
-- en logisk prosesslinje: tank → pumpe → ventil → varme → kolonne → tre tanker
+- flere uavhengige prosesslinjer: tank → pumpe → ventil → varme → kolonne → tre tanker
 - operasjonelle bygde tanker, pumper, manuelle ventiler, varmeenheter og kolonner
 - massebalanse, tankkapasitet, backpressure og dieselkvalitet
 - subsidierte oppstartsforsøk fram til godkjenning, deretter betalte batcher

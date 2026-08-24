@@ -842,6 +842,8 @@ func _on_unit_interacted(unit_id: String) -> void:
 				)
 				if result["ok"] and result["charge"] > 0:
 					process_model.purchase(result["charge"])
+				if result["ok"] and int(result.get("revenue", 0)) > 0:
+					process_model.credit(int(result["revenue"]))
 				if result.get("sample_id", "") != "":
 					discard_confirmation_time_left = 0.0
 					discard_confirmation_revision = -1

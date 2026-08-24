@@ -90,12 +90,6 @@ func try_connect(
 		"to_port": to_port_id,
 	}
 	connections.append(new_edge)
-	if find_complete_routes().size() > 1:
-		connections.pop_back()
-		return _result(
-			false,
-			"KAN IKKE KOBLES: Område 02 støtter bare én komplett prosesslinje om gangen. Koble fra et rør i den andre linjen først."
-		)
 	topology_changed.emit()
 	return _result(true, "%s %s er koblet til %s IN." % [
 		_unit_name(from_unit_id),
@@ -124,15 +118,15 @@ func connection_count() -> int:
 
 func validate_configuration() -> Dictionary:
 	var routes := find_complete_routes()
-	if routes.size() > 1:
-		return _validation_result(
-			"Nettverket har %d komplette linjer. Område 02 støtter én. Koble fra én linje med G." % routes.size()
-		)
-	if routes.size() == 1:
+	if not routes.is_empty():
 		return {
 			"valid": true,
-			"message": "Linjen er gyldig — trykk B for å avslutte bygging, så E på kildetanken.",
+			"message": "%d prosesslinje%s er gyldig%s." % [
+				routes.size(), "r" if routes.size() > 1 else "",
+				"e" if routes.size() > 1 else "",
+			],
 			"route": routes[0],
+			"routes": routes,
 		}
 	if units.is_empty():
 		return _validation_result("Plasser utstyr før du validerer prosesslinjen.")
@@ -165,7 +159,17 @@ func validate_configuration() -> Dictionary:
 
 func find_complete_route() -> Dictionary:
 	var routes := find_complete_routes()
-	return routes[0] if routes.size() == 1 else {}
+	return routes[0] if not routes.is_empty() else {}
+
+
+func find_route_for_unit(unit_id: String) -> Dictionary:
+	for route in find_complete_routes():
+		if unit_id in [route["source"], route["pump"], route["valve"], route["heater"], route["column"], route.get("treatment", "")]:
+			return route
+		for product_id in route["products"]:
+			if route["products"][product_id] == unit_id:
+				return route
+	return {}
 
 
 func find_complete_routes() -> Array[Dictionary]:

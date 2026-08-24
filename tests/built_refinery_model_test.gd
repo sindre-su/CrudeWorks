@@ -32,7 +32,7 @@ func _run_tests() -> void:
 	_test_contract_lifecycle_and_bonus_lock()
 	_test_control_station_telemetry_and_temperature_guard()
 	_test_paid_batch_lab_sampling()
-	_test_ambiguous_routes_block_operation_atomically()
+	_test_independent_process_trains()
 	_test_distinct_delivery_order_definitions()
 	_test_heavy_delivery_order_volume_gate()
 	_test_off_route_product_blocks_dispatch()
@@ -669,6 +669,50 @@ func _test_product_specific_dispatch() -> void:
 	_expect(not repeat_light["ok"] and repeat_light["revenue"] == 0, "empty Naphtha tank cannot be paid repeatedly")
 	var heavy_sale: Dictionary = model.dispatch_product("heavy")
 	_expect(heavy_sale["ok"] and heavy_sale["revenue"] == 700 and is_equal_approx(model.equipment["heavy_tank"]["volume_l"], 0.0), "heavy-residue delivery consumes inventory and pays its lower value")
+
+
+func _test_independent_process_trains() -> void:
+	var model = _complete_model()
+	model.commissioning_batch_available = false
+	model.commissioning_contract_complete = true
+	_add_second_complete_route(model)
+	_expect(model.network.find_complete_routes().size() == 2 and model.network.validate_configuration()["valid"], "two disconnected complete process trains are accepted")
+	_expect(model.load_crude_batch("source", true, "standard")["ok"] and model.load_crude_batch("b_source", true, "sour")["ok"], "each train can load its own crude contract")
+	for heater_id in ["heater", "b_heater"]:
+		model.equipment[heater_id]["temperature_c"] = 200.0
+		model.equipment[heater_id]["setpoint_c"] = 200.0
+	for valve_id in ["valve", "b_valve"]:
+		model.interact(valve_id)
+	_expect(model.interact("b_treatment")["ok"], "Sour Train B treatment can be started independently")
+	_expect(model.interact("pump")["ok"] and model.interact("b_pump")["ok"], "both train pumps can start independently")
+	model.tick(10.0)
+	_expect(is_equal_approx(model.equipment["source"]["volume_l"], 900.0) and is_equal_approx(model.equipment["b_source"]["volume_l"], 900.0), "simultaneous trains consume only their own source tanks")
+	_expect(is_equal_approx(model.equipment["light_tank"]["volume_l"], 30.0) and is_equal_approx(model.equipment["b_light"]["volume_l"], 30.0), "each train fills its own Naphtha tank")
+	_expect(is_equal_approx(model.equipment["diesel_tank"]["sulfur_ppm"], 10.0) and is_equal_approx(model.equipment["b_diesel"]["sulfur_ppm"], 10.0), "Sour treatment affects only Train B while Standard diesel remains independent")
+	model.equipment["light_tank"]["volume_l"] = 1000.0
+	model.equipment["light_tank"]["contents"] = "light"
+	model.tick(1.0)
+	_expect(is_equal_approx(model.equipment["pump"]["actual_flow_lps"], 0.0) and model.equipment["b_pump"]["actual_flow_lps"] > 0.01, "a full Train A product tank blocks only Train A")
+	model.equipment["pump"]["flow_setpoint_lps"] = 15.0
+	model.equipment["light_tank"]["volume_l"] = 0.0
+	model.equipment["light_tank"]["contents"] = "empty"
+	model.tick(20.0)
+	_expect(not String(model.equipment["pump"]["fault_id"]).is_empty() and String(model.equipment["b_pump"]["fault_id"]).is_empty(), "pump-filter restriction remains attached to the train that created it")
+
+
+func _add_second_complete_route(model) -> void:
+	for entry in [
+		["b_source", "tank", "B-T1"], ["b_pump", "pump", "B-P1"], ["b_valve", "valve", "B-V1"], ["b_heater", "heater", "B-H1"], ["b_column", "column", "B-D1"], ["b_treatment", "treatment", "B-HT1"], ["b_light", "tank", "B-T2"], ["b_diesel", "tank", "B-T3"], ["b_heavy", "tank", "B-T4"],
+	]:
+		model.register_unit(entry[0], entry[1], entry[2])
+	model.network.try_connect("b_source", "output", "b_pump", "input")
+	model.network.try_connect("b_pump", "output", "b_valve", "input")
+	model.network.try_connect("b_valve", "output", "b_heater", "input")
+	model.network.try_connect("b_heater", "output", "b_column", "input")
+	model.network.try_connect("b_column", "light", "b_light", "input")
+	model.network.try_connect("b_column", "diesel", "b_treatment", "input")
+	model.network.try_connect("b_treatment", "output", "b_diesel", "input")
+	model.network.try_connect("b_column", "heavy", "b_heavy", "input")
 
 
 func _test_ambiguous_routes_block_operation_atomically() -> void:

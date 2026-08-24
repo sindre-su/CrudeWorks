@@ -396,7 +396,10 @@
 
 ## Current Stable State
 
-- Version 0.14.0 is verified stable after the multi-product economy milestone.
+- Version 0.15.0 is verified stable after the independent process-train milestone.
+- Area 02 now discovers and runs multiple independent complete refinery trains;
+  source contracts, temperatures, flow, capacity limits, sulfur treatment,
+  pump-filter faults and route product storage remain local to each train.
 - The original pilot loop and full player-built loop both pass regression.
 - The first valid Area 02 sale now has a durable achievement and informative
   result, while later paid batches remain repeatable.
@@ -432,9 +435,8 @@
 
 ## Known Issues
 
-- Multi-route operation is intentionally not part of the first vertical slice.
-  Område 02 now enforces that limitation explicitly while still allowing spare
-  equipment and incomplete expansion work.
+- Multiple independent process trains are supported, but branching, shared
+  headers, manifolds, recirculation and LS-201 multi-train selection are not.
 - Hands-on aiming/interaction feel remains unverified by headless automation.
 - Valve handle readability and central alarm prominence still need a hands-on
   check at the target 1280 x 720 window size.
@@ -466,9 +468,9 @@
 - Lab state remains transient by design: a loaded game preserves the product
   but requires the player to take a fresh sample, avoiding save-format churn
   and stale authorization.
-- A full second process line was deferred rather than adding an implicit route
-  selector. The final conflicting connection is rejected, and defensive model
-  validation blocks ambiguous imported topology.
+- Independent complete process trains now coexist without an implicit route
+  selector. Shared equipment, manifolds and branching remain deliberately out
+  of scope until their material-routing rules can be made explicit.
 - Delivery orders remain derived from the batch-locked crude contract. A new
   independent order market was deliberately avoided until two orders prove fun.
 - Adjustable flow was added to the existing pump rather than introducing pump
