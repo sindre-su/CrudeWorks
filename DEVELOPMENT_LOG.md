@@ -748,3 +748,14 @@
 - Perform the deferred human 1280×720 playtest, then tune pump-condition wear
   and the preventive-service price from observed player pacing before adding a
   broader maintenance system.
+
+## Strategic Alignment Pass — v0.24
+
+- After atmospheric processing, routing, treatment, VDU, FCC and electrical
+  capacity, the project has sufficient process depth to change priority.
+- Future work should primarily strengthen physical building, feedback,
+  progression, troubleshooting, maintenance, player ownership and scalable
+  refinery gameplay rather than add process units by default.
+- The same normal-game systems must support a focused ~20-minute concept, a
+  coherent 45–90 minute session and multi-hour sandbox expansion. The deferred
+  hands-on playtest is therefore the next decision input, not a cosmetic task.

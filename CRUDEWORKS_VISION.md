@@ -16,6 +16,56 @@ For day-to-day implementation rules, also follow `AGENTS.md`. When there is tens
 
 ---
 
+# Product identity and play scales
+
+CrudeWorks is a **fun, physical refinery-builder game** first. The player
+acquires feedstock, builds and connects equipment, operates it locally, creates
+and stores physical material, sells products, reinvests, troubleshoots,
+maintains and eventually automates a refinery they own. Learning emerges from
+those actions; it is not a separate curriculum or quiz layer.
+
+## Micro session — approximately 20 minutes
+
+A teacher or player must be able to demonstrate one meaningful relationship
+with fast setup, visible cause and effect, and little unrelated progression
+friction. Good examples are pump/valve flow, heating and separation, sulfur
+treatment, electrical capacity, tank-full backpressure or LOW FLOW diagnosis.
+
+The game does not need to start every player with advanced equipment. Over time,
+saved scenarios or an optional Training Mode can make focused normal-game states
+easy to load. The underlying equipment and rules stay the same as the sandbox.
+
+## Standard session — approximately 45–90 minutes
+
+A complete session should provide a progression arc: operate the pilot plant,
+earn access to Area 02, build a first train, produce/sell products, encounter
+an understandable operational problem, then invest in a visible improvement.
+The player should leave having built something and solved something.
+
+## Sandbox / long-form play — multiple hours
+
+Long-form play succeeds when refinery building itself remains satisfying:
+multiple trains, storage, utilities, maintenance, routing, secondary
+processing, automation, throughput and economic choices should combine into a
+larger integrated system. The player continues because they want to improve
+**their refinery**, not merely unlock the next machine.
+
+## One scalable game, not two modes of play
+
+Short educational use and long sandbox play are not competing products. The
+same systems should scale: one pump teaches flow in a short session, while many
+pumps create power, condition, maintenance and capacity decisions later. One
+tank demonstrates level/capacity early, then becomes tank-farm planning at
+scale. Prefer systems that gain depth rather than becoming obsolete.
+
+The permanent tests are:
+
+- **20-minute test:** can this system support a focused, understandable
+  experience without requiring hours of setup?
+- **Long-form test:** does it still matter as the refinery expands?
+
+---
+
 # Player fantasy: Refinery Builder
 
 The primary player fantasy is **Builder**, not operator or tycoon.
@@ -170,6 +220,11 @@ Early game should be heavily manual. The player should walk to pumps, start equi
 
 Automation should reduce repetitive work later, but should never completely remove the player from the plant.
 
+The physical world carries the primary feedback: moving material, tank levels,
+machine motion/sound, status lights, pipe direction and local inspection. HUD,
+LAB and control-room UI support decisions; they must not replace the experience
+of walking through and understanding the refinery.
+
 ## 4. Troubleshooting is game-defining
 
 Troubleshooting should become one of the defining features of CrudeWorks.
@@ -269,6 +324,23 @@ The process network is a gameplay system, not an engineering simulation.
 # Long-term progression
 
 Progression should be gradual and physical. The player should repeatedly gain new capability, new equipment, new problems, new opportunities for automation and more physical space.
+
+## Conceptual scaling ladder
+
+These are design stages, not necessarily literal player levels. They keep early
+systems relevant while giving later play a clear purpose.
+
+1. **Understand** — tank, pump, valve, heater and column reveal basic cause and effect.
+2. **Build** — the player constructs an atmospheric refinery, stores output and sells it.
+3. **Operate** — quality, treatment, power, routing and alarms make operation matter.
+4. **Troubleshoot** — symptoms, inspection, repair and recovery reward process understanding.
+5. **Expand** — multiple trains, tank farms, VDU/FCC, utilities and space create layout choices.
+6. **Optimise** — automation, throughput, quality and economics reward deliberate improvement.
+7. **Master** — a large integrated refinery runs reliably, profitably and visibly as the player's own system.
+
+Manual operation must come before automation. The player first performs a task,
+then earns a way to repeat it more efficiently, while alarms, maintenance,
+routing and expansion ensure the refinery never becomes an idle game.
 
 ## Stage 1 — Pilot Operation
 
@@ -633,7 +705,9 @@ The focus is industrial process safety, not graphic injury simulation.
 
 # Maintenance
 
-Maintenance can become a later-game system after the core refinery works well.
+The first condition/filter maintenance layer now exists. Future maintenance
+should deepen that ownership gameplay only after the core refinery continues to
+feel good in hands-on play.
 
 Possible concepts:
 
@@ -847,23 +921,18 @@ CrudeWorks should **not** become:
 
 Before adding a major feature, ask:
 
-## 1. Does it strengthen the refinery-builder fantasy?
-If no, reconsider it.
+1. **What does the player do differently because this exists?**
+2. **Does it strengthen the refinery-builder fantasy and player ownership?**
+3. **Does it create understandable cause and effect through play?**
+4. **Does it interact with existing equipment, operation, economy or space?**
+5. **Can it scale beyond its introduction rather than becoming disposable?**
+6. **Does it improve short-form or long-form play, ideally both?**
+7. **Can it be implemented incrementally and maintained simply?**
+8. **Is there a smaller feature that achieves the same gameplay result?**
 
-## 2. Does it create meaningful player decisions?
-If no, it may not need to exist.
-
-## 3. Can the player understand cause and effect?
-If no, simplify it.
-
-## 4. Does it create gameplay, learning, progression or satisfying feedback?
-If none, do not prioritize it.
-
-## 5. Can the feature be implemented incrementally?
-If no, find a smaller version first.
-
-## 6. Does it risk making CrudeWorks feel like engineering software instead of a game?
-If yes, simplify it.
+Postpone features that score poorly. A real refinery component is not
+automatically a valuable game feature, and realism must never outweigh clear,
+satisfying player action.
 
 ---
 
@@ -919,18 +988,15 @@ When choosing between competing features, prioritize approximately:
 
 1. Core playable refinery loops
 2. Free building
-3. Understandable process behavior
-4. Troubleshooting
-5. Player feedback
-6. Progression
-7. Process variety
-8. Economy
-9. Instrumentation
-10. Automation
-11. Laboratory depth
-12. Maintenance
-13. Visual polish
-14. Endgame complexity
+3. Physical feedback and understandable process behavior
+4. Troubleshooting and maintenance
+5. Progression, player ownership and useful infrastructure
+6. Economy and meaningful expansion choices
+7. Quality, optimisation and instrumentation
+8. Automation earned from manual operation
+9. Process variety only where it creates a new player decision
+10. Visual/audio polish that improves readability or satisfaction
+11. Endgame complexity
 
 This order may change when current development needs justify it.
 

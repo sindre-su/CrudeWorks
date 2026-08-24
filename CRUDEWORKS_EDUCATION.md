@@ -17,6 +17,26 @@ Design rule:
 > Never add a feature solely to increase curriculum coverage if it weakens
 > CrudeWorks as a refinery-building game.
 
+## Educational use at three scales
+
+Education emerges from normal play, not a separate curriculum-first game.
+
+- **Demonstration (~10–20 min):** a teacher or student uses a prepared or
+  quickly reached normal-game state to experience one relationship, such as
+  valve state and LOW FLOW, a temperature target, sulfur treatment, capacity or
+  pump condition.
+- **Class session (~45–90 min):** students operate the pilot, build/operate a
+  first refinery, diagnose an operational problem and discuss the result with a
+  teacher.
+- **Extended project (multiple lessons or optional free play):** students use
+  the same building, operating and troubleshooting systems to design,
+  expand and optimise a larger refinery.
+
+These are not three different games. A pump that demonstrates flow in a short
+lesson later becomes a power consumer, condition object, capacity bottleneck and
+automation target. Optional Training/Classroom Mode should eventually load
+focused normal-game scenarios; sandbox systems remain authoritative.
+
 ## Current Coverage
 
 ### Currently implemented and playable
@@ -25,22 +45,25 @@ Design rule:
   inspect quality -> sell diesel.
 - A player-built, directed process line: tank -> pump -> manual valve -> heater
   -> distillation column -> three product tanks.
+- Multiple independent process trains, shared crude-feed selection and optional
+  product-header storage routing with explicit player-owned destinations.
 - Visible IN/OUT ports, logical process order, pipe direction, blocked reverse
-  connections, incomplete-line feedback and one-line-at-a-time validation.
+  connections and incomplete-line feedback.
 - Tank capacity, bounded transfer, product backpressure and simplified mass
   conservation.
-- Temperature-dependent fractions and diesel quality; Standard and Heavy crude
-  have different targets, yields and delivery requirements.
+- Temperature-dependent fractions and diesel quality; Standard, Heavy and Sour
+  crude have different targets, yields, treatment needs and delivery choices.
 - Field operation of pumps, manual valves and heater targets; 5/10/15 L/s pump
-  targets after commissioning.
+  targets, pump condition and a recoverable blocked-filter restriction.
 - Troubleshooting feedback including LOW FLOW, HIGH TEMPERATURE and full product
-  storage. A closed valve can leave a commanded pump at zero flow.
+  storage. A closed valve, restricted filter or worn pump can leave a commanded
+  pump below normal flow.
 - Physical diesel sampling, LAB-101 analysis, off-spec retention/disposal and
   revision-bound dispatch authorization.
 - LS-201 local station with live level, temperature and flow telemetry; limited
   remote pump/heater control and a feed-aware temperature trip.
-- Economy, controlled crude delivery, material-consuming sales and persistent
-  batch reports.
+- HT-201 treatment, VDU-301 and FCC-401 secondary processing, electricity/
+  PU-101 capacity, product-specific dispatch, economy and persistent reports.
 
 ### Partially implemented
 
@@ -60,11 +83,11 @@ Design rule:
 
 ### Planned, not current coverage
 
-- Recoverable maintenance fault (current roadmap priority).
-- Sour crude and a treatment decision.
-- More product value/storage decisions.
-- Pressure, pressure loss, energy balances, P&ID views, control loops,
-  calibration, broader safety systems and multi-line refinery operation.
+- More expressive physical feedback, visual/audio cues and hands-on usability.
+- Better short-session scenario setup and medium-term progression pacing.
+- Pressure, pressure loss, energy balances, P&ID views, broader control loops,
+  calibration and broader safety systems.
+- Additional quality/operations depth only where it improves the refinery game.
 
 ## Strong Curriculum Connections
 
@@ -174,9 +197,9 @@ relationship by operating or repairing it, not by answering a question.
 
 1. **Hands-on readability pass at 1280 x 720.** Verify that ports, valve state,
    alarms and instrument units are readable before adding concepts.
-2. **One recoverable maintenance fault.** A blocked filter or degrading pump
-   should create a distinct, diagnosable reduced-flow pattern using current
-   telemetry and repair interaction.
+2. **Keep maintenance diagnosis physical.** The implemented blocked filter and
+   pump condition should create distinct reduced-flow patterns, with local
+   inspection and preventive service rather than an automatic repair answer.
 3. **Optional simple flow diagram after a successful build.** Reuse the actual
    route; show no quiz and no separate simulator.
 4. **Batch mass-balance line in report/inspection.** Show crude processed and
@@ -200,7 +223,8 @@ relationship by operating or repairing it, not by answering a question.
 - Trend/history view at LS-201, only after players already read live values.
 - One simple level or temperature control loop after manual control is learned.
 - Instrument drift/calibration only as part of a good maintenance fault.
-- Sour crude with one treatment choice that affects quality, waste or value.
+- Extend Sour treatment only when the additional choice affects quality, waste
+  or value in a way the player can observe and act on.
 - Simple energy/heat-use comparison tied to a meaningful operating choice.
 - Gradual HMS: hot zones, safe sampling position, minor process trip or ESD.
 
@@ -231,7 +255,7 @@ calculation. CrudeWorks is the shared practical example, not the assessment.
 | Sampling chain | Analysis/documentation | Take a sample, analyse it, then invalidate it with new production | 10–20 min | Why a stale sample cannot authorize a changed batch | No |
 | Local station | Measurement/control/automation | Compare field control with LS-201 remote pump/heater controls | 15–25 min | LT/TT/FT tags, permissives, manual valve and automation limits | Instrument tag handout optional |
 | Throughput tradeoff | Optimisation and process condition | Compare 5/10/15 L/s at controlled temperature | 20–30 min | Throughput, robustness, quality margin and evidence in LAB report | Data table optional |
-| Maintenance fault (after implementation) | Maintenance, deviations and procedures | Diagnose/restore one reduced-flow fault with normal tools | 15–30 min | Symptom, evidence, safe stop, correction and prevention | Short fault report optional |
+| Pump condition / filter fault | Maintenance, deviations and procedures | Diagnose/restore one reduced-flow fault with normal tools | 15–30 min | Symptom, evidence, safe stop, correction and prevention | Short fault report optional |
 
 ## Optional Training / Classroom Mode
 
@@ -268,13 +292,13 @@ reasons to broaden the core refinery loop.
 
 ### Already aligned
 
-- The planned hands-on usability pass protects the clarity needed for physical
+- The current hands-on usability pass protects the clarity needed for physical
   process learning.
-- A recoverable maintenance fault directly supports troubleshooting,
+- Recoverable pump filter faults and pump condition directly support troubleshooting,
   instrumentation, procedures and maintenance without changing the game genre.
-- Sour crude with meaningful treatment supports unit-operation relationships,
+- Sour crude with HT-201 treatment supports unit-operation relationships,
   quality and sustainable production when the treatment choice is real.
-- Product-value expansion can strengthen storage, capacity and optimisation.
+- Existing product routing/value systems strengthen storage, capacity and optimisation.
 
 ### Small opportunities
 

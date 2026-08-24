@@ -69,6 +69,24 @@ Therefore:
 
 When multiple solutions are possible, choose the one that is easiest for a beginner to understand and maintain.
 
+## Strategic gameplay checks
+
+Before approving a substantial feature, ask: **What does the player do
+differently because this exists?** Prefer gameplay value, physical feedback and
+scalable player decisions over refinery realism or another machine for its own
+sake.
+
+- Scale existing systems before adding unrelated ones. A pump, tank, valve or
+  alarm should stay relevant from a 20-minute demonstration to a large refinery.
+- Prefer world interaction, visible movement, readable equipment state and
+  local inspection before adding permanent HUD or menu complexity.
+- Apply the **20-minute test**: a focused concept must remain demonstrable with
+  minimal setup and unrelated progression friction.
+- Apply the **long-form test**: a system should ideally gain depth through
+  expansion, optimisation, maintenance or automation rather than become obsolete.
+- Do not follow a feature treadmill. A real refinery component is worthwhile
+  only when it strengthens building, operation, diagnosis, economy or ownership.
+
 ---
 
 # Godot rules

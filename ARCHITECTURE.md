@@ -8,7 +8,7 @@
   training progression.
 - `scripts/built_refinery_model.gd`: Area 02 material, operating state,
   contracts, sulfur-aware quality, lab authorization, dispatch, first
-  recoverable pump fault, TIC-201 heater control, derived operator alarms,
+  recoverable pump filter fault/condition maintenance, TIC-201 heater control, derived operator alarms,
   operations snapshots and process simulation.
 - `scripts/process_network.gd`: authoritative directed topology. It validates
   ports, equipment order and cycles, and discovers independent complete Area 02
