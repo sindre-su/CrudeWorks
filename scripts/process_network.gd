@@ -156,12 +156,19 @@ func validate_configuration() -> Dictionary:
 		return _validation_result("%s sitt utløp er ikke koblet til destillasjonskolonnen." % _unit_name(heater_id))
 	var column_id: String = heater_edge["to_unit"]
 	for product_port in ["light", "diesel", "heavy"]:
-		if outgoing_edge(column_id, product_port).is_empty():
+		var product_edge := outgoing_edge(column_id, product_port)
+		if product_edge.is_empty():
 			var label: String = Catalog.port_definition("column", product_port)["label"]
 			return _validation_result("Kolonnens %s-utløp trenger en produkttank." % label)
+		if _unit_type(product_edge["to_unit"]) == "product_header" and destinations_for_product_header(product_edge["to_unit"]).is_empty():
+			return _validation_result("Product Routing Header trenger minst én OUT koblet til en produkttank.")
 	var diesel_edge := outgoing_edge(column_id, "diesel")
-	if _unit_type(diesel_edge["to_unit"]) == "treatment" and outgoing_edge(diesel_edge["to_unit"], "output").is_empty():
-		return _validation_result("Dieselbehandlerens utløp trenger en dieseltank.")
+	if _unit_type(diesel_edge["to_unit"]) == "treatment":
+		var treatment_edge := outgoing_edge(diesel_edge["to_unit"], "output")
+		if treatment_edge.is_empty():
+			return _validation_result("Dieselbehandlerens utløp trenger en dieseltank.")
+		if _unit_type(treatment_edge["to_unit"]) == "product_header" and destinations_for_product_header(treatment_edge["to_unit"]).is_empty():
+			return _validation_result("Product Routing Header trenger minst én OUT koblet til en produkttank.")
 	return _validation_result("Prosesslinjen er ikke komplett.")
 
 
@@ -177,6 +184,13 @@ func find_route_for_unit(unit_id: String) -> Dictionary:
 		for product_id in route["products"]:
 			if route["products"][product_id] == unit_id:
 				return route
+			if route.get("product_headers", {}).has(product_id):
+				var product_header_id: String = route["product_headers"][product_id]
+				if unit_id == product_header_id:
+					return route
+				for destination in destinations_for_product_header(product_header_id):
+					if destination["tank"] == unit_id:
+						return route
 	return {}
 
 
@@ -221,6 +235,42 @@ func routes_for_header(header_id: String) -> Array[Dictionary]:
 	return routes
 
 
+func product_header_info(header_id: String) -> Dictionary:
+	if _unit_type(header_id) != "product_header":
+		return {}
+	var feed_edge := incoming_edge(header_id, "input")
+	if feed_edge.is_empty():
+		return {}
+	var source_id: String = feed_edge["from_unit"]
+	var source_type := _unit_type(source_id)
+	var product_id := ""
+	if source_type == "column" and String(feed_edge["from_port"]) in ["light", "diesel", "heavy"]:
+		product_id = String(feed_edge["from_port"])
+	elif source_type == "treatment" and String(feed_edge["from_port"]) == "output":
+		product_id = "diesel"
+	if product_id.is_empty():
+		return {}
+	return {"source": source_id, "product": product_id}
+
+
+func destinations_for_product_header(header_id: String) -> Array[Dictionary]:
+	var destinations: Array[Dictionary] = []
+	for outlet_id in ["out_a", "out_b"]:
+		var edge := outgoing_edge(header_id, outlet_id)
+		if not edge.is_empty() and _unit_type(edge["to_unit"]) == "tank":
+			destinations.append({"outlet": outlet_id, "tank": edge["to_unit"]})
+	return destinations
+
+
+func routes_for_product_header(header_id: String) -> Array[Dictionary]:
+	var routes: Array[Dictionary] = []
+	for route in find_complete_routes():
+		for product_id in route.get("product_headers", {}):
+			if route["product_headers"][product_id] == header_id:
+				routes.append(route)
+	return routes
+
+
 func find_complete_routes() -> Array[Dictionary]:
 	var routes: Array[Dictionary] = []
 	var feed_paths: Array[Dictionary] = []
@@ -252,6 +302,7 @@ func find_complete_routes() -> Array[Dictionary]:
 			continue
 		var column_id: String = heater_edge["to_unit"]
 		var products := {}
+		var product_headers := {}
 		var complete := true
 		var treatment_id := ""
 		for product_port in ["light", "diesel", "heavy"]:
@@ -263,12 +314,31 @@ func find_complete_routes() -> Array[Dictionary]:
 			if product_port == "diesel" and destination_type == "treatment":
 				treatment_id = product_edge["to_unit"]
 				var treatment_edge := outgoing_edge(treatment_id, "output")
-				if treatment_edge.is_empty() or _unit_type(treatment_edge["to_unit"]) != "tank":
+				if treatment_edge.is_empty():
 					complete = false
 					break
-				products[product_port] = treatment_edge["to_unit"]
+				var treatment_destination_type := _unit_type(treatment_edge["to_unit"])
+				if treatment_destination_type == "tank":
+					products[product_port] = treatment_edge["to_unit"]
+				elif treatment_destination_type == "product_header":
+					var treatment_destinations := destinations_for_product_header(treatment_edge["to_unit"])
+					if treatment_destinations.is_empty():
+						complete = false
+						break
+					products[product_port] = treatment_destinations[0]["tank"]
+					product_headers[product_port] = treatment_edge["to_unit"]
+				else:
+					complete = false
+					break
 			elif destination_type == "tank":
 				products[product_port] = product_edge["to_unit"]
+			elif destination_type == "product_header":
+				var destinations := destinations_for_product_header(product_edge["to_unit"])
+				if destinations.is_empty():
+					complete = false
+					break
+				products[product_port] = destinations[0]["tank"]
+				product_headers[product_port] = product_edge["to_unit"]
 			else:
 				complete = false
 				break
@@ -283,6 +353,7 @@ func find_complete_routes() -> Array[Dictionary]:
 				"column": column_id,
 				"treatment": treatment_id,
 				"products": products,
+				"product_headers": product_headers,
 			})
 	return routes
 

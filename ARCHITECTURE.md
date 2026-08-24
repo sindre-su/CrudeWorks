@@ -10,9 +10,13 @@
   contracts, sulfur-aware quality, lab authorization, dispatch, first
   recoverable pump fault and process simulation.
 - `scripts/process_network.gd`: authoritative directed topology. It validates
-  ports, equipment order, cycles and the single complete Area 02 route.
+  ports, equipment order and cycles, and discovers independent complete Area 02
+  trains plus optional crude/product headers.
 - `scripts/build_controller.gd`: placement, rotation, pipe selection and visual
   connection cache; never a second source of logical topology.
+- `scripts/feed_allocation.gd` / `scripts/product_allocation.gd`: explicit,
+  stopped-only ownership selections for shared crude sources and optional
+  product-header destinations.
 - `scripts/equipment_catalog.gd` / `scripts/crude_contract_catalog.gd`:
   equipment and feed/order data.
 - `scripts/save_system.gd`: validated versioned local persistence.
@@ -24,9 +28,9 @@
 
 Pilot: heat -> open valve -> start pump -> distill -> sell diesel -> unlock.
 
-Area 02: build -> validate one route -> load contract -> heat -> open manual
-valve -> pump -> fractions -> optional diesel treatment -> sample -> lab ->
-conditional dispatch.
+Area 02: build -> validate one or more trains -> load contract -> heat -> open
+manual valve -> pump -> fractions -> optional diesel treatment -> optional
+product-header storage choice -> sample -> lab -> conditional dispatch.
 
 ## Test map
 
@@ -44,5 +48,7 @@ conditional dispatch.
 - `ProcessNetwork` is the sole topology authority.
 - `BuiltRefineryModel` is the sole Area 02 operating/material authority.
 - Material transfer is capacity-bounded and mass-conserving.
+- A Product Routing Header sends each product only to its explicit selected tank;
+  it never splits, blends or auto-switches storage.
 - Sale consumes authorized inventory atomically; no free repeated value.
 - Save/load validates before mutating live state and restores pumps stopped.

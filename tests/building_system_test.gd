@@ -42,6 +42,12 @@ func _run_tests() -> void:
 	controller._input(header_key)
 	_expect(controller.selected_type == "header", "key 7 selects the Crude Feed Header")
 	_expect(controller.ghost.has_node("PreviewOut APort") and controller.ghost.has_node("PreviewOut BPort"), "header preview exposes both readable branch outlets")
+	var product_header_key := InputEventKey.new()
+	product_header_key.keycode = KEY_8
+	product_header_key.pressed = true
+	controller._input(product_header_key)
+	_expect(controller.selected_type == "product_header", "key 8 selects the Product Routing Header")
+	_expect(controller.ghost.has_node("PreviewOut APort") and controller.ghost.has_node("PreviewOut BPort"), "product-header preview exposes both readable storage outlets")
 	controller.set_build_mode(false)
 
 	_test_catalog()
@@ -57,7 +63,7 @@ func _run_tests() -> void:
 
 
 func _test_catalog() -> void:
-	_expect(Catalog.ORDER.size() == 7, "catalog exposes the Crude Feed Header alongside the refinery machines")
+	_expect(Catalog.ORDER.size() == 8, "catalog exposes both crude-feed and product-routing headers alongside the refinery machines")
 	for equipment_type in Catalog.ORDER:
 		var definition: Dictionary = Catalog.definition(equipment_type)
 		_expect(not definition.is_empty(), "%s has a catalog definition" % equipment_type)
@@ -84,6 +90,10 @@ func _test_units_and_footprints(world: Node3D) -> void:
 	header.configure_buildable("header", 12)
 	world.add_child(header)
 	_expect(header.get_port("input") != null and header.get_port("out_a") != null and header.get_port("out_b") != null, "Crude Feed Header exposes IN, OUT A and OUT B ports")
+	var product_header = BuildableUnitScript.new()
+	product_header.configure_buildable("product_header", 13)
+	world.add_child(product_header)
+	_expect(product_header.get_port("input") != null and product_header.get_port("out_a") != null and product_header.get_port("out_b") != null, "Product Routing Header exposes IN, OUT A and OUT B ports")
 	var valve = BuildableUnitScript.new()
 	valve.configure_buildable("valve", 10)
 	world.add_child(valve)

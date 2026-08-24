@@ -356,6 +356,21 @@ static func _validate_built_refinery(state: Dictionary, unit_types: Dictionary) 
 	for unit_id in saved_equipment:
 		if not unit_types.has(unit_id):
 			return _result(false, "Prosesstilstanden inneholder ukjent utstyr.")
+	if state.has("product_allocations"):
+		if typeof(state["product_allocations"]) != TYPE_DICTIONARY:
+			return _result(false, "Lagrede produkttildelinger har ugyldig format.")
+		for header_id in state["product_allocations"]:
+			var allocation: Variant = state["product_allocations"][header_id]
+			if (
+				typeof(header_id) != TYPE_STRING
+				or unit_types.get(header_id, "") != "product_header"
+				or typeof(allocation) != TYPE_DICTIONARY
+				or typeof(allocation.get("selected_tank_id", "")) != TYPE_STRING
+			):
+				return _result(false, "Lagret produkttildeling er ugyldig.")
+			var selected_tank_id: String = allocation.get("selected_tank_id", "")
+			if not selected_tank_id.is_empty() and unit_types.get(selected_tank_id, "") != "tank":
+				return _result(false, "Lagret produkttildeling peker ikke på en tank.")
 	var has_tracking := (
 		float(state["report_crude_processed_l"]) > 0.001
 		or float(state["report_temperature_total"]) > 0.001
@@ -417,7 +432,7 @@ static func _validate_equipment_state(state: Dictionary) -> Dictionary:
 		"treatment":
 			if typeof(state.get("running")) != TYPE_BOOL or not _finite_number(state.get("processed_total_l")) or float(state["processed_total_l"]) < 0.0:
 				return _result(false, "En lagret dieselbehandler har ugyldig tilstand.")
-		"header":
+		"header", "product_header":
 			pass
 		_:
 			return _result(false, "Ukjent lagret utstyrstype.")

@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.16 – Fysisk delt råoljemating**
+**Prototypeversjon: 0.17 – Produktruting og tankfarm**
 
 En liten 3D-prototype der spilleren driver et forenklet pilotraffineri. Første mål
 er å behandle 1 000 liter råolje og selge minst 200 liter diesel med 90 % eller
@@ -49,6 +49,8 @@ Den første komplette «vertical slice»-en inneholder:
   off-spec diesel salgbar uten å endre materialmengden
 - separate produktleveranser: Naphtha gir 5 kr/L, diesel beholder LAB-kravet,
   og tung rest gir 2 kr/L; hver levering tømmer bare riktig produkttank
+- fysisk Product Routing Header for én produktstrøm: velg lagring A, B eller
+  ingen rute før drift; valgt tank fylles alene og fullt lager stopper prosessen
 
 Alle objekter er foreløpig bygget av Godots primitive 3D-former. Det gjør at vi
 kan teste gameplay før vi bruker tid på modeller og grafikk.
@@ -115,7 +117,7 @@ Byggemodus låses opp når den første dieselbatchen er solgt.
 | --- | --- |
 | B | Åpne eller lukke byggemodus |
 | 1–4 | Velg tank, pumpe, varmeenhet eller destillasjonskolonne |
-| 5 / 6 / 7 | Velg manuell ventil, dieselbehandler eller Crude Feed Header |
+| 5 / 6 / 7 / 8 | Velg manuell ventil, dieselbehandler, Crude Feed Header eller Product Routing Header |
 | Q / E | Roter forhåndsvisningen |
 | Venstreklikk | Plasser eller bekreft valgt handling |
 | X | Bytt til fjerningsmodus; fjerning gir full refusjon |
@@ -213,6 +215,12 @@ kobler `OUT A` og `OUT B` til hver sin pumpe. Trykk `E` på headeren for å velg
 `A → B → ingen rute`. Valgt pumpevei får all råolje; bytte er blokkert mens en
 pumpe fra samme kilde går. Headeren deler aldri flow automatisk og velger aldri
 en reservevei på egen hånd.
+
+For utvidet produktlagring kan et kolonneutløp eller HT-201 kobles til en
+**Product Routing Header**. Koble `OUT A` og `OUT B` til kompatible tanker og
+trykk `E` på headeren for å velge `A → B → ingen tank`. Bytte krever at den
+aktuelle pumpen er stoppet. Bare valgt tank mottar nytt produkt; et fullt valgt
+lager stopper prosessen i stedet for å flytte eller duplisere materialet.
 
 Hvis en batch blir off-spec, forklarer
 terminalen at `R` kan sende bygde produkter til sikker avfallshåndtering uten

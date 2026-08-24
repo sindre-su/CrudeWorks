@@ -25,6 +25,7 @@ func _run_tests() -> void:
 	_test_second_complete_route_is_accepted()
 	_test_shared_source_candidate_discovery()
 	_test_optional_diesel_treatment_route()
+	_test_product_header_destination_discovery()
 
 
 func _test_valid_topology() -> void:
@@ -45,6 +46,23 @@ func _test_optional_diesel_treatment_route() -> void:
 	var validation: Dictionary = network.validate_configuration()
 	_expect(validation["valid"] and validation["route"]["treatment"] == "treatment", "a treatment branch is a valid single refinery route")
 	_expect(network.connection_count() == 8, "treatment route adds one directed connection without duplicating a product path")
+
+
+func _test_product_header_destination_discovery() -> void:
+	var network = _complete_network()
+	_register(network, "diesel_header", "product_header", "PH-201")
+	_register(network, "diesel_backup", "tank", "T-205")
+	_expect(network.disconnect_ports("column", "diesel", "diesel_tank", "input"), "direct diesel storage can be replaced with a product header")
+	_expect(network.try_connect("column", "diesel", "diesel_header", "input")["ok"], "column diesel outlet connects to Product Routing Header IN")
+	_expect(network.try_connect("diesel_header", "out_a", "diesel_tank", "input")["ok"], "Product Routing Header OUT A connects to primary diesel storage")
+	_expect(network.try_connect("diesel_header", "out_b", "diesel_backup", "input")["ok"], "Product Routing Header OUT B connects to backup diesel storage")
+	var validation: Dictionary = network.validate_configuration()
+	var route: Dictionary = validation["route"]
+	var destinations: Array[Dictionary] = network.destinations_for_product_header("diesel_header")
+	_expect(validation["valid"] and route["product_headers"]["diesel"] == "diesel_header", "optional product header keeps the refinery topology valid")
+	_expect(destinations.size() == 2 and destinations[0]["tank"] == "diesel_tank" and destinations[1]["tank"] == "diesel_backup", "product header exposes stable physical A/B storage destinations")
+	network.disconnect_ports("diesel_header", "out_b", "diesel_backup", "input")
+	_expect(network.validate_configuration()["valid"] and network.destinations_for_product_header("diesel_header").size() == 1, "an incomplete sibling storage branch does not invalidate the available product route")
 
 
 func _test_direction_and_order() -> void:

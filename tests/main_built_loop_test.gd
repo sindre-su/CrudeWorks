@@ -258,6 +258,7 @@ func _test_heavy_contract_through_main() -> void:
 	_expect(main.process_model.money == 3580, "repeated Main terminal use cannot duplicate the Heavy bonus")
 	main.queue_free()
 	await _test_offspec_lab_through_main()
+	await _test_product_header_save_round_trip()
 
 
 func _test_offspec_lab_through_main() -> void:
@@ -296,6 +297,46 @@ func _test_offspec_lab_through_main() -> void:
 	main._unhandled_input(close_event)
 	_expect(not main.lab_analysis_panel.visible and not main.player.input_blocked and not main.build_controller.input_blocked, "Escape closes OFF-SPEC analysis and restores field controls")
 	main.queue_free()
+
+
+func _test_product_header_save_round_trip() -> void:
+	var main = MainScene.instantiate()
+	main.persistence_enabled = false
+	root.add_child(main)
+	await process_frame
+	main.process_model.money = 10000
+	main.process_model.objective_complete = true
+	main._process(0.0)
+	_place_full_refinery(main)
+	_connect_full_refinery(main)
+	main._on_build_placement_requested("product_header", Vector3(4.0, 0.96, 27.0), 0)
+	main._on_build_placement_requested("tank", Vector3(10.0, 1.96, 28.0), 0)
+	var column = _unit(main, "built_column_5")
+	var diesel_a = _unit(main, "built_tank_7")
+	var header = _unit(main, "built_product_header_9")
+	var diesel_b = _unit(main, "built_tank_10")
+	main.build_controller._disconnect_port(column.get_port("diesel"))
+	main.build_controller._connect_ports(column.get_port("diesel"), header.get_port("input"))
+	main.build_controller._connect_ports(header.get_port("out_a"), diesel_a.get_port("input"))
+	main.build_controller._connect_ports(header.get_port("out_b"), diesel_b.get_port("input"))
+	_expect(main.built_refinery_model.network.validate_configuration()["valid"], "physical Product Routing Header keeps the Main refinery valid")
+	_expect(main.built_refinery_model.interact(header.unit_id)["ok"] and main.built_refinery_model.interact(header.unit_id)["ok"], "physical header can select its B destination while the process is stopped")
+	_expect(main.built_refinery_model.product_allocations[header.unit_id].selected_tank_id == diesel_b.unit_id, "Main stores selected product destination by stable tank identity")
+	var snapshot: Dictionary = main._build_snapshot()
+	var restored = MainScene.instantiate()
+	restored.persistence_enabled = false
+	root.add_child(restored)
+	await process_frame
+	var applied: Dictionary = restored._apply_snapshot(snapshot)
+	_expect(applied["ok"], "saved Product Routing Header construction restores atomically (%s)" % applied["message"])
+	if not applied["ok"]:
+		main.queue_free()
+		restored.queue_free()
+		return
+	_expect(restored.build_controller.connections.size() == 9 and restored.build_controller.registered_unit_by_id(header.unit_id) != null, "product-header pipes and placed equipment restore with the refinery")
+	_expect(restored.built_refinery_model.product_allocations[header.unit_id].selected_tank_id == diesel_b.unit_id, "save/load preserves the explicitly selected B storage without auto-switching")
+	main.queue_free()
+	restored.queue_free()
 
 
 func _place_full_refinery(main) -> void:

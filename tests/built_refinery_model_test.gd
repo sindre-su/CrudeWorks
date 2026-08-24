@@ -43,6 +43,8 @@ func _run_tests() -> void:
 	_test_recoverable_pump_filter_fault()
 	_test_sour_crude_requires_treatment()
 	_test_product_specific_dispatch()
+	_test_product_header_allocation_and_capacity()
+	_test_product_header_preserves_treated_diesel_and_save_state()
 
 
 func _test_invalid_network_cannot_start() -> void:
@@ -911,6 +913,82 @@ func _test_off_route_product_blocks_dispatch() -> void:
 	_expect(is_equal_approx(model.equipment["legacy_product"]["volume_l"], 100.0) and model.successful_sales == 0, "disconnected legacy inventory cannot be silently erased or credited")
 
 
+func _test_product_header_allocation_and_capacity() -> void:
+	var model = _complete_model()
+	model.commissioning_batch_available = false
+	model.commissioning_contract_complete = true
+	_add_diesel_product_header(model)
+	_expect(model.interact("diesel_header")["ok"], "physical Product Routing Header selects storage A from NONE")
+	_expect(model.product_allocations["diesel_header"].selected_tank_id == "diesel_tank", "first header selection owns diesel output A")
+	_expect(model.load_crude_batch("source", true, "standard")["ok"], "standard crude can load into a refinery with optional product routing")
+	model.equipment["heater"]["temperature_c"] = 200.0
+	model.equipment["heater"]["setpoint_c"] = 200.0
+	model.interact("valve")
+	_expect(model.interact("pump")["ok"], "selected product storage lets the upstream pump start")
+	model.tick(10.0)
+	_expect(is_equal_approx(model.equipment["diesel_tank"]["volume_l"], 35.0) and is_equal_approx(model.equipment["diesel_backup"]["volume_l"], 0.0), "only selected diesel tank A receives new production")
+	_expect(not model.interact("diesel_header")["ok"], "running process cannot switch product ownership")
+	model.interact("pump")
+	_expect(model.interact("diesel_header")["ok"] and model.product_allocations["diesel_header"].selected_tank_id == "diesel_backup", "stopped process switches Product Routing Header safely to tank B")
+	model.interact("pump")
+	model.tick(10.0)
+	_expect(is_equal_approx(model.equipment["diesel_tank"]["volume_l"], 35.0) and is_equal_approx(model.equipment["diesel_backup"]["volume_l"], 35.0), "switching product route preserves tank A inventory and sends later diesel only to B")
+	_expect(is_equal_approx(_total_tank_volume(model), 1000.0), "product-header routing preserves total material mass")
+	model.interact("pump")
+	_expect(model.interact("diesel_header")["ok"] and model.product_allocations["diesel_header"].selected_tank_id.is_empty(), "header supports an explicit NONE product route")
+	_expect(not model.interact("pump")["ok"], "pump cannot restart while a required product header has no selected storage")
+	_expect(model.interact("diesel_header")["ok"] and model.product_allocations["diesel_header"].selected_tank_id == "diesel_tank", "header cycles safely from NONE back to tank A")
+	model.unregister_unit("diesel_backup")
+	_expect(model.product_allocations["diesel_header"].selected_tank_id == "diesel_tank", "deleting an unselected sibling tank preserves the selected storage route")
+	model.unregister_unit("diesel_tank")
+	_expect(model.product_allocations["diesel_header"].selected_tank_id.is_empty(), "deleting the selected product tank clears allocation without auto-fallback")
+
+	var capacity_model = _complete_model()
+	capacity_model.commissioning_batch_available = false
+	capacity_model.commissioning_contract_complete = true
+	_add_diesel_product_header(capacity_model)
+	capacity_model.interact("diesel_header")
+	capacity_model.load_crude_batch("source", true, "standard")
+	capacity_model.equipment["heater"]["temperature_c"] = 200.0
+	capacity_model.equipment["heater"]["setpoint_c"] = 200.0
+	capacity_model.equipment["valve"]["open"] = true
+	capacity_model.equipment["diesel_tank"]["contents"] = "diesel"
+	capacity_model.equipment["diesel_tank"]["volume_l"] = 1000.0
+	var source_before: float = capacity_model.equipment["source"]["volume_l"]
+	capacity_model.interact("pump")
+	capacity_model.tick(1.0)
+	_expect(is_equal_approx(capacity_model.equipment["source"]["volume_l"], source_before), "a full selected tank blocks production without consuming source material or spilling to B")
+	capacity_model.interact("pump")
+	capacity_model.interact("diesel_header")
+	capacity_model.interact("pump")
+	capacity_model.tick(1.0)
+	_expect(is_equal_approx(capacity_model.equipment["diesel_backup"]["volume_l"], 3.5), "operator-selected backup tank receives diesel after a safe shutdown and route switch")
+
+
+func _test_product_header_preserves_treated_diesel_and_save_state() -> void:
+	var model = _treated_model()
+	model.commissioning_batch_available = false
+	model.commissioning_contract_complete = true
+	_add_diesel_product_header(model, true)
+	model.interact("diesel_header")
+	model.load_crude_batch("source", true, "sour")
+	model.equipment["heater"]["temperature_c"] = 200.0
+	model.equipment["heater"]["setpoint_c"] = 200.0
+	model.equipment["valve"]["open"] = true
+	model.interact("treatment")
+	model.interact("pump")
+	model.tick(10.0)
+	_expect(is_equal_approx(model.equipment["diesel_tank"]["volume_l"], 35.0) and is_equal_approx(model.equipment["diesel_tank"]["sulfur_ppm"], 10.0), "treated Sour diesel retains treated sulfur state through Product Routing Header A")
+	model.interact("pump")
+	model.interact("diesel_header")
+	var saved: Dictionary = model.save_state()
+	var restored = _treated_model()
+	_add_diesel_product_header(restored, true)
+	restored.apply_saved_state(saved)
+	_expect(restored.product_allocations["diesel_header"].selected_tank_id == "diesel_backup", "selected Product Routing Header destination survives save/load")
+	_expect(is_equal_approx(restored.equipment["diesel_tank"]["sulfur_ppm"], 10.0) and is_equal_approx(restored.equipment["diesel_tank"]["volume_l"], 35.0), "saved routed diesel preserves volume and treatment quality")
+
+
 func _take_and_analyze(model) -> Dictionary:
 	var sample: Dictionary = model.take_diesel_sample("diesel_tank")
 	if not sample["ok"]:
@@ -945,6 +1023,19 @@ func _treated_model():
 	model.network.try_connect("column", "diesel", "treatment", "input")
 	model.network.try_connect("treatment", "output", "diesel_tank", "input")
 	return model
+
+
+func _add_diesel_product_header(model, after_treatment := false) -> void:
+	model.register_unit("diesel_header", "product_header", "PH-201")
+	model.register_unit("diesel_backup", "tank", "T-205")
+	if after_treatment:
+		model.network.disconnect_ports("treatment", "output", "diesel_tank", "input")
+		model.network.try_connect("treatment", "output", "diesel_header", "input")
+	else:
+		model.network.disconnect_ports("column", "diesel", "diesel_tank", "input")
+		model.network.try_connect("column", "diesel", "diesel_header", "input")
+	model.network.try_connect("diesel_header", "out_a", "diesel_tank", "input")
+	model.network.try_connect("diesel_header", "out_b", "diesel_backup", "input")
 
 
 func _add_malformed_second_route(model, prefix: String) -> void:

@@ -4,6 +4,7 @@ extends RefCounted
 const ProcessNetworkScript = preload("res://scripts/process_network.gd")
 const CrudeCatalog = preload("res://scripts/crude_contract_catalog.gd")
 const FeedAllocationScript = preload("res://scripts/feed_allocation.gd")
+const ProductAllocationScript = preload("res://scripts/product_allocation.gd")
 
 const AMBIENT_TEMPERATURE_C := 20.0
 const TANK_CAPACITY_L := 1000.0
@@ -22,6 +23,7 @@ const DIESEL_PRICE_PER_L := 8.0
 var network
 var equipment: Dictionary = {}
 var feed_allocations: Dictionary = {}
+var product_allocations: Dictionary = {}
 var commissioning_batch_available := true
 var commissioning_contract_complete := false
 var successful_sales := 0
@@ -83,6 +85,7 @@ func save_state() -> Dictionary:
 		"report_flow_total": _report_flow_total,
 		"report_crude_cost": _report_crude_cost,
 		"feed_allocations": _save_feed_allocations(),
+		"product_allocations": _save_product_allocations(),
 		"equipment": saved_equipment,
 	}
 
@@ -103,6 +106,7 @@ func apply_saved_state(state: Dictionary) -> void:
 	))
 	_report_crude_cost = float(state["report_crude_cost"])
 	_restore_feed_allocations(state.get("feed_allocations", {}))
+	_restore_product_allocations(state.get("product_allocations", {}))
 	var saved_equipment: Dictionary = state["equipment"]
 	for unit_id in equipment:
 		var target: Dictionary = equipment[unit_id]
@@ -187,7 +191,7 @@ func register_unit(unit_id: String, equipment_type: String, display_name := "") 
 			state["processed_total_l"] = 0.0
 		"treatment":
 			state.merge({"running": false, "processed_total_l": 0.0})
-		"header":
+		"header", "product_header":
 			pass
 	equipment[unit_id] = state
 	return {"ok": true, "message": "%s er klar for tilkobling." % state["name"]}
@@ -196,17 +200,21 @@ func register_unit(unit_id: String, equipment_type: String, display_name := "") 
 func unregister_unit(unit_id: String) -> void:
 	var removed_type := String(equipment.get(unit_id, {}).get("type", ""))
 	var header_source: String = network.source_for_header(unit_id) if removed_type == "header" else ""
+	var product_header_id: String = unit_id if removed_type == "product_header" else ""
 	_diesel_sample = {}
 	equipment.erase(unit_id)
 	network.unregister_unit(unit_id)
 	if not header_source.is_empty():
 		feed_allocations.erase(header_source)
+	if not product_header_id.is_empty():
+		product_allocations.erase(product_header_id)
 	actual_flow_lps = 0.0
 	last_status = network.validate_configuration()["message"]
 
 
 func _on_topology_changed() -> void:
 	_refresh_feed_allocations()
+	_refresh_product_allocations()
 	# A new, incomplete train must not interrupt an unrelated running train.
 	# Stop only pumps that no longer belong to a complete route.
 	var valid_pumps := {}
@@ -329,6 +337,89 @@ func _refresh_feed_allocations() -> void:
 		allocation.configure(source_id, network.eligible_train_ids_for_source(source_id))
 
 
+func _save_product_allocations() -> Dictionary:
+	var saved := {}
+	for header_id in product_allocations:
+		saved[header_id] = product_allocations[header_id].save_state()
+	return saved
+
+
+func _restore_product_allocations(saved: Dictionary) -> void:
+	product_allocations = {}
+	for header_id in saved:
+		if typeof(saved[header_id]) != TYPE_DICTIONARY or not equipment.has(header_id):
+			continue
+		var info: Dictionary = network.product_header_info(header_id)
+		if info.is_empty():
+			continue
+		var allocation = ProductAllocationScript.new()
+		allocation.configure(header_id, info["product"], _product_header_tank_ids(header_id))
+		allocation.select(String(saved[header_id].get("selected_tank_id", "")), false)
+		product_allocations[header_id] = allocation
+	_refresh_product_allocations()
+
+
+func _refresh_product_allocations() -> void:
+	for header_id in product_allocations:
+		var info: Dictionary = network.product_header_info(header_id)
+		if info.is_empty():
+			product_allocations[header_id].configure(header_id, "", [])
+			continue
+		product_allocations[header_id].configure(header_id, info["product"], _product_header_tank_ids(header_id))
+
+
+func _product_header_tank_ids(header_id: String) -> Array[String]:
+	var tank_ids: Array[String] = []
+	for destination in network.destinations_for_product_header(header_id):
+		tank_ids.append(destination["tank"])
+	return tank_ids
+
+
+func cycle_product_header(header_id: String) -> Dictionary:
+	if not equipment.has(header_id) or equipment[header_id]["type"] != "product_header":
+		return _result(false, "Ukjent produkthode.")
+	var info: Dictionary = network.product_header_info(header_id)
+	var tank_ids := _product_header_tank_ids(header_id)
+	if info.is_empty() or tank_ids.is_empty():
+		return _result(false, "Koble Product Routing Header mellom produktutløpet og minst én lagringstank.")
+	var allocation = product_allocations.get(header_id)
+	if allocation == null:
+		allocation = ProductAllocationScript.new()
+		product_allocations[header_id] = allocation
+	allocation.configure(header_id, info["product"], tank_ids)
+	var choices: Array[String] = [""]
+	choices.append_array(tank_ids)
+	var current_index := choices.find(allocation.selected_tank_id)
+	var next_tank: String = choices[(current_index + 1) % choices.size()]
+	var result: Dictionary = allocation.select(next_tank, _product_header_has_running_pump(header_id))
+	if result["ok"]:
+		last_status = _product_header_selection_text(header_id)
+		result["message"] = last_status
+	return result
+
+
+func _product_header_has_running_pump(header_id: String) -> bool:
+	for route in network.routes_for_product_header(header_id):
+		if bool(equipment[route["pump"]]["running"]):
+			return true
+	return false
+
+
+func _product_header_selection_text(header_id: String) -> String:
+	var info: Dictionary = network.product_header_info(header_id)
+	var allocation = product_allocations.get(header_id)
+	if info.is_empty() or allocation == null or allocation.selected_tank_id.is_empty():
+		return "%s isolert — ingen produkttank er valgt." % equipment[header_id]["name"]
+	for destination in network.destinations_for_product_header(header_id):
+		if destination["tank"] == allocation.selected_tank_id:
+			return "%s: %s går til rute %s (%s)." % [
+				equipment[header_id]["name"], _contents_name(info["product"]),
+				"A" if destination["outlet"] == "out_a" else "B",
+				equipment[allocation.selected_tank_id]["name"],
+			]
+	return "%s: valgt produkttank er ikke tilgjengelig." % equipment[header_id]["name"]
+
+
 func _feed_header_selection_text(header_id: String) -> String:
 	var source_id: String = network.source_for_header(header_id)
 	var selected_train := ""
@@ -380,6 +471,8 @@ func interact(unit_id: String, can_pay_for_crude := false) -> Dictionary:
 			return _toggle_treatment(unit_id)
 		"header":
 			return cycle_feed_header(unit_id)
+		"product_header":
+			return cycle_product_header(unit_id)
 		"tank":
 			if _is_route_source(unit_id) and equipment[unit_id]["volume_l"] <= 0.001:
 				if commissioning_contract_complete and can_choose_contract(unit_id)["ok"]:
@@ -419,6 +512,8 @@ func interaction_prompt(unit_id: String) -> String:
 			return "E — %s dieselbehandler" % ("stopp" if state["running"] else "start")
 		"header":
 			return "E — bytt fôringsrute (A → B → ingen)"
+		"product_header":
+			return "E — bytt produkttank (A → B → ingen)"
 		"column":
 			return "E — inspiser destillasjon"
 		"tank":
@@ -439,7 +534,7 @@ func interaction_prompt(unit_id: String) -> String:
 			var product_role: String = _product_role_for_tank(unit_id)
 			if not product_role.is_empty():
 				if commissioning_contract_complete and product_role == "diesel" and state["volume_l"] > 0.001:
-					if _route_pump_running(network.find_route_for_unit(unit_id)):
+					if _route_pump_running(_resolved_route(network.find_route_for_unit(unit_id))):
 						return "DIESELPRØVE — stopp pumpen først"
 					return (
 						"E — ta ny dieselprøve"
@@ -634,6 +729,12 @@ func _tick_route(route: Dictionary, delta: float) -> void:
 		if not allocation.is_selected(route["pump"]):
 			pump["actual_flow_lps"] = 0.0
 			return
+	var runtime_route := _resolved_route(route)
+	if runtime_route.is_empty():
+		if pump["running"]:
+			last_status = "NO PRODUCT STORAGE SELECTED — velg tank på Product Routing Header."
+		return
+	route = runtime_route
 	var valve: Dictionary = equipment[route["valve"]]
 	var heater: Dictionary = equipment[route["heater"]]
 	var treatment: Dictionary = equipment[route["treatment"]] if not String(route.get("treatment", "")).is_empty() else {}
@@ -747,6 +848,9 @@ func take_diesel_sample(unit_id: String) -> Dictionary:
 	var route: Dictionary = network.find_route_for_unit(unit_id)
 	if route.is_empty():
 		return _result(false, "Ta prøven fra dieseltanken i en komplett prosesslinje.")
+	route = _resolved_route(route)
+	if route.is_empty():
+		return _result(false, "Velg dieseltank på Product Routing Header før prøvetaking.")
 	if _route_pump_running(route):
 		return _result(false, "Stopp pumpen før dieselprøven tas.")
 	if route["products"]["diesel"] != unit_id:
@@ -790,7 +894,7 @@ func analyze_diesel_sample() -> Dictionary:
 	var current: Dictionary = _current_sample_result()
 	if not current["ok"]:
 		return current
-	var route: Dictionary = network.find_route_for_unit(String(_diesel_sample.get("tank_id", "")))
+	var route: Dictionary = _resolved_route(network.find_route_for_unit(String(_diesel_sample.get("tank_id", ""))))
 	if _route_pump_running(route):
 		return _result(false, "Stopp pumpen før dieselprøven analyseres.")
 	_diesel_sample["analyzed"] = true
@@ -812,7 +916,7 @@ func lab_dispatch_status() -> Dictionary:
 			"dispatch_ready": false,
 			"message": (
 				"Stopp pumpen før prøve %s analyseres." % _diesel_sample["sample_id"]
-				if _route_pump_running(network.find_route_for_unit(String(_diesel_sample.get("tank_id", ""))))
+				if _route_pump_running(_resolved_route(network.find_route_for_unit(String(_diesel_sample.get("tank_id", "")))))
 				else "Prøve %s er klar for analyse ved LAB / SALG." % _diesel_sample["sample_id"]
 			),
 		}
@@ -830,7 +934,7 @@ func sell_diesel() -> Dictionary:
 	var validation: Dictionary = network.validate_configuration()
 	if not validation["valid"]:
 		return _result(false, validation["message"])
-	var route: Dictionary = network.find_route_for_unit(String(_diesel_sample.get("tank_id", "")))
+	var route: Dictionary = _resolved_route(network.find_route_for_unit(String(_diesel_sample.get("tank_id", ""))))
 	if route.is_empty():
 		return _result(false, "Ta en ny dieselprøve ved dieseltanken.")
 	if _route_pump_running(route):
@@ -958,7 +1062,7 @@ func available_product_orders() -> Array[Dictionary]:
 	var validation: Dictionary = network.validate_configuration()
 	if not validation["valid"] or _any_pump_running():
 		return []
-	var route: Dictionary = active_route()
+	var route: Dictionary = _resolved_route(active_route())
 	if route.is_empty():
 		return []
 	var orders: Array[Dictionary] = []
@@ -974,13 +1078,16 @@ func available_product_orders() -> Array[Dictionary]:
 
 
 func dispatch_product(product_id: String) -> Dictionary:
-	return _dispatch_route_product(active_route(), product_id)
+	return _dispatch_route_product(_resolved_route(active_route()), product_id)
 
 
 func dispatch_product_from_tank(unit_id: String) -> Dictionary:
-	var route: Dictionary = network.find_route_for_unit(unit_id)
+	var route: Dictionary = _resolved_route(network.find_route_for_unit(unit_id))
 	if route.is_empty():
 		return _result(false, "Produktet må stå i en komplett prosesslinje før utsending.")
+	route = _resolved_route(route)
+	if route.is_empty():
+		return _result(false, "Velg produkttank på Product Routing Header før utsending.")
 	var product_id := _product_role_for_tank(unit_id)
 	if product_id.is_empty() or product_id == "diesel":
 		return _result(false, "Dette produktet sendes via riktig leveringspunkt.")
@@ -1025,7 +1132,7 @@ func _dispatch_route_product(route: Dictionary, product_id: String) -> Dictionar
 
 
 func diesel_is_approved() -> bool:
-	var route: Dictionary = active_route()
+	var route: Dictionary = _resolved_route(active_route())
 	if route.is_empty():
 		return false
 	var tank: Dictionary = equipment[route["products"]["diesel"]]
@@ -1054,9 +1161,10 @@ func _route_product_volume_l(route: Dictionary) -> float:
 	if route.is_empty():
 		return total
 	for product_id in route["products"]:
-		var tank: Dictionary = equipment[route["products"][product_id]]
-		if tank["contents"] == product_id:
-			total += float(tank["volume_l"])
+		for tank_id in _route_all_product_tank_ids(route, product_id):
+			var tank: Dictionary = equipment[tank_id]
+			if tank["contents"] == product_id:
+				total += float(tank["volume_l"])
 	return total
 
 
@@ -1068,8 +1176,9 @@ func _unassigned_material_message() -> String:
 	var assigned_tanks := {}
 	for route in network.find_complete_routes():
 		assigned_tanks[route["source"]] = true
-		for product_tank_id in route["products"].values():
-			assigned_tanks[product_tank_id] = true
+		for product_id in route["products"]:
+			for product_tank_id in _route_all_product_tank_ids(route, product_id):
+				assigned_tanks[product_tank_id] = true
 	var names: Array[String] = []
 	for unit_id in equipment:
 		var state: Dictionary = equipment[unit_id]
@@ -1092,9 +1201,9 @@ func objective_text() -> String:
 		if network.find_complete_routes().size() > 1:
 			return prefix + "gå til byggemodus og koble fra én prosesslinje"
 		return prefix + "bygg og koble en komplett linje"
-	var route: Dictionary = active_route()
+	var route: Dictionary = _resolved_route(active_route())
 	if route.is_empty():
-		return prefix + "velg fôringsrute på Crude Feed Header"
+		return prefix + "velg produkttank på Product Routing Header"
 	var source: Dictionary = equipment[route["source"]]
 	var heater: Dictionary = equipment[route["heater"]]
 	var pump: Dictionary = equipment[route["pump"]]
@@ -1210,6 +1319,8 @@ func inspect_unit(unit_id: String) -> String:
 			return "Dieselbehandler %s, %.0f L behandlet." % ["PÅ" if state["running"] else "AV", state["processed_total_l"]]
 		"header":
 			return _feed_header_inspection(unit_id)
+		"product_header":
+			return _product_header_inspection(unit_id)
 	return "Bygd prosessutstyr."
 
 
@@ -1250,6 +1361,8 @@ func unit_status(unit_id: String) -> String:
 			return "%s  |  %.0f L behandlet" % ["PÅ" if state["running"] else "AV", state["processed_total_l"]]
 		"header":
 			return _feed_header_status(unit_id)
+		"product_header":
+			return _product_header_status(unit_id)
 	return "KLAR"
 
 
@@ -1291,11 +1404,44 @@ func _feed_header_inspection(header_id: String) -> String:
 	return "\n".join(lines)
 
 
+func _product_header_status(header_id: String) -> String:
+	var info: Dictionary = network.product_header_info(header_id)
+	if info.is_empty():
+		return "KOBLE INN PRODUKTUTLØP"
+	var tank_ids := _product_header_tank_ids(header_id)
+	if tank_ids.is_empty():
+		return "KOBLE OUT A/B TIL PRODUKTTANK"
+	var allocation = product_allocations.get(header_id)
+	if allocation == null or allocation.selected_tank_id.is_empty():
+		return "INGEN PRODUKTTANK VALGT"
+	for destination in network.destinations_for_product_header(header_id):
+		if destination["tank"] == allocation.selected_tank_id:
+			return "%s → RUTE %s" % [
+				_contents_name(info["product"]), "A" if destination["outlet"] == "out_a" else "B",
+			]
+	return "VALGT PRODUKTTANK ER UGYLDIG"
+
+
+func _product_header_inspection(header_id: String) -> String:
+	var info: Dictionary = network.product_header_info(header_id)
+	if info.is_empty():
+		return "PRODUCT ROUTING HEADER: koble IN til et produktutløp."
+	var lines := ["PRODUCT ROUTING HEADER", "Produkt: %s" % _contents_name(info["product"])]
+	var allocation = product_allocations.get(header_id)
+	for destination in network.destinations_for_product_header(header_id):
+		var branch := "A" if destination["outlet"] == "out_a" else "B"
+		var selected: bool = allocation != null and allocation.selected_tank_id == destination["tank"]
+		lines.append("Rute %s: %s%s" % [branch, equipment[destination["tank"]]["name"], " — VALGT" if selected else ""])
+	if allocation == null or allocation.selected_tank_id.is_empty():
+		lines.append("Valgt tank: INGEN")
+	return "\n".join(lines)
+
+
 func summary_text() -> String:
 	var validation: Dictionary = network.validate_configuration()
 	var diesel_volume := 0.0
 	var diesel_quality := 0.0
-	var displayed_route := active_route()
+	var displayed_route := _resolved_route(active_route())
 	if validation["valid"] and not displayed_route.is_empty():
 		var tank: Dictionary = equipment[displayed_route["products"]["diesel"]]
 		if tank["contents"] == "diesel":
@@ -1358,12 +1504,12 @@ func control_snapshot() -> Dictionary:
 			"ambiguous_routes": network.find_complete_routes().size() > 1,
 			"message": validation["message"],
 		}
-	var route: Dictionary = active_route()
+	var route: Dictionary = _resolved_route(active_route())
 	if route.is_empty():
 		return {
 			"unlocked": true,
 			"valid": false,
-			"message": "Velg fôringsrute på Crude Feed Header.",
+			"message": "Velg produkttank på Product Routing Header.",
 		}
 	var source: Dictionary = equipment[route["source"]]
 	var pump: Dictionary = equipment[route["pump"]]
@@ -1414,9 +1560,9 @@ func remote_toggle_route_pump() -> Dictionary:
 	var validation: Dictionary = network.validate_configuration()
 	if not validation["valid"]:
 		return _result(false, validation["message"])
-	var route: Dictionary = active_route()
+	var route: Dictionary = _resolved_route(active_route())
 	if route.is_empty():
-		return _result(false, "Velg fôringsrute på Crude Feed Header før fjernstart brukes.")
+		return _result(false, "Velg produkttank på Product Routing Header før fjernstart brukes.")
 	var pump: Dictionary = equipment[route["pump"]]
 	if pump["running"]:
 		var stop_result := _toggle_pump(route["pump"])
@@ -1450,7 +1596,7 @@ func remote_cycle_route_heater() -> Dictionary:
 	var validation: Dictionary = network.validate_configuration()
 	if not validation["valid"]:
 		return _result(false, validation["message"])
-	var route := active_route()
+	var route := _resolved_route(active_route())
 	if route.is_empty():
 		return _result(false, "Velg fôringsrute på Crude Feed Header før temperaturen fjernstyres.")
 	var result := _cycle_heater(route["heater"])
@@ -1465,7 +1611,7 @@ func remote_cycle_route_pump_flow() -> Dictionary:
 	var validation: Dictionary = network.validate_configuration()
 	if not validation["valid"]:
 		return _result(false, validation["message"])
-	var route := active_route()
+	var route := _resolved_route(active_route())
 	if route.is_empty():
 		return _result(false, "Velg fôringsrute på Crude Feed Header før flowmålet endres.")
 	return cycle_pump_flow(route["pump"])
@@ -1479,7 +1625,7 @@ func cycle_pump_flow(unit_id: String) -> Dictionary:
 	var validation: Dictionary = network.validate_configuration()
 	if not validation["valid"]:
 		return _result(false, validation["message"])
-	var route := active_route()
+	var route := _resolved_route(active_route())
 	if route.is_empty() or route["pump"] != unit_id:
 		return _result(false, "%s er ikke del av den komplette prosesslinjen." % equipment[unit_id]["name"])
 	var pump: Dictionary = equipment[unit_id]
@@ -1557,12 +1703,27 @@ func active_connection_keys() -> Dictionary:
 		_add_connection_key(keys, route["valve"], "output", route["heater"], "input")
 		_add_connection_key(keys, route["heater"], "output", route["column"], "input")
 		for product_name in ["light", "diesel", "heavy"]:
-			var diesel_destination: String = route["products"][product_name]
+			var source_unit: String = route["column"]
+			var source_port: String = product_name
 			if product_name == "diesel" and not String(route.get("treatment", "")).is_empty():
 				_add_connection_key(keys, route["column"], "diesel", route["treatment"], "input")
-				_add_connection_key(keys, route["treatment"], "output", diesel_destination, "input")
+				source_unit = route["treatment"]
+				source_port = "output"
+			if route.get("product_headers", {}).has(product_name):
+				var product_header_id: String = route["product_headers"][product_name]
+				var allocation = product_allocations.get(product_header_id)
+				if allocation == null or allocation.selected_tank_id.is_empty():
+					continue
+				var outlet_id := ""
+				for destination in network.destinations_for_product_header(product_header_id):
+					if destination["tank"] == allocation.selected_tank_id:
+						outlet_id = destination["outlet"]
+				if outlet_id.is_empty():
+					continue
+				_add_connection_key(keys, source_unit, source_port, product_header_id, "input")
+				_add_connection_key(keys, product_header_id, outlet_id, allocation.selected_tank_id, "input")
 				continue
-			_add_connection_key(keys, route["column"], product_name, diesel_destination, "input")
+			_add_connection_key(keys, source_unit, source_port, route["products"][product_name], "input")
 	return keys
 
 
@@ -1584,6 +1745,33 @@ func active_route() -> Dictionary:
 	return first_unallocated_route
 
 
+func active_runtime_route() -> Dictionary:
+	return _resolved_route(active_route())
+
+
+func _resolved_route(route: Dictionary) -> Dictionary:
+	if route.is_empty():
+		return {}
+	var resolved := route.duplicate(true)
+	for product_id in route.get("product_headers", {}):
+		var header_id: String = route["product_headers"][product_id]
+		var allocation = product_allocations.get(header_id)
+		if allocation == null or allocation.selected_tank_id.is_empty():
+			return {}
+		if not allocation.selected_tank_id in _product_header_tank_ids(header_id):
+			return {}
+		resolved["products"][product_id] = allocation.selected_tank_id
+	return resolved
+
+
+func _route_all_product_tank_ids(route: Dictionary, product_id: String) -> Array[String]:
+	if route.is_empty():
+		return []
+	if route.get("product_headers", {}).has(product_id):
+		return _product_header_tank_ids(route["product_headers"][product_id])
+	return [route["products"][product_id]]
+
+
 func fractions_for_temperature(
 	temperature_c: float,
 	contract_id := CrudeCatalog.DEFAULT_ID
@@ -1603,6 +1791,8 @@ func _toggle_pump(unit_id: String) -> Dictionary:
 			return _result(false, "%s er ikke del av den komplette prosesslinjen." % pump["name"])
 		if not _route_has_feed_access(route):
 			return _result(false, "Velg denne ruten på Crude Feed Header før %s startes." % pump["name"])
+		if _resolved_route(route).is_empty():
+			return _result(false, "Velg produkttank på Product Routing Header før %s startes." % pump["name"])
 		pump["running"] = true
 	last_status = "%s er %s." % [pump["name"], "startet" if pump["running"] else "stoppet"]
 	return _result(true, last_status)
@@ -1664,7 +1854,7 @@ func _stop_all_pumps() -> void:
 func _process_alarm_text() -> String:
 	# The HUD/alarm channel follows the train the player has explicitly selected
 	# on a shared feed header. It must never report a sibling branch by accident.
-	var route: Dictionary = active_route()
+	var route: Dictionary = _resolved_route(active_route())
 	if route.is_empty():
 		return ""
 	var pump: Dictionary = equipment[route["pump"]]
@@ -1769,7 +1959,7 @@ func _is_route_source(unit_id: String) -> bool:
 
 
 func _product_role_for_tank(unit_id: String) -> String:
-	var route: Dictionary = network.find_route_for_unit(unit_id)
+	var route: Dictionary = _resolved_route(network.find_route_for_unit(unit_id))
 	if route.is_empty():
 		return ""
 	for product_name in route["products"]:
@@ -1811,7 +2001,8 @@ func _off_route_product_message(route: Dictionary) -> String:
 	# off-route material. Only truly disconnected tanks block dispatch.
 	for complete_route in network.find_complete_routes():
 		for product_name in ["light", "diesel", "heavy"]:
-			active_tanks[complete_route["products"][product_name]] = true
+			for tank_id in _route_all_product_tank_ids(complete_route, product_name):
+				active_tanks[tank_id] = true
 	var disconnected_names: Array[String] = []
 	for unit_id in equipment:
 		var state: Dictionary = equipment[unit_id]
@@ -1893,7 +2084,7 @@ func _current_sample_result() -> Dictionary:
 			"message": validation["message"],
 		}
 	if _diesel_sample.is_empty():
-		var empty_route: Dictionary = validation["route"]
+		var empty_route: Dictionary = _resolved_route(validation["route"])
 		if not empty_route.is_empty():
 			var diesel_tank: Dictionary = equipment[empty_route["products"]["diesel"]]
 			if diesel_tank["contents"] != "diesel" or diesel_tank["volume_l"] <= 0.001:
@@ -1909,7 +2100,7 @@ func _current_sample_result() -> Dictionary:
 			"analyzed": false,
 			"message": "Ta en dieselprøve ved dieseltanken før LAB / SALG brukes.",
 		}
-	var route: Dictionary = network.find_route_for_unit(String(_diesel_sample.get("tank_id", "")))
+	var route: Dictionary = _resolved_route(network.find_route_for_unit(String(_diesel_sample.get("tank_id", ""))))
 	var current := (
 		not route.is_empty()
 		and int(_diesel_sample.get("revision", -1)) == product_inventory_revision
@@ -1941,7 +2132,7 @@ func _build_sample_analysis() -> Dictionary:
 	var maximum_sulfur := float(profile.get("maximum_sulfur_ppm", INF))
 	var average_temperature := float(_diesel_sample["average_temperature_c"])
 	var average_flow := float(_diesel_sample.get("average_flow_lps", PUMP_CAPACITY_LPS))
-	var route: Dictionary = network.find_route_for_unit(String(_diesel_sample.get("tank_id", "")))
+	var route: Dictionary = _resolved_route(network.find_route_for_unit(String(_diesel_sample.get("tank_id", ""))))
 	if route.is_empty():
 		return _result(false, "Prøven er utdatert. Ta en ny prøve ved dieseltanken.")
 	var delivery := _delivery_terms(route, String(_diesel_sample["contract_id"]))

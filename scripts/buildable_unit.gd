@@ -188,4 +188,6 @@ func interaction_prompt() -> String:
 			return "E — start/stopp dieselbehandler"
 		"header":
 			return "E — velg fôringsrute"
+		"product_header":
+			return "E — velg produkttank"
 	return "E — inspiser bygd utstyr"

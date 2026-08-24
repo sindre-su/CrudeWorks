@@ -407,7 +407,7 @@
 
 ## Current Stable State
 
-- Version 0.16.0 is verified stable after the physical shared-feed routing milestone.
+- Version 0.17.0 is verified stable after the physical product-routing milestone.
 - Area 02 now discovers and runs multiple independent complete refinery trains;
   source contracts, temperatures, flow, capacity limits, sulfur treatment,
   pump-filter faults and route product storage remain local to each train.
@@ -521,3 +521,22 @@
 - Validation performed: process model, process network, building system,
   built refinery model, Main integration and save system suites; headless
   editor scan and `git diff --check` are recorded with the checkpoint.
+
+## v0.17 — Product Routing and Tank Farm
+
+- Added the buildable Product Routing Header (`IN`, `OUT A`, `OUT B`) to the
+  existing Area 02 placement, rotation, port, deletion and save-validation
+  paths.
+- Extended complete-route discovery for either a column product outlet or
+  HT-201 diesel outlet feeding the optional header. Direct machine-to-tank
+  routes remain fully valid.
+- Added explicit `ProductAllocation`: `E` cycles A, B and NONE only while the
+  producing train is stopped. The selected destination is the sole runtime
+  owner of new material; no automatic split, fallback, blending or teleporting
+  occurs.
+- Product routing preserves product identity, diesel quality, sulfur and
+  treatment state. Full, incompatible or unselected storage blocks the source
+  transfer without consuming crude.
+- Added focused graph, build, model and Main save/load coverage for destination
+  discovery, switching, deletion, capacity behavior, treated Sour diesel and
+  physical header restoration.
