@@ -15,6 +15,10 @@ const PUMP_MAX_FLOW_LPS := 15.0
 const PUMP_FLOW_STEPS := [5.0, 10.0, 15.0]
 const FILTER_RESTRICTION_FACTOR := 0.35
 const FIRST_FILTER_FAULT_AFTER_L := 300.0
+const PUMP_CONDITION_WEAR_PER_L := 0.005
+const PUMP_SERVICE_COST := 75
+const PUMP_WORN_THRESHOLD_PERCENT := 60.0
+const PUMP_POOR_THRESHOLD_PERCENT := 30.0
 const TREATED_DIESEL_SULFUR_PPM := 10.0
 const DIESEL_TARGET_L := 200.0
 const APPROVED_QUALITY_PERCENT := 90.0
@@ -77,7 +81,7 @@ func save_state() -> Dictionary:
 				saved_state["open"] = state["open"]
 			"pump":
 				saved_state["flow_setpoint_lps"] = state["flow_setpoint_lps"]
-				for field in ["fault_id", "fault_inspected", "fault_triggered", "processed_since_service_l"]:
+				for field in ["condition_percent", "fault_id", "fault_inspected", "fault_triggered", "processed_since_service_l"]:
 					saved_state[field] = state[field]
 			"heater":
 				saved_state["setpoint_c"] = state["setpoint_c"]
@@ -150,6 +154,7 @@ func apply_saved_state(state: Dictionary) -> void:
 					"flow_setpoint_lps",
 					PUMP_CAPACITY_LPS
 				))
+				target["condition_percent"] = clampf(float(saved.get("condition_percent", 100.0)), 0.0, 100.0)
 				target["fault_id"] = String(saved.get("fault_id", ""))
 				target["fault_inspected"] = bool(saved.get("fault_inspected", false))
 				target["fault_triggered"] = bool(saved.get("fault_triggered", false))
@@ -211,6 +216,7 @@ func register_unit(unit_id: String, equipment_type: String, display_name := "", 
 				"max_flow_lps": PUMP_MAX_FLOW_LPS,
 				"flow_setpoint_lps": PUMP_CAPACITY_LPS,
 				"actual_flow_lps": 0.0,
+				"condition_percent": 100.0,
 				"fault_id": "",
 				"fault_inspected": false,
 				"fault_triggered": false,
@@ -580,6 +586,8 @@ func interaction_prompt(unit_id: String) -> String:
 				prompt += "  |  F — %s" % (
 					"rens filter" if state["fault_inspected"] and not state["running"] else "inspiser driftsavvik"
 				)
+			elif float(state.get("condition_percent", 100.0)) < 99.95:
+				prompt += "  |  F — vedlikehold pumpe (%d kr)" % PUMP_SERVICE_COST
 			return prompt
 		"valve":
 			return "E — %s %s" % [
@@ -975,11 +983,14 @@ func _tick_atmospheric_route(route: Dictionary, delta: float) -> void:
 		heater["temperature_c"],
 		pump["flow_setpoint_lps"], contract_id
 	)
+	var condition_failed_now := _degrade_pump_condition(pump, safe_input)
 	var fault_triggered_now := _update_pump_fault_progress(pump, safe_input)
 	actual_flow_lps += process_flow_lps
 	pump["actual_flow_lps"] = process_flow_lps
 	last_status = (
-		"FLOW FALLER — observer faktisk flow og inspiser P-201."
+		"PUMP MAINTENANCE REQUIRED — %s må vedlikeholdes." % pump["name"]
+		if condition_failed_now
+		else "FLOW FALLER — observer faktisk flow og inspiser P-201."
 		if fault_triggered_now
 		else "Produksjon %.1f L/s ved %.0f °C." % [actual_flow_lps, heater["temperature_c"]]
 	)
@@ -989,7 +1000,11 @@ func _tick_atmospheric_route(route: Dictionary, delta: float) -> void:
 		pump["running"] = false
 		pump["actual_flow_lps"] = 0.0
 		_remote_guard_pump_id = ""
-		last_status = "Batch ferdig. Kontroller dieselkvaliteten ved LAB / SALG."
+		last_status = (
+			"PUMP MAINTENANCE REQUIRED — %s må vedlikeholdes." % pump["name"]
+			if condition_failed_now
+			else "Batch ferdig. Kontroller dieselkvaliteten ved LAB / SALG."
+		)
 
 
 func _tick_vacuum_route(route: Dictionary, delta: float) -> void:
@@ -1030,6 +1045,7 @@ func _tick_vacuum_route(route: Dictionary, delta: float) -> void:
 	_commit_tank_material(outputs["vacuum_gas_oil"], "vacuum_gas_oil", vgo_output, source["temperature_c"])
 	_commit_tank_material(outputs["vacuum_residue"], "vacuum_residue", residue_output, source["temperature_c"])
 	equipment[route["vdu"]]["processed_total_l"] += processed_feed
+	var condition_failed_now := _degrade_pump_condition(pump, processed_feed)
 	var flow := processed_feed / delta if delta > 0.0 else 0.0
 	pump["actual_flow_lps"] = flow
 	actual_flow_lps += flow
@@ -1037,9 +1053,17 @@ func _tick_vacuum_route(route: Dictionary, delta: float) -> void:
 	if source["volume_l"] <= 0.001:
 		pump["running"] = false
 		pump["actual_flow_lps"] = 0.0
-		last_status = "VDU-batch ferdig. VGO og Vacuum Residue er klare for levering."
+		last_status = (
+			"PUMP MAINTENANCE REQUIRED — %s må vedlikeholdes." % pump["name"]
+			if condition_failed_now
+			else "VDU-batch ferdig. VGO og Vacuum Residue er klare for levering."
+		)
 	else:
-		last_status = "VDU %.1f L/s — %.1f L VGO og %.1f L Vacuum Residue produsert." % [flow, vgo_output, residue_output]
+		last_status = (
+			"PUMP MAINTENANCE REQUIRED — %s må vedlikeholdes." % pump["name"]
+			if condition_failed_now
+			else "VDU %.1f L/s — %.1f L VGO og %.1f L Vacuum Residue produsert." % [flow, vgo_output, residue_output]
+		)
 
 
 func _tick_fcc_route(route: Dictionary, delta: float) -> void:
@@ -1084,6 +1108,7 @@ func _tick_fcc_route(route: Dictionary, delta: float) -> void:
 	_commit_tank_material(outputs["lpg"], "lpg", lpg_output, source["temperature_c"])
 	_commit_tank_material(outputs["light_cycle_oil"], "light_cycle_oil", lco_output, source["temperature_c"])
 	equipment[route["fcc"]]["processed_total_l"] += processed_feed
+	var condition_failed_now := _degrade_pump_condition(pump, processed_feed)
 	var flow := processed_feed / delta if delta > 0.0 else 0.0
 	pump["actual_flow_lps"] = flow
 	actual_flow_lps += flow
@@ -1091,9 +1116,17 @@ func _tick_fcc_route(route: Dictionary, delta: float) -> void:
 	if source["volume_l"] <= 0.001:
 		pump["running"] = false
 		pump["actual_flow_lps"] = 0.0
-		last_status = "FCC-batch ferdig. Gasoline Blendstock, LPG og LCO er klare for levering."
+		last_status = (
+			"PUMP MAINTENANCE REQUIRED — %s må vedlikeholdes." % pump["name"]
+			if condition_failed_now
+			else "FCC-batch ferdig. Gasoline Blendstock, LPG og LCO er klare for levering."
+		)
 	else:
-		last_status = "FCC %.1f L/s — %.1f L Gasoline, %.1f L LPG og %.1f L LCO produsert." % [flow, gasoline_output, lpg_output, lco_output]
+		last_status = (
+			"PUMP MAINTENANCE REQUIRED — %s må vedlikeholdes." % pump["name"]
+			if condition_failed_now
+			else "FCC %.1f L/s — %.1f L Gasoline, %.1f L LPG og %.1f L LCO produsert." % [flow, gasoline_output, lpg_output, lco_output]
+		)
 
 
 func take_diesel_sample(unit_id: String) -> Dictionary:
@@ -1613,10 +1646,12 @@ func inspect_unit(unit_id: String) -> String:
 			return details + "."
 		"pump":
 			var fault_text := " Driftsavvik registrert." if not String(state["fault_id"]).is_empty() else ""
-			return "Pumpe %s, faktisk flow %.1f L/s, flowmål %.0f L/s.%s" % [
+			return "Pumpe %s, faktisk flow %.1f L/s, flowmål %.0f L/s, condition %.0f %% (%s).%s" % [
 				"PÅ" if state["running"] else "AV",
 				state["actual_flow_lps"],
 				state["flow_setpoint_lps"],
+				state.get("condition_percent", 100.0),
+				_pump_condition_label(state),
 				fault_text,
 			]
 		"valve":
@@ -1689,10 +1724,12 @@ func unit_status(unit_id: String) -> String:
 					status += "  |  %.1f %%" % state["quality_percent"]
 			return status
 		"pump":
-			return "%s  |  faktisk %.1f L/s  |  mål %.0f%s" % [
+			return "%s  |  faktisk %.1f L/s  |  mål %.0f  |  condition %.0f %% %s%s" % [
 				"PÅ" if state["running"] else "AV",
 				state["actual_flow_lps"],
 				state["flow_setpoint_lps"],
+				state.get("condition_percent", 100.0),
+				_pump_condition_label(state),
 				"  |  AVVIK" if not String(state["fault_id"]).is_empty() else "",
 			]
 		"valve":
@@ -2149,23 +2186,33 @@ func cycle_pump_flow(unit_id: String) -> Dictionary:
 	return _result(true, last_status)
 
 
-func inspect_or_service_pump(unit_id: String) -> Dictionary:
+func inspect_or_service_pump(unit_id: String, can_pay_for_service := true) -> Dictionary:
 	if not equipment.has(unit_id) or equipment[unit_id]["type"] != "pump":
 		return _result(false, "Driftsavvik kan bare undersøkes på en pumpe.")
 	var pump: Dictionary = equipment[unit_id]
-	if String(pump["fault_id"]).is_empty():
-		return _result(false, "%s har ingen registrert servicefeil." % pump["name"])
-	if not pump["fault_inspected"]:
+	if not String(pump["fault_id"]).is_empty() and not pump["fault_inspected"]:
 		pump["fault_inspected"] = true
 		last_status = "%s har lav kapasitet. Mulig filterrestriksjon — stopp pumpen før service." % pump["name"]
 		return _result(true, last_status)
+	if not String(pump["fault_id"]).is_empty():
+		if pump["running"]:
+			return _result(false, "Stopp %s før filteret renses." % pump["name"])
+		pump["fault_id"] = ""
+		pump["fault_inspected"] = false
+		pump["processed_since_service_l"] = 0.0
+		last_status = "Filter renset på %s. Normal kapasitet er gjenopprettet." % pump["name"]
+		return _result(true, last_status)
 	if pump["running"]:
-		return _result(false, "Stopp %s før filteret renses." % pump["name"])
-	pump["fault_id"] = ""
-	pump["fault_inspected"] = false
-	pump["processed_since_service_l"] = 0.0
-	last_status = "Filter renset på %s. Normal kapasitet er gjenopprettet." % pump["name"]
-	return _result(true, last_status)
+		return _result(false, "Stopp %s før vedlikehold utføres." % pump["name"])
+	if float(pump.get("condition_percent", 100.0)) >= 99.95:
+		return _result(false, "%s trenger ikke vedlikehold." % pump["name"])
+	if not can_pay_for_service:
+		return _result(false, "Ikke nok penger til vedlikehold av %s (%d kr)." % [pump["name"], PUMP_SERVICE_COST])
+	pump["condition_percent"] = 100.0
+	last_status = "Vedlikehold utført på %s. Condition er gjenopprettet til 100 %%." % pump["name"]
+	var result := _result(true, last_status)
+	result["charge"] = PUMP_SERVICE_COST
+	return result
 
 
 func flow_mode_text(flow_lps: float) -> String:
@@ -2178,9 +2225,39 @@ func flow_mode_text(flow_lps: float) -> String:
 
 func _effective_pump_flow_lps(pump: Dictionary) -> float:
 	var target_flow := float(pump["flow_setpoint_lps"])
+	var condition := float(pump.get("condition_percent", 100.0))
+	if condition <= 0.001:
+		return 0.0
+	if condition <= PUMP_POOR_THRESHOLD_PERCENT:
+		target_flow *= 0.55
+	elif condition <= PUMP_WORN_THRESHOLD_PERCENT:
+		target_flow *= 0.80
 	if String(pump.get("fault_id", "")) == "blocked_filter":
 		return target_flow * FILTER_RESTRICTION_FACTOR
 	return target_flow
+
+
+func _degrade_pump_condition(pump: Dictionary, processed_l: float) -> bool:
+	if processed_l <= 0.001 or float(pump.get("condition_percent", 100.0)) <= 0.001:
+		return false
+	var flow_multiplier := 0.75 if float(pump["flow_setpoint_lps"]) <= 5.1 else (1.5 if float(pump["flow_setpoint_lps"]) >= 14.9 else 1.0)
+	pump["condition_percent"] = maxf(0.0, float(pump["condition_percent"]) - processed_l * PUMP_CONDITION_WEAR_PER_L * flow_multiplier)
+	if float(pump["condition_percent"]) > 0.001:
+		return false
+	pump["running"] = false
+	pump["actual_flow_lps"] = 0.0
+	return true
+
+
+func _pump_condition_label(pump: Dictionary) -> String:
+	var condition := float(pump.get("condition_percent", 100.0))
+	if condition <= 0.001:
+		return "MAINTENANCE REQUIRED"
+	if condition <= PUMP_POOR_THRESHOLD_PERCENT:
+		return "POOR"
+	if condition <= PUMP_WORN_THRESHOLD_PERCENT:
+		return "WORN"
+	return "GOOD"
 
 
 func _update_pump_fault_progress(pump: Dictionary, processed_l: float) -> bool:
@@ -2322,6 +2399,9 @@ func _toggle_pump(unit_id: String) -> Dictionary:
 		pump["actual_flow_lps"] = 0.0
 		actual_flow_lps = 0.0
 	else:
+		if float(pump.get("condition_percent", 100.0)) <= 0.001:
+			last_status = "%s START BLOCKED — MAINTENANCE REQUIRED." % pump["name"]
+			return _result(false, last_status)
 		var route: Dictionary = _atmospheric_route_for_unit(unit_id)
 		if route.is_empty():
 			var vacuum_route := _vacuum_route_for_unit(unit_id)

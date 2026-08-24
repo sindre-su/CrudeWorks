@@ -99,6 +99,9 @@ func _test_schema_validation(snapshot: Dictionary, live_main) -> void:
 	var invalid_flow := snapshot.duplicate(true)
 	invalid_flow["built_refinery"]["equipment"]["built_pump_2"]["flow_setpoint_lps"] = 12.0
 	_expect(not SaveSystemScript.validate_snapshot(invalid_flow)["ok"], "unknown saved pump flow targets are rejected")
+	var invalid_condition := snapshot.duplicate(true)
+	invalid_condition["built_refinery"]["equipment"]["built_pump_2"]["condition_percent"] = 101.0
+	_expect(not SaveSystemScript.validate_snapshot(invalid_condition)["ok"], "out-of-range saved pump condition is rejected")
 	var invalid_flow_history := snapshot.duplicate(true)
 	invalid_flow_history["built_refinery"]["report_flow_total"] = 999999.0
 	_expect(not SaveSystemScript.validate_snapshot(invalid_flow_history)["ok"], "impossible accumulated flow history is rejected")
@@ -117,9 +120,9 @@ func _test_schema_validation(snapshot: Dictionary, live_main) -> void:
 	var legacy_flow := snapshot.duplicate(true)
 	legacy_flow["built_refinery"].erase("report_flow_total")
 	legacy_flow["built_refinery"]["equipment"]["built_pump_2"].erase("flow_setpoint_lps")
-	for field in ["fault_id", "fault_inspected", "fault_triggered", "processed_since_service_l"]:
+	for field in ["condition_percent", "fault_id", "fault_inspected", "fault_triggered", "processed_since_service_l"]:
 		legacy_flow["built_refinery"]["equipment"]["built_pump_2"].erase(field)
-	_expect(SaveSystemScript.validate_snapshot(legacy_flow)["ok"], "older v2 saves without adjustable-flow fields remain valid")
+	_expect(SaveSystemScript.validate_snapshot(legacy_flow)["ok"], "older v2 saves without flow, condition and filter fields remain valid")
 	_expect(snapshot["built_refinery"]["equipment"]["built_tank_1"].has("material_intent"), "current tank snapshots persist material intent")
 	var legacy_intent := snapshot.duplicate(true)
 	for state in legacy_intent["built_refinery"]["equipment"].values():
@@ -346,6 +349,7 @@ func _test_main_round_trip(snapshot: Dictionary, source_main) -> void:
 	_expect(restored.built_refinery_model.equipment["built_valve_3"]["open"], "manual valve state restores")
 	_expect(not restored.built_refinery_model.equipment["built_pump_2"]["running"] and is_equal_approx(restored.built_refinery_model.actual_flow_lps, 0.0), "all pumps and derived flow are stopped on load")
 	_expect(is_equal_approx(restored.built_refinery_model.equipment["built_pump_2"]["flow_setpoint_lps"], 15.0), "saved pump flow target restores while the pump remains stopped")
+	_expect(is_equal_approx(restored.built_refinery_model.equipment["built_pump_2"]["condition_percent"], snapshot["built_refinery"]["equipment"]["built_pump_2"]["condition_percent"]), "saved pump condition restores independently of its safe stopped state")
 	_expect(not restored.control_station_visible, "transient LS-201 panel state is never restored from a save")
 	_expect(not restored.lab_analysis_panel.visible and not restored.built_refinery_model.lab_dispatch_status().get("sample_current", false), "transient lab panel and sample authorization are never restored from a save")
 	_expect(restored.player.position.is_equal_approx(Vector3(-4.0, 0.1, 17.0)) and is_equal_approx(restored.player.rotation.y, 1.25), "valid player position and direction restore")

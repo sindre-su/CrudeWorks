@@ -724,3 +724,27 @@
   partial material inventory through the standard snapshot system.
 - Validation: test-first FCC route discovery, focused building/refinery/save
   tests and the full Godot regression/headless checks passed before checkpoint.
+
+## v0.24.0 — Equipment Condition and Preventive Maintenance
+
+- Introduced a small reusable pump-condition layer beside—not inside—the
+  existing blocked-filter fault. New pumps begin at 100%; only successful
+  material transfer reduces their condition.
+- Condition deterministically reduces actual capacity at WORN/POOR thresholds,
+  with high selected flow wearing faster. A fully depleted pump stops and
+  cannot be restarted until serviced.
+- Added physical F-key preventive maintenance for stopped pumps, with a 75 kr
+  shared-economy cost. Filter cleaning remains free and only clears its own
+  restriction; preventive service restores only condition.
+- Applied condition-limited capacity to atmospheric, VDU and FCC feed pumps.
+  It preserves their existing atomic material transactions and does not alter
+  LS-201's scope.
+- Saved/restored condition safely and validated its range; legacy saves without
+  the optional field still load as 100% condition.
+- Added focused model, Main economy and save-schema regression coverage.
+
+## Next Best Work
+
+- Perform the deferred human 1280×720 playtest, then tune pump-condition wear
+  and the preventive-service price from observed player pacing before adding a
+  broader maintenance system.

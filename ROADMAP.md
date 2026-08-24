@@ -2,10 +2,16 @@
 
 ## Current stable baseline
 
-Version 0.23.0 has a tested pilot plant and multiple independent player-built
+Version 0.24.0 has a tested pilot plant and multiple independent player-built
 Area 02 refinery trains. The built loop covers construction, directed pipes, valve troubleshooting,
 Sour-diesel treatment, physical diesel sampling, LAB-101, LS-201, 5/10/15 L/s
 pump targets and separate Naphtha/heavy-residue deliveries.
+
+Every built pump now carries a persistent condition value. Condition wears only
+when material moves, with a modest extra penalty at high flow targets; local
+field status exposes GOOD/WORN/POOR state, while stopped pumps can receive
+paid preventive maintenance. This remains separate from the inspectable,
+recoverable blocked-filter fault.
 
 The v0.21 architectural foundation tags every discovered atmospheric route
 explicitly. Its small route-envelope API separates shared identity/ownership
@@ -82,6 +88,8 @@ this check.
    manual selection and source ownership are proven understandable in play.
 4. Playtest the VDU → FCC capital chain, product values and 65 kW FCC load
    before adding more secondary units, product headers or automation.
+5. Playtest pump condition pacing, the 75 kr preventive-service cost and the
+   physical distinction between worn capacity and the blocked-filter fault.
 
 ## Task context rules
 

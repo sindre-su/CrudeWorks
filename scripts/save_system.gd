@@ -438,6 +438,9 @@ static func _validate_equipment_state(state: Dictionary) -> Dictionary:
 				var flow_setpoint := float(state["flow_setpoint_lps"])
 				if not BuiltRefineryModelScript.PUMP_FLOW_STEPS.has(flow_setpoint):
 					return _result(false, "En lagret pumpe har ukjent flowmål.")
+			if state.has("condition_percent"):
+				if not _finite_number(state["condition_percent"]) or not _in_range(state["condition_percent"], 0.0, 100.0):
+					return _result(false, "En lagret pumpe har ugyldig condition.")
 			if state.has("fault_id") and state["fault_id"] not in ["", "blocked_filter"]:
 				return _result(false, "En lagret pumpe har ukjent driftsavvik.")
 			if state.has("fault_inspected") and typeof(state["fault_inspected"]) != TYPE_BOOL:

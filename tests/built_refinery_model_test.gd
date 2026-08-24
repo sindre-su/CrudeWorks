@@ -43,6 +43,7 @@ func _run_tests() -> void:
 	_test_off_route_product_blocks_dispatch()
 	_test_adjustable_pump_flow_and_quality_tradeoff()
 	_test_recoverable_pump_filter_fault()
+	_test_pump_condition_and_preventive_maintenance()
 	_test_sour_crude_requires_treatment()
 	_test_product_specific_dispatch()
 	_test_product_header_allocation_and_capacity()
@@ -1312,6 +1313,70 @@ func _test_atomic_fcc_upgrading_and_dispatch() -> void:
 	var restored = _fcc_model(0.0)
 	restored.apply_saved_state(saved)
 	_expect(restored.equipment["fcc_source"]["material_intent"] == "vacuum_gas_oil" and restored.network.filter_routes_by_process_type(restored.network.find_complete_routes(), restored.network.CATALYTIC_CRACKING).size() == 1, "FCC equipment, VGO intent and typed route survive save/load")
+
+
+func _test_pump_condition_and_preventive_maintenance() -> void:
+	var low_flow_model = _complete_model()
+	var high_flow_model = _complete_model()
+	low_flow_model.equipment["pump"]["flow_setpoint_lps"] = 5.0
+	high_flow_model.equipment["pump"]["flow_setpoint_lps"] = 15.0
+	low_flow_model._degrade_pump_condition(low_flow_model.equipment["pump"], 1000.0)
+	high_flow_model._degrade_pump_condition(high_flow_model.equipment["pump"], 1000.0)
+	_expect(float(high_flow_model.equipment["pump"]["condition_percent"]) < float(low_flow_model.equipment["pump"]["condition_percent"]), "higher selected flow wears a pump faster for the same moved volume")
+
+	var model = _complete_model()
+	model.commissioning_contract_complete = true
+	model.equipment["source"]["contents"] = "crude"
+	model.equipment["source"]["volume_l"] = 1000.0
+	model.equipment["source"]["contract_id"] = "standard"
+	model.equipment["valve"]["open"] = true
+	model.equipment["heater"]["temperature_c"] = 200.0
+	model.equipment["heater"]["setpoint_c"] = 200.0
+	model.equipment["pump"]["flow_setpoint_lps"] = 15.0
+	model.equipment["pump"]["condition_percent"] = 60.0
+	_expect(model.interact("pump")["ok"], "a worn pump can still be started for preventive-maintenance diagnosis")
+	model.tick(1.0)
+	_expect(is_equal_approx(model.equipment["pump"]["actual_flow_lps"], 12.0), "worn condition reduces actual atmospheric flow without changing the selected target")
+	model.equipment["pump"]["running"] = false
+	model.equipment["pump"]["condition_percent"] = 30.0
+	model.equipment["pump"]["running"] = true
+	model.tick(1.0)
+	_expect(is_equal_approx(model.equipment["pump"]["actual_flow_lps"], 8.25) and "low flow" in model.alarm_text().to_lower(), "poor condition creates a physical LOW FLOW symptom at a high flow target")
+	model.equipment["pump"]["running"] = false
+	var stopped_volume := float(model.equipment["source"]["volume_l"])
+	model.tick(10.0)
+	_expect(is_equal_approx(model.equipment["source"]["volume_l"], stopped_volume), "stopped pumps gain no hidden condition wear")
+	model.equipment["pump"]["condition_percent"] = 0.0
+	_expect(not model.interact("pump")["ok"] and "maintenance" in model.last_status.to_lower(), "zero-condition pump blocks a start with a maintenance explanation")
+	model.equipment["pump"]["condition_percent"] = 42.0
+	model.equipment["pump"]["running"] = true
+	_expect(not model.inspect_or_service_pump("pump")["ok"], "pump condition cannot be serviced while the pump is running")
+	model.equipment["pump"]["running"] = false
+	var condition_before_unaffordable := float(model.equipment["pump"]["condition_percent"])
+	_expect(not model.inspect_or_service_pump("pump", false)["ok"] and is_equal_approx(model.equipment["pump"]["condition_percent"], condition_before_unaffordable), "unaffordable condition service leaves the pump unchanged")
+	var service: Dictionary = model.inspect_or_service_pump("pump", true)
+	_expect(service["ok"] and service.get("charge", 0) == BuiltRefineryModelScript.PUMP_SERVICE_COST and is_equal_approx(model.equipment["pump"]["condition_percent"], 100.0), "stopped pump service restores condition and charges the defined maintenance cost")
+	model.equipment["pump"]["condition_percent"] = 42.0
+	model.equipment["pump"]["fault_id"] = "blocked_filter"
+	model.equipment["pump"]["fault_inspected"] = true
+	_expect(model.inspect_or_service_pump("pump")["ok"] and is_equal_approx(model.equipment["pump"]["condition_percent"], 42.0), "filter service clears only the filter fault and does not reset pump condition")
+	_expect(model.inspect_or_service_pump("pump")["ok"] and is_equal_approx(model.equipment["pump"]["condition_percent"], 100.0), "condition service remains separate from the filter repair")
+
+	var vdu = _vacuum_model(100.0)
+	vdu.equipment["vacuum_pump"]["condition_percent"] = 60.0
+	vdu.equipment["vacuum_pump"]["running"] = true
+	vdu.tick(1.0)
+	_expect(is_equal_approx(vdu.equipment["vacuum_pump"]["actual_flow_lps"], 8.0), "pump condition limits VDU throughput independently")
+	var fcc = _fcc_model(100.0)
+	fcc.equipment["fcc_pump"]["condition_percent"] = 30.0
+	fcc.equipment["fcc_pump"]["running"] = true
+	fcc.tick(1.0)
+	_expect(is_equal_approx(fcc.equipment["fcc_pump"]["actual_flow_lps"], 5.5), "pump condition limits FCC throughput independently")
+	model.equipment["pump"]["condition_percent"] = 42.0
+	var saved: Dictionary = model.save_state()
+	var restored = _complete_model()
+	restored.apply_saved_state(saved)
+	_expect(is_equal_approx(restored.equipment["pump"]["condition_percent"], 42.0) and not restored.equipment["pump"]["running"], "pump condition persists while load safety keeps pumps stopped")
 
 
 func _take_and_analyze(model) -> Dictionary:

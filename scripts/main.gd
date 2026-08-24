@@ -912,9 +912,15 @@ func _on_maintenance_unit_interacted(unit_id: String) -> void:
 	if not unit_id.begins_with("built_"):
 		return
 	var before: Dictionary = built_refinery_model.save_state()
-	var result: Dictionary = built_refinery_model.inspect_or_service_pump(unit_id)
+	var money_before: Dictionary = process_model.save_state()
+	var result: Dictionary = built_refinery_model.inspect_or_service_pump(
+		unit_id,
+		process_model.can_afford(BuiltRefineryModel.PUMP_SERVICE_COST)
+	)
+	if result["ok"] and int(result.get("charge", 0)) > 0:
+		process_model.purchase(int(result["charge"]))
 	_show_notification(result["message"], 6.0)
-	if result["ok"] and before != built_refinery_model.save_state():
+	if result["ok"] and (before != built_refinery_model.save_state() or money_before != process_model.save_state()):
 		_schedule_save()
 
 

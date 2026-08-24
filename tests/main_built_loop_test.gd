@@ -273,6 +273,14 @@ func _test_heavy_contract_through_main() -> void:
 	_expect("BATCH GODKJENT — TUNG LEVERANSE" in main.batch_report_label.text and "Tung fraksjon 630 / 600 L" in main.batch_report_label.text and "flow 10.0 L/s" in main.batch_report_label.text and "Kontraktbonus" in main.batch_report_label.text, "Heavy batch report records the fulfilled order, average flow and its bonus")
 	main._on_unit_interacted("sales_terminal")
 	_expect(main.process_model.money == 3580, "repeated Main terminal use cannot duplicate the Heavy bonus")
+	main.built_refinery_model.equipment[pump.unit_id]["condition_percent"] = 42.0
+	var money_before_pump_service: int = main.process_model.money
+	main._on_maintenance_unit_interacted(pump.unit_id)
+	_expect(
+		is_equal_approx(main.built_refinery_model.equipment[pump.unit_id]["condition_percent"], 100.0)
+		and main.process_model.money == money_before_pump_service - BuiltRefineryModel.PUMP_SERVICE_COST,
+		"physical preventive pump service restores condition and charges the shared economy once"
+	)
 	main.queue_free()
 	await _test_offspec_lab_through_main()
 	await _test_product_header_save_round_trip()
