@@ -54,6 +54,7 @@ func _run_tests() -> void:
 	_test_vacuum_capacity_and_multi_stage_processing()
 	_test_player_facing_vacuum_operation_and_dispatch()
 	_test_atomic_fcc_upgrading_and_dispatch()
+	_test_secondary_pump_start_and_stop_guards()
 	_test_electrical_power_capacity()
 
 
@@ -1328,6 +1329,52 @@ func _test_atomic_fcc_upgrading_and_dispatch() -> void:
 	var restored = _fcc_model(0.0)
 	restored.apply_saved_state(saved)
 	_expect(restored.equipment["fcc_source"]["material_intent"] == "vacuum_gas_oil" and restored.network.filter_routes_by_process_type(restored.network.find_complete_routes(), restored.network.CATALYTIC_CRACKING).size() == 1, "FCC equipment, VGO intent and typed route survive save/load")
+
+
+func _test_secondary_pump_start_and_stop_guards() -> void:
+	var empty_vdu = _vacuum_model(0.0)
+	var empty_vdu_start: Dictionary = empty_vdu.interact("vacuum_pump")
+	_expect(not empty_vdu_start["ok"] and not empty_vdu.equipment["vacuum_pump"]["running"] and is_equal_approx(empty_vdu.power_status()["demand_kw"], 0.0) and is_equal_approx(_total_tank_volume(empty_vdu), 0.0) and empty_vdu_start["charge"] == 0, "empty VDU feed rejects start without material, money, or electrical state changes")
+	var full_vdu = _vacuum_model(10.0)
+	full_vdu.equipment["vgo_tank"]["contents"] = "vacuum_gas_oil"
+	full_vdu.equipment["vgo_tank"]["volume_l"] = 1000.0
+	var full_vdu_start: Dictionary = full_vdu.interact("vacuum_pump")
+	_expect(not full_vdu_start["ok"] and not full_vdu.equipment["vacuum_pump"]["running"] and is_equal_approx(full_vdu.equipment["vacuum_source"]["volume_l"], 10.0) and is_equal_approx(full_vdu.power_status()["demand_kw"], 0.0), "full VDU output rejects start without consuming Heavy Residue or holding power")
+	var blocked_vdu = _vacuum_model(10.0)
+	blocked_vdu.interact("vacuum_pump")
+	blocked_vdu.equipment["vgo_tank"]["contents"] = "vacuum_gas_oil"
+	blocked_vdu.equipment["vgo_tank"]["volume_l"] = 1000.0
+	blocked_vdu.tick(1.0)
+	_expect(not blocked_vdu.equipment["vacuum_pump"]["running"] and is_equal_approx(blocked_vdu.equipment["vacuum_source"]["volume_l"], 10.0) and is_equal_approx(blocked_vdu.power_status()["demand_kw"], 0.0), "a VDU output becoming full during operation safely stops the pump without transfer")
+	var running_vdu = _vacuum_model(10.0)
+	_expect(running_vdu.interact("vacuum_pump")["ok"], "a valid VDU route can start normally")
+	running_vdu.tick(10.0)
+	_expect(not running_vdu.equipment["vacuum_pump"]["running"] and is_equal_approx(running_vdu.equipment["vacuum_pump"]["actual_flow_lps"], 0.0) and is_equal_approx(running_vdu.power_status()["demand_kw"], 0.0), "depleted VDU feed safely stops the pump and releases its power load")
+	running_vdu.equipment["vacuum_source"]["contents"] = "heavy"
+	running_vdu.equipment["vacuum_source"]["volume_l"] = 10.0
+	_expect(not running_vdu.equipment["vacuum_pump"]["running"] and running_vdu.interact("vacuum_pump")["ok"] and running_vdu.equipment["vacuum_pump"]["running"], "VDU recovery requires an explicit valid restart")
+
+	var empty_fcc = _fcc_model(0.0)
+	var empty_fcc_start: Dictionary = empty_fcc.interact("fcc_pump")
+	_expect(not empty_fcc_start["ok"] and not empty_fcc.equipment["fcc_pump"]["running"] and is_equal_approx(empty_fcc.power_status()["demand_kw"], 0.0) and is_equal_approx(_total_tank_volume(empty_fcc), 0.0) and empty_fcc_start["charge"] == 0, "empty FCC feed rejects start without material, money, or electrical state changes")
+	var incompatible_fcc = _fcc_model(10.0)
+	incompatible_fcc.equipment["lpg_tank"]["contents"] = "diesel"
+	incompatible_fcc.equipment["lpg_tank"]["volume_l"] = 1.0
+	var incompatible_fcc_start: Dictionary = incompatible_fcc.interact("fcc_pump")
+	_expect(not incompatible_fcc_start["ok"] and not incompatible_fcc.equipment["fcc_pump"]["running"] and is_equal_approx(incompatible_fcc.equipment["fcc_source"]["volume_l"], 10.0) and is_equal_approx(incompatible_fcc.power_status()["demand_kw"], 0.0), "incompatible FCC output rejects start without consuming VGO or holding power")
+	var blocked_fcc = _fcc_model(10.0)
+	blocked_fcc.interact("fcc_pump")
+	blocked_fcc.equipment["lpg_tank"]["contents"] = "diesel"
+	blocked_fcc.equipment["lpg_tank"]["volume_l"] = 1.0
+	blocked_fcc.tick(1.0)
+	_expect(not blocked_fcc.equipment["fcc_pump"]["running"] and is_equal_approx(blocked_fcc.equipment["fcc_source"]["volume_l"], 10.0) and is_equal_approx(blocked_fcc.power_status()["demand_kw"], 0.0), "an FCC output becoming incompatible during operation safely stops the pump without transfer")
+	var running_fcc = _fcc_model(10.0)
+	_expect(running_fcc.interact("fcc_pump")["ok"], "a valid FCC route can start normally")
+	running_fcc.tick(10.0)
+	_expect(not running_fcc.equipment["fcc_pump"]["running"] and is_equal_approx(running_fcc.equipment["fcc_pump"]["actual_flow_lps"], 0.0) and is_equal_approx(running_fcc.power_status()["demand_kw"], 0.0), "depleted FCC feed safely stops the pump and releases its power load")
+	running_fcc.equipment["fcc_source"]["contents"] = "vacuum_gas_oil"
+	running_fcc.equipment["fcc_source"]["volume_l"] = 10.0
+	_expect(not running_fcc.equipment["fcc_pump"]["running"] and running_fcc.interact("fcc_pump")["ok"] and running_fcc.equipment["fcc_pump"]["running"], "FCC recovery requires an explicit valid restart")
 
 
 func _test_pump_condition_and_preventive_maintenance() -> void:

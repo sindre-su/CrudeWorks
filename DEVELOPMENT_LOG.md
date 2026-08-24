@@ -781,3 +781,15 @@
   combined moving branches. VDU and FCC pipes also stay still at zero flow.
 - Validation: focused route-flow coverage plus the full regression gate passed.
   Human QA still needs to confirm marker readability at walking distance.
+
+## v0.24.3 — Secondary-Train Safe Stops
+
+- VDU and FCC feed pumps now reject starts with an empty/wrong feed or blocked
+  output storage, avoiding an illuminated, power-consuming pump that cannot
+  move material.
+- If an already-running secondary train becomes blocked or runs out of feed,
+  its pump stops safely, preserves material, releases its electrical load and
+  requires an explicit restart after recovery.
+- Validation: focused VDU/FCC guard coverage plus the full regression gate
+  passed. Human QA still needs to assess whether the field status copy is clear
+  at normal viewing distance.

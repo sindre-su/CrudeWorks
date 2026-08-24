@@ -1009,30 +1009,30 @@ func _tick_atmospheric_route(route: Dictionary, delta: float) -> void:
 
 func _tick_vacuum_route(route: Dictionary, delta: float) -> void:
 	var pump_id: String = network.get_route_primary_pump(route)
-	if not equipment.has(pump_id) or not equipment.has(route["source"]) or not equipment.has(route["vdu"]):
+	if not equipment.has(pump_id):
 		return
 	var pump: Dictionary = equipment[pump_id]
 	if not pump["running"]:
 		return
+	if not equipment.has(route["source"]) or not equipment.has(route["vdu"]):
+		_stop_secondary_pump(pump, "VDU FLOW STOPPET — prosessruten er ikke lenger komplett.")
+		return
 	var source: Dictionary = equipment[route["source"]]
 	if source["contents"] != "heavy" or source["volume_l"] <= 0.001:
-		pump["actual_flow_lps"] = 0.0
-		last_status = "VDU FLOW STOPPET — Heavy Residue-tanken er tom eller har feil innhold."
+		_stop_secondary_pump(pump, "VDU FLOW STOPPET — Heavy Residue-tanken er tom eller har feil innhold.")
 		return
 	var outputs: Dictionary = route["outputs"]
 	var vgo: Dictionary = equipment[outputs["vacuum_gas_oil"]]
 	var residue: Dictionary = equipment[outputs["vacuum_residue"]]
 	if not _tank_accepts_material(vgo, "vacuum_gas_oil") or not _tank_accepts_material(residue, "vacuum_residue"):
-		pump["actual_flow_lps"] = 0.0
-		last_status = "VDU FLOW STOPPET — en vakuumprodukttank har feil innhold eller materialintensjon."
+		_stop_secondary_pump(pump, "VDU FLOW STOPPET — en vakuumprodukttank har feil innhold eller materialintensjon.")
 		return
 	var requested_feed := minf(source["volume_l"], _effective_pump_flow_lps(pump) * maxf(delta, 0.0))
 	var vgo_capacity_feed := maxf(0.0, vgo["capacity_l"] - vgo["volume_l"]) / VACUUM_GAS_OIL_YIELD
 	var residue_capacity_feed := maxf(0.0, residue["capacity_l"] - residue["volume_l"]) / VACUUM_RESIDUE_YIELD
 	var processed_feed := minf(requested_feed, minf(vgo_capacity_feed, residue_capacity_feed))
 	if processed_feed <= 0.0001:
-		pump["actual_flow_lps"] = 0.0
-		last_status = "VDU FLOW STOPPET — VGO- eller Vacuum Residue-tanken er full."
+		_stop_secondary_pump(pump, "VDU FLOW STOPPET — VGO- eller Vacuum Residue-tanken er full.")
 		return
 	var vgo_output := processed_feed * VACUUM_GAS_OIL_YIELD
 	var residue_output := processed_feed * VACUUM_RESIDUE_YIELD
@@ -1068,23 +1068,24 @@ func _tick_vacuum_route(route: Dictionary, delta: float) -> void:
 
 func _tick_fcc_route(route: Dictionary, delta: float) -> void:
 	var pump_id: String = network.get_route_primary_pump(route)
-	if not equipment.has(pump_id) or not equipment.has(route["source"]) or not equipment.has(route["fcc"]):
+	if not equipment.has(pump_id):
 		return
 	var pump: Dictionary = equipment[pump_id]
 	if not pump["running"]:
 		return
+	if not equipment.has(route["source"]) or not equipment.has(route["fcc"]):
+		_stop_secondary_pump(pump, "FCC FLOW STOPPET — prosessruten er ikke lenger komplett.")
+		return
 	var source: Dictionary = equipment[route["source"]]
 	if source["contents"] != "vacuum_gas_oil" or source["volume_l"] <= 0.001:
-		pump["actual_flow_lps"] = 0.0
-		last_status = "FCC FLOW STOPPET — VGO-tanken er tom eller har feil innhold."
+		_stop_secondary_pump(pump, "FCC FLOW STOPPET — VGO-tanken er tom eller har feil innhold.")
 		return
 	var outputs: Dictionary = route["outputs"]
 	var gasoline: Dictionary = equipment[outputs["gasoline_blendstock"]]
 	var lpg: Dictionary = equipment[outputs["lpg"]]
 	var lco: Dictionary = equipment[outputs["light_cycle_oil"]]
 	if not _tank_accepts_material(gasoline, "gasoline_blendstock") or not _tank_accepts_material(lpg, "lpg") or not _tank_accepts_material(lco, "light_cycle_oil"):
-		pump["actual_flow_lps"] = 0.0
-		last_status = "FCC FLOW STOPPET — en FCC-produkttank har feil innhold eller materialintensjon."
+		_stop_secondary_pump(pump, "FCC FLOW STOPPET — en FCC-produkttank har feil innhold eller materialintensjon.")
 		return
 	var requested_feed := minf(source["volume_l"], _effective_pump_flow_lps(pump) * maxf(delta, 0.0))
 	var gasoline_capacity_feed := maxf(0.0, gasoline["capacity_l"] - gasoline["volume_l"]) / FCC_GASOLINE_YIELD
@@ -1092,8 +1093,7 @@ func _tick_fcc_route(route: Dictionary, delta: float) -> void:
 	var lco_capacity_feed := maxf(0.0, lco["capacity_l"] - lco["volume_l"]) / FCC_LCO_YIELD
 	var processed_feed := minf(requested_feed, minf(gasoline_capacity_feed, minf(lpg_capacity_feed, lco_capacity_feed)))
 	if processed_feed <= 0.0001:
-		pump["actual_flow_lps"] = 0.0
-		last_status = "FCC FLOW STOPPET — Gasoline, LPG eller LCO-tanken er full."
+		_stop_secondary_pump(pump, "FCC FLOW STOPPET — Gasoline, LPG eller LCO-tanken er full.")
 		return
 	var gasoline_output := processed_feed * FCC_GASOLINE_YIELD
 	var lpg_output := processed_feed * FCC_LPG_YIELD
@@ -1127,6 +1127,38 @@ func _tick_fcc_route(route: Dictionary, delta: float) -> void:
 			if condition_failed_now
 			else "FCC %.1f L/s — %.1f L Gasoline, %.1f L LPG og %.1f L LCO produsert." % [flow, gasoline_output, lpg_output, lco_output]
 		)
+
+
+func _secondary_route_start_check(route: Dictionary) -> Dictionary:
+	var process_type := String(route.get("process_type", ""))
+	var source: Dictionary = equipment[route["source"]]
+	var expected_feed := "heavy" if process_type == ProcessNetworkScript.VACUUM_DISTILLATION else "vacuum_gas_oil"
+	var label := "VDU" if process_type == ProcessNetworkScript.VACUUM_DISTILLATION else "FCC"
+	if source["contents"] != expected_feed or source["volume_l"] <= 0.001:
+		return _result(false, "%s START BLOCKED — %s-tanken er tom eller har feil innhold." % [label, _contents_name(expected_feed)])
+	var outputs: Dictionary = route["outputs"]
+	if process_type == ProcessNetworkScript.VACUUM_DISTILLATION:
+		var vgo: Dictionary = equipment[outputs["vacuum_gas_oil"]]
+		var residue: Dictionary = equipment[outputs["vacuum_residue"]]
+		if not _tank_accepts_material(vgo, "vacuum_gas_oil") or not _tank_accepts_material(residue, "vacuum_residue"):
+			return _result(false, "VDU START BLOCKED — en vakuumprodukttank har feil innhold eller materialintensjon.")
+		if vgo["capacity_l"] - vgo["volume_l"] <= 0.0001 or residue["capacity_l"] - residue["volume_l"] <= 0.0001:
+			return _result(false, "VDU START BLOCKED — VGO- eller Vacuum Residue-tanken er full.")
+	else:
+		var gasoline: Dictionary = equipment[outputs["gasoline_blendstock"]]
+		var lpg: Dictionary = equipment[outputs["lpg"]]
+		var lco: Dictionary = equipment[outputs["light_cycle_oil"]]
+		if not _tank_accepts_material(gasoline, "gasoline_blendstock") or not _tank_accepts_material(lpg, "lpg") or not _tank_accepts_material(lco, "light_cycle_oil"):
+			return _result(false, "FCC START BLOCKED — en FCC-produkttank har feil innhold eller materialintensjon.")
+		if gasoline["capacity_l"] - gasoline["volume_l"] <= 0.0001 or lpg["capacity_l"] - lpg["volume_l"] <= 0.0001 or lco["capacity_l"] - lco["volume_l"] <= 0.0001:
+			return _result(false, "FCC START BLOCKED — Gasoline, LPG eller LCO-tanken er full.")
+	return _result(true, "%s-ruten kan starte." % label)
+
+
+func _stop_secondary_pump(pump: Dictionary, message: String) -> void:
+	pump["running"] = false
+	pump["actual_flow_lps"] = 0.0
+	last_status = message
 
 
 func take_diesel_sample(unit_id: String) -> Dictionary:
@@ -2416,11 +2448,18 @@ func _toggle_pump(unit_id: String) -> Dictionary:
 		if route.is_empty():
 			var vacuum_route := _vacuum_route_for_unit(unit_id)
 			if not vacuum_route.is_empty() and vacuum_route["primary_pump"] == unit_id:
-				pass
+				var vacuum_start_check := _secondary_route_start_check(vacuum_route)
+				if not vacuum_start_check["ok"]:
+					last_status = vacuum_start_check["message"]
+					return vacuum_start_check
 			else:
 				var fcc_route := _fcc_route_for_unit(unit_id)
 				if fcc_route.is_empty() or fcc_route["primary_pump"] != unit_id:
 					return _result(false, "%s er ikke del av en komplett prosesslinje." % pump["name"])
+				var fcc_start_check := _secondary_route_start_check(fcc_route)
+				if not fcc_start_check["ok"]:
+					last_status = fcc_start_check["message"]
+					return fcc_start_check
 		else:
 			if route["pump"] != unit_id:
 				return _result(false, "%s er ikke del av den komplette prosesslinjen." % pump["name"])
