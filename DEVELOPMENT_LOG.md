@@ -1,5 +1,26 @@
 # CrudeWorks Development Log
 
+## v0.26.1 — First-person usability and starter-flow hardening
+
+- Kept the v0.26 economy, process model and equipment roster unchanged.
+- Audited the 1280 × 720 reference layout in code: objectives and alarms stay
+  in the top band, field information stays at the sides, and interaction and
+  temporary feedback retain separate bottom bands.
+- Added concise, local onboarding labels to the existing CI-101 and PD-101
+  terminals. CI-101 is marked only until the first intake delivery is received;
+  PD-101 is marked only from first atmospheric production until the first
+  physical dispatch. The markers are derived from existing saved progression,
+  so no save-format change or marker state is persisted.
+- Hardened pipe-mode targeting: the build ray now queries the dedicated port
+  collision layer before it falls back to an equipment body. Normal field
+  interaction remains body-first and is unchanged.
+- Added regression coverage for the 1280 × 720 HUD bounds, CI/PD marker
+  activation/deactivation, and the dedicated process-port selection layer.
+
+Human QA still required: actual 1280 × 720 readability by eye, aiming feel,
+CI/PD discoverability in a real playthrough, economy pacing, fun and
+maintenance pacing. These were not claimed solved by automated tests.
+
 ## Session Review
 
 - Inherited version 0.4 at checkpoint `0676b80`.

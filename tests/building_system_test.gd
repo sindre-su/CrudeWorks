@@ -108,6 +108,7 @@ func _test_units_and_footprints(world: Node3D) -> void:
 	world.add_child(heater)
 	_expect(is_instance_valid(heater.input_port), "buildable unit creates an input port")
 	_expect(is_instance_valid(heater.output_port), "buildable unit creates an output port")
+	_expect(heater.input_port.collision_layer == 2 and heater.output_port.collision_layer == 2, "process ports use their own selection layer so build targeting can prefer them over equipment bodies")
 	var column = BuildableUnitScript.new()
 	column.configure_buildable("column", 9)
 	world.add_child(column)
@@ -140,6 +141,12 @@ func _test_units_and_footprints(world: Node3D) -> void:
 	heater.rotation_quadrants = 1
 	var rotated := heater.rotated_footprint()
 	_expect(original.x == rotated.y and original.y == rotated.x, "90-degree rotation swaps footprint axes")
+	var intake = BuildableUnitScript.new()
+	intake.configure_buildable("crude_intake", 0)
+	world.add_child(intake)
+	_expect(is_instance_valid(intake.guidance_label) and not intake.guidance_label.visible, "CI-101 has a concise onboarding marker that starts hidden")
+	intake.set_onboarding_guidance(true)
+	_expect(intake.guidance_label.visible and "CI-101" in intake.guidance_label.text, "CI-101 onboarding marker can be enabled without changing its equipment state")
 
 
 func _test_placement_and_connections(world: Node3D, controller) -> void:

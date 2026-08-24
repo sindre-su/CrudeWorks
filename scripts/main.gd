@@ -766,6 +766,13 @@ func _update_unit_statuses() -> void:
 		built_unit.set_status(built_refinery_model.unit_status(built_unit.unit_id))
 		built_unit.set_alarm_severity(String(built_alarm_severities.get(built_unit.unit_id, "")))
 		var state: Dictionary = built_refinery_model.equipment.get(built_unit.unit_id, {})
+		if state.get("type", "") == "crude_intake":
+			built_unit.set_onboarding_guidance(not built_refinery_model.first_intake_received)
+		elif state.get("type", "") == "product_dispatch":
+			built_unit.set_onboarding_guidance(
+				built_refinery_model.first_atmospheric_production
+				and not built_refinery_model.first_physical_dispatch_completed
+			)
 		if state.get("type", "") == "tank":
 			built_unit.set_tank_fill(
 				state["volume_l"] / state["capacity_l"],

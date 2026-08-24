@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.20 – Kontrollrom og raffineridrift**
+**Prototypeversjon: 0.26.1 – Førstepersons brukbarhet og starterflyt**
 
 En liten 3D-prototype der spilleren driver et forenklet pilotraffineri. Første mål
 er å behandle 1 000 liter råolje og selge minst 200 liter diesel med 90 % eller
@@ -57,6 +57,10 @@ Den første komplette «vertical slice»-en inneholder:
   FULL peker på relevant utstyr uten å avsløre underliggende vedlikeholdsårsak
 - LS-201 Refinery Operations: oversikt over alle komplette tog, sentraliserte
   alarmer og sikker fjernstyring av valgt pumpes temperaturmål og flowmål
+- midlertidige CI-101- og PD-101-markører som gjør første fysiske inntak og
+  dispatch enklere å finne uten å legge til et waypoint-system
+- byggemodus prioriterer eksplisitte prosessporter foran maskinkroppen når
+  spilleren sikter på en markert port
 
 Alle objekter er foreløpig bygget av Godots primitive 3D-former. Det gjør at vi
 kan teste gameplay før vi bruker tid på modeller og grafikk.

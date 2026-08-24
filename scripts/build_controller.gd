@@ -503,8 +503,20 @@ func _raycast_connection_port():
 	var query := PhysicsRayQueryParameters3D.create(from, to)
 	query.exclude = [player.get_rid()]
 	query.collide_with_areas = true
-	query.collide_with_bodies = true
+	# Ports live on their own collision layer. Query that layer first so an
+	# obvious highlighted port is never hidden behind its equipment body.
+	query.collide_with_bodies = false
+	query.collision_mask = 2
 	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	if not hit.is_empty() and hit["collider"] is ProcessPort:
+		return hit["collider"]
+
+	# Keep the established single-port body fallback for players who are looking
+	# at the machine rather than a port marker.
+	query.collide_with_areas = false
+	query.collide_with_bodies = true
+	query.collision_mask = 1
+	hit = get_world_3d().direct_space_state.intersect_ray(query)
 	if hit.is_empty():
 		return null
 	var collider = hit["collider"]

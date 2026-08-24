@@ -26,6 +26,31 @@ func _run_test() -> void:
 		and main.notification_label.offset_bottom <= main.prompt_label.offset_top,
 		"1280x720 notifications and contextual prompts use separate wrapping bottom bands"
 	)
+	_expect(
+		main.objective_label.offset_left >= -320.0
+		and main.objective_label.offset_right <= 320.0
+		and main.alarm_label.offset_left >= -360.0
+		and main.alarm_label.offset_right <= 360.0
+		and main.help_label.position.x >= 0.0
+		and main.help_label.position.x + main.help_label.size.x <= 1280.0,
+		"1280x720 HUD bands keep objective, alarms and controls inside the reference viewport"
+	)
+	main._process(0.0)
+	var intake_marker = main.build_controller.registered_unit_by_id("built_crude_intake_0")
+	var dispatch_marker = main.build_controller.registered_unit_by_id("built_product_dispatch_0")
+	_expect(intake_marker.guidance_label.visible and not dispatch_marker.guidance_label.visible, "first Area 02 objective highlights CI-101 without prematurely highlighting PD-101")
+	main.built_refinery_model.first_intake_received = true
+	main._process(0.0)
+	_expect(not intake_marker.guidance_label.visible, "CI-101 onboarding marker reduces after the first delivery is received")
+	main.built_refinery_model.first_atmospheric_production = true
+	main._process(0.0)
+	_expect(dispatch_marker.guidance_label.visible, "first atmospheric production highlights PD-101 for the first physical dispatch")
+	main.built_refinery_model.first_physical_dispatch_completed = true
+	main._process(0.0)
+	_expect(not dispatch_marker.guidance_label.visible, "PD-101 marker reduces after the first physical dispatch")
+	main.built_refinery_model.first_intake_received = false
+	main.built_refinery_model.first_atmospheric_production = false
+	main.built_refinery_model.first_physical_dispatch_completed = false
 
 	main.process_model.money = ProcessModel.PILOT_CONTRACT_MINIMUM_REVENUE
 	main.process_model.objective_complete = true

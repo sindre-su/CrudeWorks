@@ -33,6 +33,7 @@ var valve_handle_material: StandardMaterial3D
 var pump_rotor: Node3D
 var pump_rotor_material: StandardMaterial3D
 var pump_rotor_running := false
+var guidance_label: Label3D
 
 
 func configure_buildable(type: String, serial_number: int) -> void:
@@ -75,6 +76,10 @@ func configure_buildable(type: String, serial_number: int) -> void:
 	create_alarm_beacon(Vector3(0.0, size.y * 0.5 + 0.22, 0.0))
 	add_to_group("player_built")
 	_create_ports()
+	if equipment_type == "crude_intake":
+		_create_guidance_label("CRUDE INTAKE\nCI-101")
+	elif equipment_type == "product_dispatch":
+		_create_guidance_label("PRODUCT DISPATCH\nPD-101")
 	if equipment_type == "tank":
 		make_transparent(0.48)
 		_create_tank_liquid(size)
@@ -109,6 +114,24 @@ func ports_of_kind(port_kind: String) -> Array:
 		if port.port_kind == port_kind:
 			matching.append(port)
 	return matching
+
+
+func set_onboarding_guidance(enabled: bool) -> void:
+	if is_instance_valid(guidance_label):
+		guidance_label.visible = enabled
+
+
+func _create_guidance_label(text_value: String) -> void:
+	guidance_label = Label3D.new()
+	guidance_label.text = text_value
+	guidance_label.position = Vector3(0.0, footprint_size.y * 0.5 + 1.35, 0.0)
+	guidance_label.font_size = 38
+	guidance_label.outline_size = 10
+	guidance_label.modulate = Color("fff3bd")
+	guidance_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	guidance_label.no_depth_test = true
+	guidance_label.visible = false
+	add_child(guidance_label)
 
 
 func set_tank_fill(fill_ratio: float, contents: String) -> void:
