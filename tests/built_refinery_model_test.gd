@@ -70,13 +70,10 @@ func _test_shared_source_runtime_allocation() -> void:
 	var model = _complete_model()
 	model.commissioning_batch_available = false
 	model.commissioning_contract_complete = true
-	_add_second_complete_route(model)
-	model.network.disconnect_ports("b_source", "output", "b_pump", "input")
-	model.network.connections.append({"from_unit": "source", "from_port": "output", "to_unit": "b_pump", "to_port": "input"})
+	_add_shared_header_route(model)
 	var candidates: Array[String] = model.network.eligible_train_ids_for_source("source")
 	_expect(candidates == ["b_pump", "pump"], "shared source discovery supplies both stable train identities to allocation")
-	_expect(model.discover_feed_allocation("source")["ok"], "built refinery configures allocation from discovered eligible trains")
-	_expect(model.select_feed_train("source", "pump")["ok"], "allocation selects Train A while shared source is stopped")
+	_expect(model.interact("header")["ok"] and model.feed_allocations["source"].selected_train_id == "pump", "physical header selects Train A while shared source is stopped")
 	_expect(model.load_crude_batch("source", true, "standard")["ok"], "one paid batch loads into the shared source once")
 	for heater_id in ["heater", "b_heater"]:
 		model.equipment[heater_id]["temperature_c"] = 200.0
@@ -84,27 +81,68 @@ func _test_shared_source_runtime_allocation() -> void:
 	model.equipment["valve"]["open"] = true
 	model.equipment["b_valve"]["open"] = true
 	model.equipment["b_treatment"]["running"] = true
-	model.equipment["pump"]["running"] = true
-	model.equipment["b_pump"]["running"] = true
+	_expect(model.interact("pump")["ok"], "selected Train A pump can start from the physical header route")
 	model.tick(10.0)
 	_expect(is_equal_approx(model.equipment["source"]["volume_l"], 900.0) and is_equal_approx(model.equipment["light_tank"]["volume_l"], 30.0) and is_equal_approx(model.equipment["b_light"]["volume_l"], 0.0), "selected Train A alone consumes shared-source crude")
-	_expect(not model.select_feed_train("source", "b_pump")["ok"], "running shared-source pump blocks allocation switching")
-	model.equipment["pump"]["running"] = false
-	model.equipment["b_pump"]["running"] = false
-	_expect(model.select_feed_train("source", "b_pump")["ok"], "stopped shared source can switch allocation to Train B")
-	model.equipment["b_pump"]["running"] = true
+	_expect(not model.interact("header")["ok"] and model.feed_allocations["source"].selected_train_id == "pump", "running Train A pump blocks header switching without changing allocation")
+	_expect(model.interact("pump")["ok"], "Train A pump can be stopped before a header switch")
+	_expect(model.interact("header")["ok"] and model.feed_allocations["source"].selected_train_id == "b_pump", "stopped header switches deterministically to Train B")
+	_expect(not model.interact("pump")["ok"] and model.interact("b_pump")["ok"], "unselected pump remains blocked while selected Train B pump starts")
 	model.tick(10.0)
 	_expect(is_equal_approx(model.equipment["source"]["volume_l"], 800.0) and is_equal_approx(model.equipment["b_light"]["volume_l"], 30.0), "Train B receives only new shared-source material after safe switch")
+	_expect(not model.interact("header")["ok"], "running Train B pump also blocks header switching")
+	_expect(model.interact("b_pump")["ok"] and model.interact("header")["ok"], "stopped Train B can isolate the header")
+	_expect(model.feed_allocations["source"].selected_train_id.is_empty(), "header supports an explicit NONE feed route")
+	model.equipment["pump"]["running"] = true
+	var source_before_none: float = model.equipment["source"]["volume_l"]
+	model.tick(1.0)
+	_expect(is_equal_approx(model.equipment["source"]["volume_l"], source_before_none), "NONE header route consumes no shared crude")
+	model.equipment["pump"]["running"] = false
+	_expect(model.interact("header")["ok"] and model.feed_allocations["source"].selected_train_id == "pump", "header can repeatedly cycle from NONE back to Train A")
 	var saved: Dictionary = model.save_state()
 	var restored = _complete_model()
 	restored.commissioning_batch_available = false
 	restored.commissioning_contract_complete = true
-	_add_second_complete_route(restored)
-	restored.network.disconnect_ports("b_source", "output", "b_pump", "input")
-	restored.network.connections.append({"from_unit": "source", "from_port": "output", "to_unit": "b_pump", "to_port": "input"})
+	_add_shared_header_route(restored)
 	restored.apply_saved_state(saved)
 	var restored_allocation = restored.feed_allocations.get("source")
-	_expect(restored_allocation != null and restored_allocation.eligible_train_ids == ["b_pump", "pump"] and restored_allocation.selected_train_id == "b_pump", "shared-source route identity and explicit allocation survive save/load")
+	_expect(restored_allocation != null and restored_allocation.eligible_train_ids == ["b_pump", "pump"] and restored_allocation.selected_train_id == "pump" and "RUTE A" in restored.unit_status("header"), "header route identity, selection and inspection state survive save/load")
+	model.unregister_unit("b_pump")
+	_expect(model.feed_allocations["source"].selected_train_id == "pump", "deleting an unselected header branch preserves the selected train")
+	model.unregister_unit("header")
+	_expect(not model.feed_allocations.has("source") and model.network.find_complete_routes().is_empty(), "deleting the header clears allocation and every shared route safely")
+	var invalidated = _complete_model()
+	invalidated.commissioning_batch_available = false
+	invalidated.commissioning_contract_complete = true
+	_add_shared_header_route(invalidated)
+	invalidated.interact("header")
+	invalidated.unregister_unit("pump")
+	_expect(
+		invalidated.feed_allocations.has("source")
+		and invalidated.feed_allocations["source"].selected_train_id.is_empty()
+		and "INGEN" in invalidated.unit_status("header"),
+		"deleting the selected header branch clears ownership instead of auto-switching"
+	)
+	var sour_model = _complete_model()
+	sour_model.commissioning_batch_available = false
+	sour_model.commissioning_contract_complete = true
+	_add_shared_header_route(sour_model)
+	sour_model.interact("header")
+	sour_model.interact("header")
+	sour_model.equipment["b_heater"]["temperature_c"] = 200.0
+	sour_model.equipment["b_heater"]["setpoint_c"] = 200.0
+	sour_model.equipment["b_valve"]["open"] = true
+	sour_model.equipment["b_treatment"]["running"] = true
+	_expect(sour_model.load_crude_batch("source", true, "sour")["ok"], "shared header can load a Sour crude batch onto its selected branch")
+	_expect(sour_model.interact("b_pump")["ok"], "selected Sour header branch starts its own pump")
+	sour_model.tick(10.0)
+	_expect(
+		sour_model.equipment["source"]["contract_id"] == "sour"
+		and sour_model.equipment["b_diesel"]["contents"] == "diesel"
+		and sour_model.equipment["b_diesel"]["sulfur_ppm"] < float(CrudeCatalogScript.definition("sour")["diesel_sulfur_ppm"])
+		and is_equal_approx(sour_model.equipment["diesel_tank"]["volume_l"], 0.0),
+		"selected Sour branch preserves crude identity and treatment quality without leaking to its sibling"
+	)
 
 
 func _test_manual_valve_low_flow() -> void:
@@ -769,6 +807,16 @@ func _add_second_complete_route(model) -> void:
 	model.network.try_connect("b_column", "diesel", "b_treatment", "input")
 	model.network.try_connect("b_treatment", "output", "b_diesel", "input")
 	model.network.try_connect("b_column", "heavy", "b_heavy", "input")
+
+
+func _add_shared_header_route(model) -> void:
+	_add_second_complete_route(model)
+	model.register_unit("header", "header", "FH-201")
+	model.network.disconnect_ports("source", "output", "pump", "input")
+	model.network.disconnect_ports("b_source", "output", "b_pump", "input")
+	model.network.try_connect("source", "output", "header", "input")
+	model.network.try_connect("header", "out_a", "pump", "input")
+	model.network.try_connect("header", "out_b", "b_pump", "input")
 
 
 func _test_ambiguous_routes_block_operation_atomically() -> void:

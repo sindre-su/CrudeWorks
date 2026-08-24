@@ -407,13 +407,14 @@
 
 ## Current Stable State
 
-- Version 0.15.0 is verified stable after the independent process-train milestone.
+- Version 0.16.0 is verified stable after the physical shared-feed routing milestone.
 - Area 02 now discovers and runs multiple independent complete refinery trains;
   source contracts, temperatures, flow, capacity limits, sulfur treatment,
   pump-filter faults and route product storage remain local to each train.
-- The process layer can now discover several complete candidate trains for one
-  shared source and run exactly the FeedAllocation-selected train. This is a
-  safe internal capability only until a physical header is designed.
+- A buildable Crude Feed Header now makes the shared-source rule physical:
+  one IN, two labelled outlets and an explicit stopped-only `A → B → NONE`
+  selection. The selected branch alone may draw from the source; no automatic
+  split or fallback is allowed.
 - The original pilot loop and full player-built loop both pass regression.
 - The first valid Area 02 sale now has a durable achievement and informative
   result, while later paid batches remain repeatable.
@@ -449,10 +450,9 @@
 
 ## Known Issues
 
-- Multiple independent process trains are supported, but branching, shared
-  headers, manifolds, recirculation and LS-201 multi-train selection are not.
-  Shared-source candidate discovery exists, but players cannot build or select
-  a header route yet.
+- Multiple independent process trains and one manually selected shared-feed
+  header are supported. General manifolds, split flow, recirculation, product
+  headers and refinery-wide route selection remain deliberately out of scope.
 - Hands-on aiming/interaction feel remains unverified by headless automation.
 - Valve handle readability and central alarm prominence still need a hands-on
   check at the target 1280 x 720 window size.
@@ -494,10 +494,30 @@
   operating point, so long frames and capacity-limited transfers cannot
   accidentally improve product quality.
 - Shared-source routing is now staged deliberately: candidate discovery and
-  stopped-only allocation are complete before any physical header or routing
-  UI is exposed to players.
+  stopped-only allocation were completed before the physical header was added.
+  The header deliberately exposes only one selected outlet at a time.
 
 ## Next Best Action
 
-- Perform the deferred hands-on 1280 x 720 playtest, then design a small
-  physical shared-source header that reuses the validated allocation layer.
+- Perform the deferred hands-on 1280 x 720 playtest with special attention to
+  header port targeting, A/B/NONE status readability and multi-train feedback.
+
+## v0.16 — Physical Shared-Feed Routing
+
+- Added the buildable Crude Feed Header (`IN`, `OUT A`, `OUT B`) to the normal
+  Area 02 catalog, placement, rotation, port visualization, deletion and save
+  validation paths.
+- Extended route discovery to recognize `tank → header → pump` while retaining
+  the direct `tank → pump` route for simple refinery trains.
+- Connected the physical header to the existing FeedAllocation authority. `E`
+  cycles A, B and no selected route; a selected branch cannot change while any
+  pump fed by that source is running.
+- Selected-branch deletion clears ownership instead of silently choosing the
+  remaining branch. Header deletion clears its allocation and invalidates the
+  associated routes.
+- Confirmed source-volume conservation while switching a single Standard batch
+  between two trains, plus Sour batch identity and treatment isolation through
+  the selected branch.
+- Validation performed: process model, process network, building system,
+  built refinery model, Main integration and save system suites; headless
+  editor scan and `git diff --check` are recorded with the checkpoint.

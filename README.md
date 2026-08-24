@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.15 – Uavhengige raffineringstog**
+**Prototypeversjon: 0.16 – Fysisk delt råoljemating**
 
 En liten 3D-prototype der spilleren driver et forenklet pilotraffineri. Første mål
 er å behandle 1 000 liter råolje og selge minst 200 liter diesel med 90 % eller
@@ -37,8 +37,8 @@ Den første komplette «vertical slice»-en inneholder:
 - fjernstyrt pumpe og temperaturmål med temperaturvern ved fjernstart
 - fysisk dieselprøve fra aktiv produkttank før betalte batcher kan sendes
 - LAB-101-analyse med volum, kvalitet, prosessavvik og trygg utsending
-- eksplisitt grense på én komplett prosesslinje i Område 02; reserveutstyr og
-  delvise utvidelser er fortsatt tillatt
+- flere uavhengige prosesslinjer og en fysisk Crude Feed Header for én delt
+  råoljetank: velg rute A, B eller ingen rute før drift
 - to tydelige leveringsordrer: Standard prioriterer diesel, mens Tung krever
   både tungfraksjon og en godkjent dieselprøve
 - tre pumpetrinn på 5, 10 og 15 L/s etter godkjent oppstart, med en synlig
@@ -115,7 +115,7 @@ Byggemodus låses opp når den første dieselbatchen er solgt.
 | --- | --- |
 | B | Åpne eller lukke byggemodus |
 | 1–4 | Velg tank, pumpe, varmeenhet eller destillasjonskolonne |
-| 5 / 6 | Velg manuell ventil eller dieselbehandler |
+| 5 / 6 / 7 | Velg manuell ventil, dieselbehandler eller Crude Feed Header |
 | Q / E | Roter forhåndsvisningen |
 | Venstreklikk | Plasser eller bekreft valgt handling |
 | X | Bytt til fjerningsmodus; fjerning gir full refusjon |
@@ -207,10 +207,12 @@ batchrapporten viser volumvektet gjennomsnittsflow, slik at et kvalitetsavvik ka
 knyttes til både temperatur og valgt kapasitet. Første oppstart og pilotanlegget
 beholder fast 10 L/s.
 
-Område 02 driver foreløpig én komplett prosesslinje. Spilleren kan plassere
-reserveutstyr og forberede en delvis utvidelse, men den siste koblingen som
-ville fullført en andre linje avvises med en forklaring. Den fungerende linjen
-og alt materialet i den beholdes uendret.
+Område 02 kan drive flere uavhengige prosesslinjer. Når én råoljetank skal
+mate to komplette tog, kobler spilleren tanken til en **Crude Feed Header** og
+kobler `OUT A` og `OUT B` til hver sin pumpe. Trykk `E` på headeren for å velge
+`A → B → ingen rute`. Valgt pumpevei får all råolje; bytte er blokkert mens en
+pumpe fra samme kilde går. Headeren deler aldri flow automatisk og velger aldri
+en reservevei på egen hånd.
 
 Hvis en batch blir off-spec, forklarer
 terminalen at `R` kan sende bygde produkter til sikker avfallshåndtering uten

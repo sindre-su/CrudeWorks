@@ -134,16 +134,23 @@ func _test_second_complete_route_is_accepted() -> void:
 
 func _test_shared_source_candidate_discovery() -> void:
 	var network = _complete_network()
+	_register(network, "header", "header", "FH-201")
+	_expect(network.disconnect_ports("source", "output", "pump", "input"), "direct source pipe can be replaced by the shared-feed header")
+	_expect(network.try_connect("source", "output", "header", "input")["ok"], "shared source connects to the header IN")
+	_expect(
+		"Crude Feed Header trenger minst én OUT" in network.validate_configuration()["message"],
+		"partial shared header explains its missing pump branch"
+	)
+	_expect(network.try_connect("header", "out_a", "pump", "input")["ok"], "header OUT A connects to Train A pump")
 	_register_route(network, "b")
+	_expect(network.try_connect("header", "out_b", "b_pump", "input")["ok"], "header OUT B connects to Train B pump")
 	for edge in [
 		["b_pump", "output", "b_valve", "input"], ["b_valve", "output", "b_heater", "input"], ["b_heater", "output", "b_column", "input"], ["b_column", "light", "b_light", "input"], ["b_column", "diesel", "b_diesel", "input"], ["b_column", "heavy", "b_heavy", "input"],
 	]:
 		_expect(network.try_connect(edge[0], edge[1], edge[2], edge[3])["ok"], "shared-source test builds Train B downstream structure")
-	# Test-only structural fixture: normal construction still protects a tank OUT
-	# from branching until a physical header is deliberately implemented.
-	network.connections.append({"from_unit": "source", "from_port": "output", "to_unit": "b_pump", "to_port": "input"})
 	var routes: Array[Dictionary] = network.eligible_routes_for_source("source")
-	_expect(routes.size() == 2, "one shared source exposes two complete eligible trains")
+	_expect(routes.size() == 2 and routes[0]["header"] == "header", "one physical header exposes two complete eligible trains")
+	_expect(network.routes_for_header("header")[0]["header_outlet"] == "out_a" and network.routes_for_header("header")[1]["header_outlet"] == "out_b", "header branch identities remain A then B regardless of connection order")
 	_expect(network.eligible_train_ids_for_source("source") == ["b_pump", "pump"], "eligible train identities are stable pump IDs rather than route indexes")
 	network.disconnect_ports("b_column", "heavy", "b_heavy", "input")
 	_expect(network.eligible_train_ids_for_source("source") == ["pump"], "an incomplete sibling branch does not invalidate the complete eligible train")

@@ -172,7 +172,7 @@ func _input(event: InputEvent) -> void:
 		if not active:
 			return
 		match event.keycode:
-			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6:
+			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7:
 				var index := int(event.keycode) - int(KEY_1)
 				selected_type = Catalog.ORDER[index]
 				mode = "place"
@@ -649,6 +649,6 @@ func _update_build_text() -> void:
 		+ "Valgt: %s (%d kr)%s\n" % [data["name"], data["cost"], connection_text]
 		+ "Retning: %d°  |  IN blå  |  OUT oransje\n\n" % (rotation_quadrants * 90)
 		+ "Nettverk: %s\n\n" % network_feedback
-		+ "1–6 Velg  |  Q/E Roter  |  Klikk Plasser\n"
+		+ "1–7 Velg  |  Q/E Roter  |  Klikk Plasser\n"
 		+ "X Fjern  |  F Koble  |  G Koble fra  |  V Valider  |  B Avslutt"
 	)

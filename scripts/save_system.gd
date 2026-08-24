@@ -417,6 +417,8 @@ static func _validate_equipment_state(state: Dictionary) -> Dictionary:
 		"treatment":
 			if typeof(state.get("running")) != TYPE_BOOL or not _finite_number(state.get("processed_total_l")) or float(state["processed_total_l"]) < 0.0:
 				return _result(false, "En lagret dieselbehandler har ugyldig tilstand.")
+		"header":
+			pass
 		_:
 			return _result(false, "Ukjent lagret utstyrstype.")
 	return _result(true, "Utstyrstilstanden er gyldig.")

@@ -133,7 +133,15 @@ func validate_configuration() -> Dictionary:
 
 	var feed_edge := _find_first_type_edge("tank", "pump")
 	if feed_edge.is_empty():
-		return _validation_result("Koble en råoljetank OUT til pumpens IN.")
+		var header_edge := _find_first_type_edge("tank", "header")
+		if header_edge.is_empty():
+			return _validation_result("Koble en råoljetank OUT til pumpens IN eller en Crude Feed Header.")
+		var header_id: String = header_edge["to_unit"]
+		feed_edge = outgoing_edge(header_id, "out_a")
+		if feed_edge.is_empty():
+			feed_edge = outgoing_edge(header_id, "out_b")
+		if feed_edge.is_empty():
+			return _validation_result("Crude Feed Header trenger minst én OUT koblet til en pumpe.")
 	var pump_id: String = feed_edge["to_unit"]
 	var pump_edge := outgoing_edge(pump_id, "output")
 	if pump_edge.is_empty():
@@ -164,7 +172,7 @@ func find_complete_route() -> Dictionary:
 
 func find_route_for_unit(unit_id: String) -> Dictionary:
 	for route in find_complete_routes():
-		if unit_id in [route["source"], route["pump"], route["valve"], route["heater"], route["column"], route.get("treatment", "")]:
+		if unit_id in [route["source"], route.get("header", ""), route["pump"], route["valve"], route["heater"], route["column"], route.get("treatment", "")]:
 			return route
 		for product_id in route["products"]:
 			if route["products"][product_id] == unit_id:
@@ -193,13 +201,44 @@ func eligible_train_ids_for_source(source_id: String) -> Array[String]:
 	return train_ids
 
 
+func source_for_header(header_id: String) -> String:
+	if _unit_type(header_id) != "header":
+		return ""
+	var feed_edge := incoming_edge(header_id, "input")
+	return String(feed_edge.get("from_unit", "")) if _unit_type(feed_edge.get("from_unit", "")) == "tank" else ""
+
+
+func routes_for_header(header_id: String) -> Array[Dictionary]:
+	var routes: Array[Dictionary] = []
+	for route in find_complete_routes():
+		if route.get("header", "") == header_id:
+			routes.append(route)
+	routes.sort_custom(func(a: Dictionary, b: Dictionary):
+		var outlet_a := String(a.get("header_outlet", ""))
+		var outlet_b := String(b.get("header_outlet", ""))
+		return outlet_a < outlet_b if outlet_a != outlet_b else String(a["pump"]) < String(b["pump"])
+	)
+	return routes
+
+
 func find_complete_routes() -> Array[Dictionary]:
 	var routes: Array[Dictionary] = []
+	var feed_paths: Array[Dictionary] = []
 	for edge in connections:
-		if _unit_type(edge["from_unit"]) != "tank" or _unit_type(edge["to_unit"]) != "pump":
+		if _unit_type(edge["from_unit"]) != "tank":
 			continue
 		var source_id: String = edge["from_unit"]
-		var pump_id: String = edge["to_unit"]
+		var destination_type := _unit_type(edge["to_unit"])
+		if destination_type == "pump":
+			feed_paths.append({"source": source_id, "pump": edge["to_unit"], "header": "", "header_outlet": ""})
+		elif destination_type == "header":
+			for outlet_id in ["out_a", "out_b"]:
+				var branch_edge := outgoing_edge(edge["to_unit"], outlet_id)
+				if not branch_edge.is_empty() and _unit_type(branch_edge["to_unit"]) == "pump":
+					feed_paths.append({"source": source_id, "pump": branch_edge["to_unit"], "header": edge["to_unit"], "header_outlet": outlet_id})
+	for feed_path in feed_paths:
+		var source_id: String = feed_path["source"]
+		var pump_id: String = feed_path["pump"]
 		var pump_edge := outgoing_edge(pump_id, "output")
 		if pump_edge.is_empty() or _unit_type(pump_edge["to_unit"]) != "valve":
 			continue
@@ -236,6 +275,8 @@ func find_complete_routes() -> Array[Dictionary]:
 		if complete:
 			routes.append({
 				"source": source_id,
+				"header": feed_path["header"],
+				"header_outlet": feed_path["header_outlet"],
 				"pump": pump_id,
 				"valve": valve_id,
 				"heater": heater_id,

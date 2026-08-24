@@ -2,15 +2,14 @@
 
 ## Current stable baseline
 
-Version 0.15 has a tested pilot plant and multiple independent player-built
+Version 0.16 has a tested pilot plant and multiple independent player-built
 Area 02 refinery trains. The built loop covers construction, directed pipes, valve troubleshooting,
 Sour-diesel treatment, physical diesel sampling, LAB-101, LS-201, 5/10/15 L/s
 pump targets and separate Naphtha/heavy-residue deliveries.
 
-The shared-source foundation can now discover multiple complete eligible trains
-from one source without relying on route order. Feed allocation keeps an
-explicit selected train, but no physical header/manifold or player-facing
-selection control exists yet.
+One source can now physically feed two complete trains through a buildable
+Crude Feed Header. Feed allocation keeps an explicit player-selected branch;
+it never auto-splits or falls back to another train.
 
 ## Current priority
 
@@ -23,10 +22,10 @@ Headless tests cannot replace this check.
 
 1. Hands-on 1280 x 720 interaction pass: verify port aiming, valve readability,
    alarm visibility and modal layout in the running game.
-2. Design and playtest a physical shared-source header that uses the existing
-   feed-allocation foundation; do not add arbitrary branching or auto-routing.
-3. Playtest multi-train product-value balance and storage pressure before
+2. Playtest shared-header feedback and multi-train product-value balance before
    expanding into broader manifolds.
+3. Consider the next constrained routing decision only after the header's
+   manual selection and source ownership are proven understandable in play.
 
 ## Task context rules
 

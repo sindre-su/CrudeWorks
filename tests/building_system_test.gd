@@ -36,6 +36,12 @@ func _run_tests() -> void:
 	treatment_key.pressed = true
 	controller._input(treatment_key)
 	_expect(controller.selected_type == "treatment", "key 6 selects the diesel treatment unit")
+	var header_key := InputEventKey.new()
+	header_key.keycode = KEY_7
+	header_key.pressed = true
+	controller._input(header_key)
+	_expect(controller.selected_type == "header", "key 7 selects the Crude Feed Header")
+	_expect(controller.ghost.has_node("PreviewOut APort") and controller.ghost.has_node("PreviewOut BPort"), "header preview exposes both readable branch outlets")
 	controller.set_build_mode(false)
 
 	_test_catalog()
@@ -51,7 +57,7 @@ func _run_tests() -> void:
 
 
 func _test_catalog() -> void:
-	_expect(Catalog.ORDER.size() == 6, "catalog exposes the diesel treatment unit alongside the starter machines")
+	_expect(Catalog.ORDER.size() == 7, "catalog exposes the Crude Feed Header alongside the refinery machines")
 	for equipment_type in Catalog.ORDER:
 		var definition: Dictionary = Catalog.definition(equipment_type)
 		_expect(not definition.is_empty(), "%s has a catalog definition" % equipment_type)
@@ -74,6 +80,10 @@ func _test_units_and_footprints(world: Node3D) -> void:
 	treatment.configure_buildable("treatment", 11)
 	world.add_child(treatment)
 	_expect(is_instance_valid(treatment.input_port) and is_instance_valid(treatment.output_port), "diesel treatment exposes readable IN and OUT ports")
+	var header = BuildableUnitScript.new()
+	header.configure_buildable("header", 12)
+	world.add_child(header)
+	_expect(header.get_port("input") != null and header.get_port("out_a") != null and header.get_port("out_b") != null, "Crude Feed Header exposes IN, OUT A and OUT B ports")
 	var valve = BuildableUnitScript.new()
 	valve.configure_buildable("valve", 10)
 	world.add_child(valve)

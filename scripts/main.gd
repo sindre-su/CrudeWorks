@@ -686,7 +686,7 @@ func _update_unit_statuses() -> void:
 		control_station_visible or control_alarm,
 		Color("ff6b5f") if control_alarm else Color("75ddff")
 	)
-	var active_route: Dictionary = built_refinery_model.network.find_complete_route()
+	var active_route: Dictionary = built_refinery_model.active_route()
 	for entry in build_controller.registered_units:
 		var built_unit = entry["node"]
 		if not is_instance_valid(built_unit):
@@ -719,6 +719,8 @@ func _update_unit_statuses() -> void:
 			)
 		elif state.get("type", "") == "treatment":
 			built_unit.set_active(state["running"], Color("7fc8ff"))
+		elif state.get("type", "") == "header":
+			built_unit.set_active("RUTE " in built_refinery_model.unit_status(built_unit.unit_id), Color("75ddff"))
 
 
 func _update_process_visuals(delta: float) -> void:
@@ -1029,7 +1031,7 @@ func _dismiss_batch_report() -> void:
 	batch_report_visible = false
 	player.set_input_blocked(false)
 	build_controller.set_input_blocked(false)
-	var route: Dictionary = built_refinery_model.network.find_complete_route()
+	var route: Dictionary = built_refinery_model.active_route()
 	var remaining_crude := 0.0
 	if not route.is_empty():
 		var source: Dictionary = built_refinery_model.equipment[route["source"]]
@@ -1156,7 +1158,7 @@ func _has_dispatchable_product_order() -> bool:
 
 
 func _active_diesel_available() -> bool:
-	var route: Dictionary = built_refinery_model.network.find_complete_route()
+	var route: Dictionary = built_refinery_model.active_route()
 	if route.is_empty():
 		return false
 	var tank: Dictionary = built_refinery_model.equipment[route["products"]["diesel"]]

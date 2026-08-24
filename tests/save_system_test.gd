@@ -39,7 +39,9 @@ func _create_partial_paid_refinery():
 	main.persistence_enabled = false
 	root.add_child(main)
 	await process_frame
-	main.process_model.money = 3000
+	# The persisted fixture includes one standalone Crude Feed Header in addition
+	# to the starter train, while keeping the original 100 kr post-load balance.
+	main.process_model.money = 3350
 	main.process_model.objective_complete = true
 	main._process(0.0)
 	_place_full_refinery(main)
@@ -257,9 +259,14 @@ func _test_main_round_trip(snapshot: Dictionary, source_main) -> void:
 	var restore_result: Dictionary = restored._apply_snapshot(restored_snapshot)
 	_expect(restore_result["ok"], "fresh Main restores a fully validated snapshot")
 	_expect(restored.process_model.money == source_main.process_model.money, "load replaces economy exactly without charging or refunding")
-	_expect(restored.build_serial_number == 8, "maximum build serial is restored")
-	_expect(restored.build_controller.registered_units.size() == 8 and restored.built_refinery_model.equipment.size() == 8, "all built nodes and model states restore once")
+	_expect(restored.build_serial_number == 9, "maximum build serial is restored")
+	_expect(restored.build_controller.registered_units.size() == 9 and restored.built_refinery_model.equipment.size() == 9, "all built nodes and model states restore once")
 	_expect(restored.built_refinery_model.network.connection_count() == 7 and restored.build_controller.connections.size() == 7, "logical topology and seven visual pipes restore together")
+	_expect(
+		restored.build_controller.registered_unit_by_id("built_header_9") != null
+		and "KOBLE IN" in restored.built_refinery_model.unit_status("built_header_9"),
+		"unconnected Crude Feed Header placement and its contextual status restore safely"
+	)
 	_expect(restored.build_controller.registered_unit_by_id("built_valve_3").rotation_quadrants == 2, "saved equipment rotation and port orientation are preserved")
 	_expect(restored.built_refinery_model.equipment["built_valve_3"]["open"], "manual valve state restores")
 	_expect(not restored.built_refinery_model.equipment["built_pump_2"]["running"] and is_equal_approx(restored.built_refinery_model.actual_flow_lps, 0.0), "all pumps and derived flow are stopped on load")
@@ -293,7 +300,7 @@ func _test_main_round_trip(snapshot: Dictionary, source_main) -> void:
 	restored.player.set_input_blocked(false)
 	restored.build_controller.set_input_blocked(false)
 	restored._on_build_placement_requested("tank", Vector3(-11.0, 1.96, 28.0), 0)
-	_expect(restored.build_controller.registered_unit_by_id("built_tank_9") != null, "next placement uses a non-colliding serial after load")
+	_expect(restored.build_controller.registered_unit_by_id("built_tank_10") != null, "next placement uses a non-colliding serial after load")
 
 
 func _test_startup_confirmation(main) -> void:
@@ -322,6 +329,7 @@ func _place_full_refinery(main) -> void:
 	main._on_build_placement_requested("tank", Vector3(9.0, 1.96, 13.0), 1)
 	main._on_build_placement_requested("tank", Vector3(9.0, 1.96, 18.0), 2)
 	main._on_build_placement_requested("tank", Vector3(9.0, 1.96, 23.0), 3)
+	main._on_build_placement_requested("header", Vector3(-10.0, 0.96, 28.0), 0)
 
 
 func _connect_full_refinery(main) -> void:

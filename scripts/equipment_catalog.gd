@@ -1,7 +1,7 @@
 class_name EquipmentCatalog
 extends RefCounted
 
-const ORDER := ["tank", "pump", "heater", "column", "valve", "treatment"]
+const ORDER := ["tank", "pump", "heater", "column", "valve", "treatment", "header"]
 
 
 static func definition(equipment_type: String) -> Dictionary:
@@ -72,6 +72,17 @@ static func definition(equipment_type: String) -> Dictionary:
 				"has_input": true,
 				"has_output": true,
 			}
+		"header":
+			return {
+				"name": "Crude Feed Header",
+				"tag": "FH-201",
+				"cost": 350,
+				"size": Vector3(3.4, 1.6, 2.8),
+				"color": Color("596f82"),
+				"shape": "box",
+				"has_input": true,
+				"has_output": true,
+			}
 	return {}
 
 
@@ -98,6 +109,12 @@ static func port_definitions(equipment_type: String) -> Array[Dictionary]:
 		return [
 			_port("input", "input", "diesel", "IN", Vector3(0.0, y, z)),
 			_port("output", "output", "diesel", "OUT", Vector3(0.0, y, -z)),
+		]
+	if equipment_type == "header":
+		return [
+			_port("input", "input", "crude", "IN", Vector3(0.0, y, z)),
+			_port("out_a", "output", "crude", "OUT A", Vector3(-0.78, y, -z)),
+			_port("out_b", "output", "crude", "OUT B", Vector3(0.78, y, -z)),
 		]
 
 	var material_type := "any" if equipment_type == "tank" else "crude"
@@ -137,6 +154,8 @@ static func port_position(
 static func process_order_allows(from_type: String, to_type: String) -> bool:
 	return (
 		(from_type == "tank" and to_type == "pump")
+		or (from_type == "tank" and to_type == "header")
+		or (from_type == "header" and to_type == "pump")
 		or (from_type == "pump" and to_type == "valve")
 		or (from_type == "valve" and to_type == "heater")
 		or (from_type == "heater" and to_type == "column")
