@@ -20,6 +20,7 @@ func _init() -> void:
 func _run_tests() -> void:
 	_test_invalid_network_cannot_start()
 	_test_feed_allocation_foundation()
+	_test_shared_source_runtime_allocation()
 	_test_manual_valve_low_flow()
 	_test_mass_conserving_ideal_batch_and_sale()
 	_test_full_tank_backpressure()
@@ -63,6 +64,47 @@ func _test_feed_allocation_foundation() -> void:
 	_expect(allocation.select("pump_b", false)["ok"] and allocation.is_selected("pump_b"), "stopped source can deterministically switch to Train B")
 	allocation.configure("shared_source", ["pump_a"])
 	_expect(allocation.selected_train_id.is_empty(), "invalidated selected train safely clears feed ownership instead of guessing")
+
+
+func _test_shared_source_runtime_allocation() -> void:
+	var model = _complete_model()
+	model.commissioning_batch_available = false
+	model.commissioning_contract_complete = true
+	_add_second_complete_route(model)
+	model.network.disconnect_ports("b_source", "output", "b_pump", "input")
+	model.network.connections.append({"from_unit": "source", "from_port": "output", "to_unit": "b_pump", "to_port": "input"})
+	var candidates: Array[String] = model.network.eligible_train_ids_for_source("source")
+	_expect(candidates == ["b_pump", "pump"], "shared source discovery supplies both stable train identities to allocation")
+	_expect(model.discover_feed_allocation("source")["ok"], "built refinery configures allocation from discovered eligible trains")
+	_expect(model.select_feed_train("source", "pump")["ok"], "allocation selects Train A while shared source is stopped")
+	_expect(model.load_crude_batch("source", true, "standard")["ok"], "one paid batch loads into the shared source once")
+	for heater_id in ["heater", "b_heater"]:
+		model.equipment[heater_id]["temperature_c"] = 200.0
+		model.equipment[heater_id]["setpoint_c"] = 200.0
+	model.equipment["valve"]["open"] = true
+	model.equipment["b_valve"]["open"] = true
+	model.equipment["b_treatment"]["running"] = true
+	model.equipment["pump"]["running"] = true
+	model.equipment["b_pump"]["running"] = true
+	model.tick(10.0)
+	_expect(is_equal_approx(model.equipment["source"]["volume_l"], 900.0) and is_equal_approx(model.equipment["light_tank"]["volume_l"], 30.0) and is_equal_approx(model.equipment["b_light"]["volume_l"], 0.0), "selected Train A alone consumes shared-source crude")
+	_expect(not model.select_feed_train("source", "b_pump")["ok"], "running shared-source pump blocks allocation switching")
+	model.equipment["pump"]["running"] = false
+	model.equipment["b_pump"]["running"] = false
+	_expect(model.select_feed_train("source", "b_pump")["ok"], "stopped shared source can switch allocation to Train B")
+	model.equipment["b_pump"]["running"] = true
+	model.tick(10.0)
+	_expect(is_equal_approx(model.equipment["source"]["volume_l"], 800.0) and is_equal_approx(model.equipment["b_light"]["volume_l"], 30.0), "Train B receives only new shared-source material after safe switch")
+	var saved: Dictionary = model.save_state()
+	var restored = _complete_model()
+	restored.commissioning_batch_available = false
+	restored.commissioning_contract_complete = true
+	_add_second_complete_route(restored)
+	restored.network.disconnect_ports("b_source", "output", "b_pump", "input")
+	restored.network.connections.append({"from_unit": "source", "from_port": "output", "to_unit": "b_pump", "to_port": "input"})
+	restored.apply_saved_state(saved)
+	var restored_allocation = restored.feed_allocations.get("source")
+	_expect(restored_allocation != null and restored_allocation.eligible_train_ids == ["b_pump", "pump"] and restored_allocation.selected_train_id == "b_pump", "shared-source route identity and explicit allocation survive save/load")
 
 
 func _test_manual_valve_low_flow() -> void:

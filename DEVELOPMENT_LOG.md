@@ -27,6 +27,12 @@
 
 ## Completed Work
 
+- Added shared-source route discovery as a non-player-facing foundation. The
+  process network exposes complete eligible trains by stable pump identity;
+  the refinery model binds FeedAllocation to that discovery and persists an
+  explicit stopped-only selection. Physical headers and selection UI remain
+  intentionally out of scope.
+
 - Milestone 10 completed:
   - Added fixed, catalog-driven Naphtha and heavy-residue deliveries to the
     existing Area 02 contract economy; no market simulation or second pricing
@@ -201,6 +207,11 @@
     contract specification; direct Standard and Heavy routes remain unchanged.
 
 ## Validation
+
+- Shared-source discovery and allocation tests: two complete routes from one
+  structural source fixture are discovered deterministically; only the chosen
+  train consumes material; switching is blocked while either source pump runs;
+  model save/load preserves the valid chosen train.
 
 - Pilot/economy suite: passed.
 - Process-network suite: passed.
@@ -400,6 +411,9 @@
 - Area 02 now discovers and runs multiple independent complete refinery trains;
   source contracts, temperatures, flow, capacity limits, sulfur treatment,
   pump-filter faults and route product storage remain local to each train.
+- The process layer can now discover several complete candidate trains for one
+  shared source and run exactly the FeedAllocation-selected train. This is a
+  safe internal capability only until a physical header is designed.
 - The original pilot loop and full player-built loop both pass regression.
 - The first valid Area 02 sale now has a durable achievement and informative
   result, while later paid batches remain repeatable.
@@ -437,6 +451,8 @@
 
 - Multiple independent process trains are supported, but branching, shared
   headers, manifolds, recirculation and LS-201 multi-train selection are not.
+  Shared-source candidate discovery exists, but players cannot build or select
+  a header route yet.
 - Hands-on aiming/interaction feel remains unverified by headless automation.
 - Valve handle readability and central alarm prominence still need a hands-on
   check at the target 1280 x 720 window size.
@@ -477,8 +493,11 @@
   tiers or a second simulation owner. The quality calculation uses the selected
   operating point, so long frames and capacity-limited transfers cannot
   accidentally improve product quality.
+- Shared-source routing is now staged deliberately: candidate discovery and
+  stopped-only allocation are complete before any physical header or routing
+  UI is exposed to players.
 
 ## Next Best Action
 
-- Perform the deferred hands-on 1280 x 720 playtest, then balance the new
-  Naphtha/heavy-residue values and storage pressure from actual player runs.
+- Perform the deferred hands-on 1280 x 720 playtest, then design a small
+  physical shared-source header that reuses the validated allocation layer.

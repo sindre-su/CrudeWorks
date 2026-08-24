@@ -228,6 +228,15 @@ func configure_feed_allocation(source_id: String, eligible_train_ids: Array[Stri
 	return _result(true, "Fôringsruter er oppdatert.")
 
 
+func discover_feed_allocation(source_id: String) -> Dictionary:
+	# FeedAllocation owns route selection. The network only discovers the
+	# complete trains that a physical shared-source system can make eligible.
+	return configure_feed_allocation(
+		source_id,
+		network.eligible_train_ids_for_source(source_id)
+	)
+
+
 func select_feed_train(source_id: String, train_pump_id: String) -> Dictionary:
 	if not feed_allocations.has(source_id):
 		return _result(false, "Denne råoljetanken har ingen delte fôringsruter.")
@@ -259,11 +268,7 @@ func _restore_feed_allocations(saved: Dictionary) -> void:
 		if typeof(data) != TYPE_DICTIONARY or not equipment.has(source_id):
 			continue
 		var allocation = FeedAllocationScript.new()
-		var candidates: Array[String] = []
-		for candidate in data.get("eligible_train_ids", []):
-			if typeof(candidate) == TYPE_STRING:
-				candidates.append(candidate)
-		allocation.configure(source_id, candidates)
+		allocation.configure(source_id, network.eligible_train_ids_for_source(source_id))
 		allocation.select(String(data.get("selected_train_id", "")), false)
 		feed_allocations[source_id] = allocation
 	_refresh_feed_allocations()
@@ -272,11 +277,9 @@ func _restore_feed_allocations(saved: Dictionary) -> void:
 func _refresh_feed_allocations() -> void:
 	for source_id in feed_allocations:
 		var allocation = feed_allocations[source_id]
-		var valid_candidates: Array[String] = []
-		for route in network.find_complete_routes():
-			if route["source"] == source_id and route["pump"] in allocation.eligible_train_ids:
-				valid_candidates.append(route["pump"])
-		allocation.configure(source_id, valid_candidates)
+		# Keep a valid explicit selection when a sibling train is added. If its
+		# selected route disappears, FeedAllocation clears instead of guessing.
+		allocation.configure(source_id, network.eligible_train_ids_for_source(source_id))
 
 
 func can_remove(unit_id: String) -> Dictionary:

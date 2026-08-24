@@ -172,6 +172,27 @@ func find_route_for_unit(unit_id: String) -> Dictionary:
 	return {}
 
 
+func eligible_routes_for_source(source_id: String) -> Array[Dictionary]:
+	# Route pump IDs are stable equipment identities. Sort by them so callers
+	# never depend on connection insertion order.
+	var eligible: Array[Dictionary] = []
+	var seen_pumps := {}
+	for route in find_complete_routes():
+		if route["source"] != source_id or seen_pumps.has(route["pump"]):
+			continue
+		seen_pumps[route["pump"]] = true
+		eligible.append(route)
+	eligible.sort_custom(func(a: Dictionary, b: Dictionary): return String(a["pump"]) < String(b["pump"]))
+	return eligible
+
+
+func eligible_train_ids_for_source(source_id: String) -> Array[String]:
+	var train_ids: Array[String] = []
+	for route in eligible_routes_for_source(source_id):
+		train_ids.append(route["pump"])
+	return train_ids
+
+
 func find_complete_routes() -> Array[Dictionary]:
 	var routes: Array[Dictionary] = []
 	for edge in connections:

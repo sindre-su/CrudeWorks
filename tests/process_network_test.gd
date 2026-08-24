@@ -23,6 +23,7 @@ func _run_tests() -> void:
 	_test_removal_cleanup()
 	_test_actionable_missing_connection()
 	_test_second_complete_route_is_accepted()
+	_test_shared_source_candidate_discovery()
 	_test_optional_diesel_treatment_route()
 
 
@@ -129,6 +130,23 @@ func _test_second_complete_route_is_accepted() -> void:
 	_expect(network.find_complete_route()["source"] == "source" and network.find_route_for_unit("b_pump")["source"] == "b_source", "route lookup keeps equipment ownership deterministic")
 	network.disconnect_ports("b_column", "heavy", "b_heavy", "input")
 	_expect(network.validate_configuration()["valid"] and network.find_complete_route()["source"] == "source", "disconnecting one route restores the sole complete route")
+
+
+func _test_shared_source_candidate_discovery() -> void:
+	var network = _complete_network()
+	_register_route(network, "b")
+	for edge in [
+		["b_pump", "output", "b_valve", "input"], ["b_valve", "output", "b_heater", "input"], ["b_heater", "output", "b_column", "input"], ["b_column", "light", "b_light", "input"], ["b_column", "diesel", "b_diesel", "input"], ["b_column", "heavy", "b_heavy", "input"],
+	]:
+		_expect(network.try_connect(edge[0], edge[1], edge[2], edge[3])["ok"], "shared-source test builds Train B downstream structure")
+	# Test-only structural fixture: normal construction still protects a tank OUT
+	# from branching until a physical header is deliberately implemented.
+	network.connections.append({"from_unit": "source", "from_port": "output", "to_unit": "b_pump", "to_port": "input"})
+	var routes: Array[Dictionary] = network.eligible_routes_for_source("source")
+	_expect(routes.size() == 2, "one shared source exposes two complete eligible trains")
+	_expect(network.eligible_train_ids_for_source("source") == ["b_pump", "pump"], "eligible train identities are stable pump IDs rather than route indexes")
+	network.disconnect_ports("b_column", "heavy", "b_heavy", "input")
+	_expect(network.eligible_train_ids_for_source("source") == ["pump"], "an incomplete sibling branch does not invalidate the complete eligible train")
 
 
 func _complete_network():
