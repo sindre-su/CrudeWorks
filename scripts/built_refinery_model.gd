@@ -1655,13 +1655,43 @@ func control_snapshot() -> Dictionary:
 	}
 
 
+func operations_snapshot() -> Dictionary:
+	var trains: Array[Dictionary] = []
+	for route in network.find_complete_routes():
+		var pump: Dictionary = equipment[route["pump"]]
+		var source: Dictionary = equipment[route["source"]]
+		var runtime := _resolved_route(route)
+		var heater: Dictionary = equipment[route["heater"]]
+		var route_alarms := _operator_alarms_for_route(route)
+		var status := "RUNNING" if pump["actual_flow_lps"] > 0.01 else "STOPPED"
+		if not route_alarms.is_empty() or (pump["running"] and runtime.is_empty()):
+			status = "ATTENTION"
+		var products := {}
+		if not runtime.is_empty():
+			for product_id in ["light", "diesel", "heavy"]:
+				var tank: Dictionary = equipment[runtime["products"][product_id]]
+				products[product_id] = "%s %.0f/%.0f L" % [tank["name"], tank["volume_l"], tank["capacity_l"]]
+		trains.append({
+			"train_id": route["pump"], "pump_id": route["pump"], "name": pump["name"],
+			"status": status, "crude_name": CrudeCatalog.definition(_contract_id_for_route(route)).get("short_name", "INGEN"),
+			"source_volume_l": source["volume_l"], "source_capacity_l": source["capacity_l"],
+			"pump_running": pump["running"], "target_flow_lps": pump["flow_setpoint_lps"], "actual_flow_lps": pump["actual_flow_lps"],
+			"heater_mode": heater["control_mode"], "heater_pv_c": heater["temperature_c"], "heater_sp_c": heater["setpoint_c"], "heater_output_percent": heater["output_percent"], "heater_blocked": heater["auto_blocked"],
+			"feed_route": "A" if route.get("header_outlet", "") == "out_a" else ("B" if route.get("header_outlet", "") == "out_b" else "DIRECT"),
+			"products": products, "alarms": route_alarms,
+		})
+	return {"unlocked": commissioning_contract_complete, "trains": trains, "alarms": operator_alarms()}
+
+
 func remote_toggle_route_pump() -> Dictionary:
+	var route := _resolved_route(active_route())
+	return remote_toggle_pump(String(route.get("pump", "")))
+
+
+func remote_toggle_pump(pump_id: String) -> Dictionary:
 	if not commissioning_contract_complete:
 		return _result(false, "LS-201 låses opp etter første godkjente Område 02-batch.")
-	var validation: Dictionary = network.validate_configuration()
-	if not validation["valid"]:
-		return _result(false, validation["message"])
-	var route: Dictionary = _resolved_route(active_route())
+	var route: Dictionary = _resolved_route(network.find_route_for_unit(pump_id))
 	if route.is_empty():
 		return _result(false, "Velg produkttank på Product Routing Header før fjernstart brukes.")
 	var pump: Dictionary = equipment[route["pump"]]
@@ -1669,15 +1699,16 @@ func remote_toggle_route_pump() -> Dictionary:
 		var stop_result := _toggle_pump(route["pump"])
 		_remote_guard_pump_id = ""
 		return stop_result
-	if not CrudeCatalog.is_valid(active_contract_id):
+	var contract_id := _contract_id_for_route(route)
+	if not CrudeCatalog.is_valid(contract_id):
 		return _result(false, "START SPERRET — last råolje før fjernstart brukes.")
 	var source: Dictionary = equipment[route["source"]]
 	if source["contents"] != "crude" or source["volume_l"] <= 0.001:
 		return _result(false, "START SPERRET — LT-201 viser tom kildetank.")
 	var heater: Dictionary = equipment[route["heater"]]
-	var profile := contract_definition()
+	var profile := CrudeCatalog.definition(contract_id)
 	var safe_range := CrudeCatalog.approved_temperature_range(
-		active_contract_id, pump["flow_setpoint_lps"], PUMP_CAPACITY_LPS
+		contract_id, pump["flow_setpoint_lps"], PUMP_CAPACITY_LPS
 	)
 	if heater["temperature_c"] < safe_range.x or heater["temperature_c"] > safe_range.y:
 		last_status = "START SPERRET — TT-201 %.0f °C; %s krever %.0f–%.0f °C." % [
@@ -1692,12 +1723,17 @@ func remote_toggle_route_pump() -> Dictionary:
 
 
 func remote_cycle_route_heater() -> Dictionary:
+	var route := _resolved_route(active_route())
+	return remote_cycle_heater(String(route.get("pump", "")))
+
+
+func remote_cycle_heater(pump_id: String) -> Dictionary:
 	if not commissioning_contract_complete:
 		return _result(false, "LS-201 låses opp etter første godkjente Område 02-batch.")
 	var validation: Dictionary = network.validate_configuration()
 	if not validation["valid"]:
 		return _result(false, validation["message"])
-	var route := _resolved_route(active_route())
+	var route := _resolved_route(network.find_route_for_unit(pump_id))
 	if route.is_empty():
 		return _result(false, "Velg fôringsrute på Crude Feed Header før temperaturen fjernstyres.")
 	var result := _cycle_heater(route["heater"])
@@ -1707,12 +1743,17 @@ func remote_cycle_route_heater() -> Dictionary:
 
 
 func remote_cycle_route_pump_flow() -> Dictionary:
+	var route := _resolved_route(active_route())
+	return remote_cycle_pump_flow(String(route.get("pump", "")))
+
+
+func remote_cycle_pump_flow(pump_id: String) -> Dictionary:
 	if not commissioning_contract_complete:
 		return _result(false, "Flowstyring låses opp etter første godkjente Område 02-batch.")
 	var validation: Dictionary = network.validate_configuration()
 	if not validation["valid"]:
 		return _result(false, validation["message"])
-	var route := _resolved_route(active_route())
+	var route := _resolved_route(network.find_route_for_unit(pump_id))
 	if route.is_empty():
 		return _result(false, "Velg fôringsrute på Crude Feed Header før flowmålet endres.")
 	return cycle_pump_flow(route["pump"])
@@ -1726,7 +1767,7 @@ func cycle_pump_flow(unit_id: String) -> Dictionary:
 	var validation: Dictionary = network.validate_configuration()
 	if not validation["valid"]:
 		return _result(false, validation["message"])
-	var route := _resolved_route(active_route())
+	var route := _resolved_route(network.find_route_for_unit(unit_id))
 	if route.is_empty() or route["pump"] != unit_id:
 		return _result(false, "%s er ikke del av den komplette prosesslinjen." % equipment[unit_id]["name"])
 	var pump: Dictionary = equipment[unit_id]

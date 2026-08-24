@@ -57,6 +57,7 @@ var product_dispatch_visible := false
 var control_station_visible := false
 var control_station_feedback := ""
 var control_station_feedback_is_error := false
+var control_station_train_index := 0
 var discard_confirmation_time_left := 0.0
 var discard_confirmation_revision := -1
 var startup_choice_state := ""
@@ -1229,6 +1230,7 @@ func _open_control_station() -> void:
 	control_station_visible = true
 	control_station_feedback = ""
 	control_station_feedback_is_error = false
+	control_station_train_index = 0
 	notification_time_left = 0.0
 	player.set_input_blocked(true)
 	build_controller.set_input_blocked(true)
@@ -1247,13 +1249,29 @@ func _handle_control_station_input(event: InputEventKey) -> void:
 	if event.keycode == KEY_ESCAPE:
 		_close_control_station()
 		return
+	var overview: Dictionary = built_refinery_model.operations_snapshot()
+	var trains: Array = overview.get("trains", [])
+	if event.keycode == KEY_LEFT or event.keycode == KEY_RIGHT:
+		if not trains.is_empty():
+			var direction := -1 if event.keycode == KEY_LEFT else 1
+			control_station_train_index = posmod(control_station_train_index + direction, trains.size())
+			control_station_feedback = ""
+		_update_control_station_text()
+		return
+	if trains.is_empty():
+		control_station_feedback = "Ingen komplett prosesslinje å styre."
+		control_station_feedback_is_error = true
+		_update_control_station_text()
+		return
+	control_station_train_index = clampi(control_station_train_index, 0, trains.size() - 1)
+	var selected: Dictionary = trains[control_station_train_index]
 	var result := {}
 	if event.keycode == KEY_1:
-		result = built_refinery_model.remote_toggle_route_pump()
+		result = built_refinery_model.remote_toggle_pump(selected["pump_id"])
 	elif event.keycode == KEY_2:
-		result = built_refinery_model.remote_cycle_route_heater()
+		result = built_refinery_model.remote_cycle_heater(selected["pump_id"])
 	elif event.keycode == KEY_3:
-		result = built_refinery_model.remote_cycle_route_pump_flow()
+		result = built_refinery_model.remote_cycle_pump_flow(selected["pump_id"])
 	else:
 		return
 	control_station_feedback = result["message"]
@@ -1264,6 +1282,31 @@ func _handle_control_station_input(event: InputEventKey) -> void:
 
 
 func _update_control_station_text() -> void:
+	var overview: Dictionary = built_refinery_model.operations_snapshot()
+	var trains: Array = overview.get("trains", [])
+	if not trains.is_empty():
+		control_station_train_index = clampi(control_station_train_index, 0, trains.size() - 1)
+		var selected: Dictionary = trains[control_station_train_index]
+		var overview_lines := ""
+		for train in trains:
+			overview_lines += "%s  %s  %d ALARMER\n" % [train["name"], train["status"], train["alarms"].size()]
+		var product_lines := ""
+		for product_id in ["light", "diesel", "heavy"]:
+			product_lines += "%s: %s\n" % [product_id.to_upper(), selected["products"].get(product_id, "INGEN RUTE")]
+		var selected_alarms := "INGEN"
+		if not selected["alarms"].is_empty():
+			selected_alarms = "\n".join(selected["alarms"].map(func(alarm): return "%s — %s" % [alarm["equipment_name"], alarm["message"]]))
+		control_station_label.text = (
+			"REFINERY OPERATIONS\n\n" + overview_lines + "\n"
+			+ "VALGT TOG: %s — %s\n" % [selected["name"], selected["status"]]
+			+ "Feed: %s  |  %.0f/%.0f L  |  rute %s\n" % [selected["crude_name"], selected["source_volume_l"], selected["source_capacity_l"], selected["feed_route"]]
+			+ "Pumpe: %s  |  %.1f / %.1f L/s\n" % ["RUN" if selected["pump_running"] else "STOP", selected["actual_flow_lps"], selected["target_flow_lps"]]
+			+ "TIC: %s  PV %.0f  SP %.0f  UT %.0f %%%s\n" % [String(selected["heater_mode"]).to_upper(), selected["heater_pv_c"], selected["heater_sp_c"], selected["heater_output_percent"], " — HEAT BLOCKED" if selected["heater_blocked"] else ""]
+			+ product_lines + "ALARMS: " + selected_alarms + "\n\n"
+			+ (control_station_feedback if not control_station_feedback.is_empty() else "Feltventiler, ruter, prøver og service betjenes ute i anlegget.") + "\n\n"
+			+ "←/→ velg tog   1 start/stopp   2 temperaturmål   3 flowmål\nEsc — lukk"
+		)
+		return
 	var snapshot: Dictionary = built_refinery_model.control_snapshot()
 	if not snapshot.get("valid", false):
 		control_station_label.text = (

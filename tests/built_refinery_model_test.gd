@@ -908,6 +908,11 @@ func _test_operator_alarm_lifecycle_and_isolation() -> void:
 	multi.tick(1.0)
 	var multi_alarms: Array[Dictionary] = multi.operator_alarms()
 	_expect(_has_operator_alarm(multi_alarms, "low_flow", "b_pump") and not _has_operator_alarm(multi_alarms, "low_flow", "pump"), "a restricted Train B pump raises only its own LOW FLOW alarm")
+	var overview: Dictionary = multi.operations_snapshot()
+	_expect(overview["trains"].size() == 2 and overview["trains"][0]["pump_id"] != overview["trains"][1]["pump_id"], "operations snapshot discovers stable independent refinery trains")
+	var a_target: float = multi.equipment["heater"]["setpoint_c"]
+	_expect(multi.remote_cycle_heater("b_pump")["ok"] and multi.equipment["b_heater"]["setpoint_c"] != 200.0 and is_equal_approx(multi.equipment["heater"]["setpoint_c"], a_target), "selected remote TIC command changes only its own train heater")
+	_expect(multi.remote_cycle_pump_flow("b_pump")["ok"] and not is_equal_approx(multi.equipment["b_pump"]["flow_setpoint_lps"], multi.equipment["pump"]["flow_setpoint_lps"]), "selected remote flow command stays isolated to its train pump")
 
 
 func _has_operator_alarm(alarms: Array[Dictionary], alarm_id: String, equipment_id: String) -> bool:

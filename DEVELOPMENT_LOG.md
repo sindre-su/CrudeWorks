@@ -407,7 +407,7 @@
 
 ## Current Stable State
 
-- Version 0.19.0 is verified stable after the first operator-alarm milestone.
+- Version 0.20.0 is verified stable after the first refinery-operations milestone.
 - Area 02 now discovers and runs multiple independent complete refinery trains;
   source contracts, temperatures, flow, capacity limits, sulfur treatment,
   pump-filter faults and route product storage remain local to each train.
@@ -573,3 +573,14 @@
   LOW FLOW. The interlock remains authoritative over AUTO output.
 - Active alarms reconstruct from saved process state, so no stale event list is
   persisted after a repair or reload.
+
+## v0.20 — Control Room and Refinery Operations
+
+- Upgraded the physical LS-201 station into Refinery Operations. It discovers
+  all complete process trains and presents concise overview, alarm and selected
+  train operating detail without polling scene nodes.
+- Operators use left/right to change only their console view. Pump, TIC setpoint
+  and flow commands target the selected train through the same model APIs and
+  interlocks used by existing remote controls.
+- Field-only work remains physical: valve/header routing, sampling, LAB work,
+  equipment inspection and filter repair are not exposed by the console.

@@ -93,8 +93,8 @@ func _run_test() -> void:
 	main._on_unit_interacted("area02_control")
 	_expect(main.control_station_visible and main.player.input_blocked and main.build_controller.input_blocked, "unlocked LS-201 opens a live modal and blocks field/build controls")
 	main._update_user_interface()
-	_expect("LT-201 NIVÅ" in main.control_station_label.text and "TT-201 TEMPERATUR" in main.control_station_label.text and "TIC-201 KONTROLL" in main.control_station_label.text and "FT-201 FLOW" in main.control_station_label.text, "LS-201 presents explicit level, temperature, control and flow instruments with units")
-	_expect("Ingen aktiv råolje" in main.control_station_label.text and "VENTER PÅ RÅOLJE" in main.control_station_label.text, "idle LS-201 clearly waits for crude instead of advertising a zero-degree target")
+	_expect("REFINERY OPERATIONS" in main.control_station_label.text and "Pumpe:" in main.control_station_label.text and "TIC:" in main.control_station_label.text, "operations console presents centralized train flow and temperature instruments")
+	_expect("Feed: INGEN" in main.control_station_label.text and "STOPPED" in main.control_station_label.text, "idle operations console clearly shows an unloaded stopped train")
 	main._update_unit_statuses()
 	_expect("VENTER — RÅOLJE" in main.units["area02_control"].status_label.text, "idle LS-201 world status points the player toward the next delivery")
 	var empty_remote_start := InputEventKey.new()
@@ -199,7 +199,7 @@ func _test_heavy_contract_through_main() -> void:
 	main.built_refinery_model.equipment[heater.unit_id]["temperature_c"] = 230.0
 	main.built_refinery_model.equipment[heater.unit_id]["setpoint_c"] = 230.0
 	main._on_unit_interacted("area02_control")
-	_expect("mål 15" in main.control_station_label.text and "HØY" in main.control_station_label.text, "LS-201 distinguishes actual flow from the selected high-flow target")
+	_expect("/ 15.0 L/s" in main.control_station_label.text and "Pumpe:" in main.control_station_label.text, "operations console distinguishes actual flow from the selected high-flow target")
 	var remote_flow := InputEventKey.new()
 	remote_flow.keycode = KEY_3
 	remote_flow.pressed = true
@@ -213,7 +213,7 @@ func _test_heavy_contract_through_main() -> void:
 	_expect(main.built_refinery_model.equipment[pump.unit_id]["running"], "Main Heavy batch can start its active-route pump from LS-201")
 	main.built_refinery_model.tick(1.0)
 	main._update_user_interface()
-	_expect("ACTIVE ALARMS: 1" in main.control_station_label.text and "LOW FLOW" in main.control_station_label.text and not ("P-201 er startet" in main.control_station_label.text), "LS-201 lists the active LOW FLOW alarm ahead of stale successful-command feedback")
+	_expect("LOW FLOW" in main.control_station_label.text and not ("P-201 er startet" in main.control_station_label.text), "operations console lists the active LOW FLOW alarm ahead of stale successful-command feedback")
 	var close_for_valve := InputEventKey.new()
 	close_for_valve.keycode = KEY_ESCAPE
 	close_for_valve.pressed = true
@@ -230,7 +230,7 @@ func _test_heavy_contract_through_main() -> void:
 	light_tank_state["volume_l"] = 0.0
 	main.built_refinery_model.tick(100.0)
 	main._update_user_interface()
-	_expect("220 / 1000 L" in main.control_station_label.text, "LS-201 live diesel level reaches the exact Heavy yield")
+	_expect("220/1000 L" in main.control_station_label.text, "operations console live diesel storage reaches the exact Heavy yield")
 	var close_station := InputEventKey.new()
 	close_station.keycode = KEY_ESCAPE
 	close_station.pressed = true

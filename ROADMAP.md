@@ -2,7 +2,7 @@
 
 ## Current stable baseline
 
-Version 0.19 has a tested pilot plant and multiple independent player-built
+Version 0.20 has a tested pilot plant and multiple independent player-built
 Area 02 refinery trains. The built loop covers construction, directed pipes, valve troubleshooting,
 Sour-diesel treatment, physical diesel sampling, LAB-101, LS-201, 5/10/15 L/s
 pump targets and separate Naphtha/heavy-residue deliveries.
@@ -22,6 +22,10 @@ per train; the manual valve and all existing safety behavior remain authoritativ
 LS-201 now derives per-train operator alarms from actual process state. LOW
 FLOW, HIGH TEMPERATURE, HIGH LEVEL and TANK FULL identify where to inspect;
 they do not expose the maintenance diagnosis automatically.
+
+LS-201 Refinery Operations discovers every complete train from the same model
+state, provides an overview plus selected-train detail, and routes limited pump,
+temperature and flow commands through existing safety-checked APIs.
 
 ## Current priority
 
