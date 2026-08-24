@@ -1,0 +1,273 @@
+# CrudeWorks
+
+**Prototypeversjon: 0.20 – Kontrollrom og raffineridrift**
+
+En liten 3D-prototype der spilleren driver et forenklet pilotraffineri. Første mål
+er å behandle 1 000 liter råolje og selge minst 200 liter diesel med 90 % eller
+bedre kvalitet.
+
+## Status
+
+Den første komplette «vertical slice»-en inneholder:
+
+- førstepersons bevegelse og interaksjon
+- råoljetank, pumpe, ventil og varmeenhet
+- forenklet temperaturbasert destillasjon
+- tre produkttanker
+- dieselkvalitet, alarmer, laboratorium og salg
+- kontrollert råoljelasting og sikker tømming av off-spec produkt
+- hopping og huking
+- synlige væskenivåer, flowmarkører og maskinbevegelse
+- byggeområde som låses opp etter første godkjente salg
+- lesbar plassering, rotasjon, fjerning og trygg refusjon av tomt utstyr
+- retningsbestemte OUT-til-IN-rør med validering og frakobling
+- flere uavhengige prosesslinjer: tank → pumpe → ventil → varme → kolonne → tre tanker
+- operasjonelle bygde tanker, pumper, manuelle ventiler, varmeenheter og kolonner
+- massebalanse, tankkapasitet, backpressure og dieselkvalitet
+- subsidierte oppstartsforsøk fram til godkjenning, deretter betalte batcher
+- varig fullføring av Område 02 og batchrapport med utbytte, kvalitet og økonomi
+- totrinns bekreftelse før produkter sendes til avfallshåndtering
+- diagnostiserbar `LOW FLOW` når en bygd pumpe arbeider mot stengt ventil
+- versjonert autosave av penger, progresjon, bygg, rør og prosessbeholdning
+- ett oppstartsvalg for å fortsette eller bekreftet starte et nytt spill
+- valg mellom Standard og Tung råolje etter oppstartskontrakten
+- råoljespesifikke temperaturmål, fraksjoner, kvalitet og kontraktøkonomi
+- trygg automatisk migrering av eldre 0.6-lagringer til Standard-råolje
+- LS-201 lokalstasjon med live nivå-, temperatur- og flowinstrumenter
+- fjernstyrt pumpe og temperaturmål med temperaturvern ved fjernstart
+- fysisk dieselprøve fra aktiv produkttank før betalte batcher kan sendes
+- LAB-101-analyse med volum, kvalitet, prosessavvik og trygg utsending
+- flere uavhengige prosesslinjer og en fysisk Crude Feed Header for én delt
+  råoljetank: velg rute A, B eller ingen rute før drift
+- to tydelige leveringsordrer: Standard prioriterer diesel, mens Tung krever
+  både tungfraksjon og en godkjent dieselprøve
+- tre pumpetrinn på 5, 10 og 15 L/s etter godkjent oppstart, med en synlig
+  avveiing mellom produksjonstid og temperaturmargin
+- første vedlikeholdshendelse: vedvarende høy flow kan gi en diagnostiserbar
+  filterrestriksjon som må undersøkes og repareres i felt
+- Sour råolje med høy svovelstatus og en byggbar dieselbehandler som gjør
+  off-spec diesel salgbar uten å endre materialmengden
+- separate produktleveranser: Naphtha gir 5 kr/L, diesel beholder LAB-kravet,
+  og tung rest gir 2 kr/L; hver levering tømmer bare riktig produkttank
+- fysisk Product Routing Header for én produktstrøm: velg lagring A, B eller
+  ingen rute før drift; valgt tank fylles alene og fullt lager stopper prosessen
+- TIC-201 temperaturkontroll etter commissioning: velg MANUELL eller AUTO og
+  la eksisterende varmeenhet holde et valgt temperaturmål
+- operatøralarmer i LS-201: LOW FLOW, HIGH TEMPERATURE, HIGH LEVEL og TANK
+  FULL peker på relevant utstyr uten å avsløre underliggende vedlikeholdsårsak
+- LS-201 Refinery Operations: oversikt over alle komplette tog, sentraliserte
+  alarmer og sikker fjernstyring av valgt pumpes temperaturmål og flowmål
+
+Alle objekter er foreløpig bygget av Godots primitive 3D-former. Det gjør at vi
+kan teste gameplay før vi bruker tid på modeller og grafikk.
+
+## Krav og oppstart
+
+1. Installer Godot 4.7.1 stable eller en kompatibel nyere Godot 4-versjon.
+2. Åpne Godot Project Manager.
+3. Velg **Import** og åpne `project.godot` i denne mappen.
+4. Trykk **F6/F5** eller knappen **Run Project**.
+
+Prosjektet bruker Compatibility-rendereren og krever ingen eksterne pakker.
+
+### Automatisert test
+
+Alle kjernesystemene kan testes uten å åpne spillvinduet:
+
+```sh
+godot --headless --path . --script res://tests/process_model_test.gd
+godot --headless --path . --script res://tests/process_network_test.gd
+godot --headless --path . --script res://tests/building_system_test.gd
+godot --headless --path . --script res://tests/built_refinery_model_test.gd
+godot --headless --path . --script res://tests/main_built_loop_test.gd
+godot --headless --path . --script res://tests/save_system_test.gd
+```
+
+## Lagring
+
+Spillet bruker én lokal autosave. Viktige handlinger lagres etter en kort
+forsinkelse, og en stille prosess-snapshot tas omtrent hvert tolvte sekund. Ved
+neste oppstart kan spilleren velge `Enter` for å fortsette eller `N` for nytt
+spill. Nytt spill må bekreftes og den gamle filen arkiveres før den erstattes.
+
+Bygninger, rotasjon, rør, tankinnhold, temperatur, valgt pumpeflow, kvalitet, penger og progresjon
+gjenopprettes. Pumper og faktisk flow stoppes alltid ved lasting, slik at ingen
+prosess starter uten en bevisst handling. En siste kjent god backup beholdes, og
+ukjent eller skadet lagringsdata avvises før den kan endre spillet.
+Lagringer fra versjon 0.6 oppgraderes til dagens format og beholder eksisterende
+batch som Standard-råolje uten å gi en ny batch eller bonus.
+
+## Styring
+
+| Tast | Handling |
+| --- | --- |
+| WASD | Gå |
+| Mus | Se |
+| Shift | Løp |
+| Space | Hopp |
+| Ctrl eller C | Hold inne for å huke |
+| E | Bruk eller inspiser utstyr |
+| Q | Område 02: endre flowmål på pumpen du ser på |
+| F | Område 02: undersøk eller rens en pumpe med driftsavvik |
+| R | Pilot: ny batch. Område 02: trykk to ganger for sikker produkttømming |
+| Enter | Send godkjent labbatch eller lukk batchrapport |
+| 1 / 2 / 3 | Velg Standard, Tung eller Sour råolje når leveransevinduet er åpent |
+| 1 / 2 / 3 | LS-201: start/stopp pumpe, endre temperaturmål eller flowmål |
+| Esc | Frigjør musepekeren |
+
+### Byggemodus
+
+Byggemodus låses opp når den første dieselbatchen er solgt.
+
+| Tast | Handling |
+| --- | --- |
+| B | Åpne eller lukke byggemodus |
+| 1–4 | Velg tank, pumpe, varmeenhet eller destillasjonskolonne |
+| 5 / 6 / 7 / 8 | Velg manuell ventil, dieselbehandler, Crude Feed Header eller Product Routing Header |
+| Q / E | Roter forhåndsvisningen |
+| Venstreklikk | Plasser eller bekreft valgt handling |
+| X | Bytt til fjerningsmodus; fjerning gir full refusjon |
+| F | Velg utløp og deretter innløp for å lage prosessrør |
+| G | Fjern røret på porten du ser på |
+| V | Valider prosesslinjen og vis første feil |
+| Høyreklikk | Avbryt gjeldende byggehandling |
+
+Etter godkjent commissioning kan spilleren se på en varmeenhet og trykke `Q`
+for å veksle mellom **MANUELL** og **AUTO**. `E` beholder det kjente
+temperaturmålet. I AUTO sammenligner TIC-201 målt temperatur (PV) med målet
+(SP) og justerer heater-utgangen. LS-201 viser PV, SP, modus og utgang; en
+lukket feltventil gir fortsatt LOW FLOW og blokkerer automatisk varmeutgang.
+LS-201 samler aktive alarmer fra hver komplette prosesslinje. Alarmen viser
+symptom og utstyrstag; feltinspeksjon brukes fortsatt til å finne årsaken.
+
+## Første produksjonsrunde
+
+1. Gå til varmeenheten og trykk `E` til temperaturmålet er 200 °C.
+2. Vent til anlegget nærmer seg riktig temperatur.
+3. Åpne mateventilen.
+4. Start pumpen.
+5. Følg med på dieselvolum og kvalitet.
+6. Stopp pumpen når du ønsker, eller behandle hele batchen.
+7. Gå til LAB / SALG og trykk `E` når minst 200 liter diesel er godkjent.
+
+Hvis man starter flowen før anlegget er varmt, blandes dårlig diesel inn i
+tanken. Det er tilsiktet: spilleren lærer sammenhengen mellom temperatur,
+utbytte og kvalitet gjennom handling.
+
+Væskenivåene i tankene og de lysende markørene i rørene viser nå prosessen
+direkte i 3D. Pumpens rotor og ventilhåndtak beveger seg når utstyret brukes.
+
+## Første selvbygde raffineri
+
+1. Selg godkjent pilotdiesel. Treningskontrakten garanterer minst 3 000 kr, slik
+   at spilleren kan finansiere startanlegget og beholde litt driftskapital.
+2. Trykk `B` og plasser fire tanker, én pumpe, én manuell ventil, én varmeenhet
+   og én kolonne.
+3. Koble `tank OUT → pumpe IN`, `pumpe OUT → ventil IN`,
+   `ventil OUT → varme IN` og `varme OUT → kolonne IN`.
+4. Koble kolonnens `LETT`, `DIESEL` og `TUNG` til hver sin tank. Trykk `V` for
+   en konkret valideringsmelding. Feil rør kan fjernes med `G`.
+5. Trykk `B` for å avslutte bygging, og `E` på kildetanken for å laste en
+   subsidiert oppstartsbatch. Hvis produktet blir off-spec og tømmes sikkert,
+   kan oppstarten prøves igjen uten kostnad fram til første godkjente levering.
+6. Sett varmeenheten til 200 °C, vent til den er varm, og start pumpen. Ventilen
+   er stengt som standard, så pumpen gir `LOW FLOW` til spilleren finner og
+   åpner ventilen.
+7. Følg væskenivå, flow og kvalitet. Ventilen kan stenge eller gjenopprette flow
+   uten at væske skapes eller forsvinner. Stopp pumpen og selg godkjent diesel ved
+   `LAB / SALG`. Salget sender produktbatchen ut og viser en batchrapport med
+   faktisk råolje behandlet, fraksjoner, kvalitet, inntekt, kostnad og resultat.
+
+Etter godkjent oppstart åpner `E` på en tom kildetank leveransevalget. Valget
+bestemmer både råoljen og leveringsordren:
+
+- **Dieselleveranse / Standard** koster 300 kr, har mål rundt 200 °C og krever
+  minst 200 liter diesel med minst 90 % kvalitet.
+- **Tung leveranse / Tung** koster 180 kr, har mål rundt 230 °C og krever minst
+  600 liter tungfraksjon, minst 200 liter diesel og minst 90 % dieselkvalitet.
+  En godkjent ordre gir en engangsbonus på 1 000 kr.
+
+Råoljetypen låses til batchen. En ny type kan først velges når alle bygde tanker
+er tomme og pumpen er stoppet. Batchrapporten viser valgt råolje, faktisk
+snittemperatur, temperaturmål, dieselsalg, eventuell bonus, kostnad og resultat.
+
+Den første Område 02-oppstarten bruker fortsatt den enkle direktekontrollen ved
+`LAB / SALG`. For senere betalte batcher må spilleren stoppe pumpen og trykke
+`E` på dieseltanken i den aktive linjen for å ta en prøve. Før analyse vises
+produktkvaliteten som `IKKE ANALYSERT`; en prøve fra en frakoblet tank kan ikke
+brukes. Ved `LAB / SALG` viser LAB-101 faktisk dieselvolum og kvalitet mot
+kontraktskravet, samt gjennomsnittlig prosesstemperatur og pumpeflow.
+For Tung viser analysen dieselkvaliteten og tungfraksjonsmålet som to separate
+krav. En god dieselprøve kan derfor være godkjent selv om ordren ennå trenger
+mer tungfraksjon; videre produksjon krever deretter en ny prøve.
+
+En godkjent, fortsatt gyldig prøve kan sendes med `Enter`. OFF-SPEC-produkt
+beholdes og gir ingen inntekt. Ny produksjon, endret rørnett, tømming, salg eller
+lasting gjør prøven ugyldig, og save/load krever alltid en ny fysisk prøve.
+
+Etter den første godkjente Område 02-leveransen låses **LS-201** opp på
+vestsiden av byggeområdet. Lokalstasjonen viser den aktive linjens kildenivå,
+temperatur, faktisk flow, flowmål, dieselvolum, pumpe og ventil i sanntid. Tast
+`1` fjernstarter eller stopper pumpen, `2` endrer varmeenhetens temperaturmål,
+og `3` velger neste pumpetrinn.
+Ved fjernstart sperres en kald eller overopphetet prosess, og temperaturvernet
+stopper pumpen før mer materiale behandles dersom temperaturen forlater det
+godkjente området. Ventilen er fortsatt feltbetjent, slik at `LOW FLOW` må
+diagnostiseres og rettes ute i anlegget.
+
+Etter den første godkjente Område 02-leveransen kan spilleren også se på den
+bygde pumpen og trykke `Q` for å sykle `10 → 15 → 5 → 10 L/s`. Lav flow bruker
+lengre tid, men tåler et større temperaturavvik. Høy flow produserer raskere,
+men krever at temperaturen holdes nærmere råoljens mål. LAB-101 og
+batchrapporten viser volumvektet gjennomsnittsflow, slik at et kvalitetsavvik kan
+knyttes til både temperatur og valgt kapasitet. Første oppstart og pilotanlegget
+beholder fast 10 L/s.
+
+Område 02 kan drive flere uavhengige prosesslinjer. Når én råoljetank skal
+mate to komplette tog, kobler spilleren tanken til en **Crude Feed Header** og
+kobler `OUT A` og `OUT B` til hver sin pumpe. Trykk `E` på headeren for å velge
+`A → B → ingen rute`. Valgt pumpevei får all råolje; bytte er blokkert mens en
+pumpe fra samme kilde går. Headeren deler aldri flow automatisk og velger aldri
+en reservevei på egen hånd.
+
+For utvidet produktlagring kan et kolonneutløp eller HT-201 kobles til en
+**Product Routing Header**. Koble `OUT A` og `OUT B` til kompatible tanker og
+trykk `E` på headeren for å velge `A → B → ingen tank`. Bytte krever at den
+aktuelle pumpen er stoppet. Bare valgt tank mottar nytt produkt; et fullt valgt
+lager stopper prosessen i stedet for å flytte eller duplisere materialet.
+
+Hvis en batch blir off-spec, forklarer
+terminalen at `R` kan sende bygde produkter til sikker avfallshåndtering uten
+betaling. Spilleren må stoppe pumpen og trykke `R` to ganger innen fire
+sekunder. Dette gir en gjenopprettingsvei uten gratis råolje eller penger, men
+beskytter en godkjent batch mot ett utilsiktet tastetrykk.
+
+## Prosjektstruktur
+
+```text
+CrudeWorks/
+├── project.godot
+├── scenes/
+│   └── main.tscn
+├── scripts/
+    ├── built_refinery_model.gd
+    ├── build_controller.gd
+    ├── buildable_unit.gd
+    ├── crude_contract_catalog.gd
+    ├── equipment_catalog.gd
+    ├── interactive_unit.gd
+    ├── lab_analysis_panel.gd
+    ├── main.gd
+    ├── player.gd
+    ├── process_model.gd
+    ├── process_network.gd
+    ├── process_port.gd
+    └── save_system.gd
+└── tests/
+    ├── built_refinery_model_test.gd
+    ├── building_system_test.gd
+    ├── main_built_loop_test.gd
+    ├── process_model_test.gd
+    ├── process_network_test.gd
+    └── save_system_test.gd
+```
