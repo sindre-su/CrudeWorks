@@ -407,7 +407,7 @@
 
 ## Current Stable State
 
-- Version 0.18.0 is verified stable after the first automatic temperature-control milestone.
+- Version 0.19.0 is verified stable after the first operator-alarm milestone.
 - Area 02 now discovers and runs multiple independent complete refinery trains;
   source contracts, temperatures, flow, capacity limits, sulfur treatment,
   pump-filter faults and route product storage remain local to each train.
@@ -558,3 +558,18 @@
 - LS-201 now presents TIC-201 mode and heater output alongside its established
   PV/SP, level and flow readings. Save/load persists mode, SP and output while
   retaining the existing pump-stop safety rule.
+
+## v0.19 — Operator Alarms and Process Interlocks
+
+- Added one lightweight, derived operator-alarm layer. It observes existing
+  per-train route and equipment state instead of duplicating flow, temperature
+  or tank simulation.
+- LS-201 now lists active LOW FLOW, HIGH TEMPERATURE, HIGH LEVEL and TANK FULL
+  alarms with equipment tags and simple HIGH/MEDIUM/LOW priority.
+- Alarms name the operational symptom, not the hidden cause. For example a
+  restricted filter produces LOW FLOW; field pump inspection still performs
+  the diagnosis and repair.
+- TIC-201 inspection now identifies the existing heat permissive as blocked by
+  LOW FLOW. The interlock remains authoritative over AUTO output.
+- Active alarms reconstruct from saved process state, so no stale event list is
+  persisted after a repair or reload.

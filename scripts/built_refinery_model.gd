@@ -1329,10 +1329,11 @@ func inspect_unit(unit_id: String) -> String:
 		"valve":
 			return "Manuell ventil %s." % ("ÅPEN" if state["open"] else "STENGT")
 		"heater":
-			return "TIC-201 %s: PV %.0f °C, SP %.0f °C, utgang %.0f %%%s." % [
+			return "TIC-201 %s: PV %.0f °C, SP %.0f °C, utgang %.0f %%%s%s" % [
 				String(state["control_mode"]).to_upper(), state["temperature_c"],
 				state["setpoint_c"], state["output_percent"],
 				" — BLOKKERT" if state.get("auto_blocked", false) else "",
+				". HEAT PERMISSIVE: BLOCKED. Reason: LOW FLOW" if state.get("auto_blocked", false) else ".",
 			]
 		"column":
 			return "Destillasjon: %.0f L totalt prosessert." % state["processed_total_l"]
@@ -1510,7 +1511,79 @@ func summary_text() -> String:
 
 
 func alarm_text() -> String:
-	return _process_alarm_text()
+	var lines: Array[String] = []
+	for alarm in operator_alarms():
+		lines.append("[%s] %s — %s" % [alarm["severity"], alarm["equipment_name"], alarm["message"]])
+	return "\n".join(lines)
+
+
+func operator_alarms() -> Array[Dictionary]:
+	# Alarms are derived from authoritative equipment and route state. Keeping no
+	# duplicate stored alarm state means a repaired/saved refinery always reports
+	# the physical condition that actually exists now.
+	var alarms: Array[Dictionary] = []
+	for route in network.find_complete_routes():
+		alarms.append_array(_operator_alarms_for_route(route))
+	return alarms
+
+
+func _operator_alarms_for_route(route: Dictionary) -> Array[Dictionary]:
+	var alarms: Array[Dictionary] = []
+	if route.is_empty() or not equipment.has(route.get("pump", "")):
+		return alarms
+	var pump: Dictionary = equipment[route["pump"]]
+	var source: Dictionary = equipment[route["source"]]
+	var pump_name := String(pump["name"])
+	if feed_allocations.has(route["source"]):
+		var allocation = feed_allocations[route["source"]]
+		if allocation.selected_train_id.is_empty():
+			if pump["running"]:
+				_add_operator_alarm(alarms, "medium", "no_feed_route", route["pump"], pump_name, "NO FEED ROUTE")
+			return alarms
+		if not allocation.is_selected(route["pump"]):
+			return alarms
+	var runtime_route := _resolved_route(route)
+	if runtime_route.is_empty():
+		if pump["running"]:
+			_add_operator_alarm(alarms, "medium", "no_product_route", route["pump"], pump_name, "NO PRODUCT ROUTE")
+		return alarms
+	var valve: Dictionary = equipment[runtime_route["valve"]]
+	var heater: Dictionary = equipment[runtime_route["heater"]]
+	var contract_id := _contract_id_for_route(runtime_route)
+	if CrudeCatalog.is_valid(contract_id):
+		var approved_range := CrudeCatalog.approved_temperature_range(
+			contract_id, pump["flow_setpoint_lps"], PUMP_CAPACITY_LPS
+		)
+		if source["contents"] == "crude" and source["volume_l"] > 0.001 and heater["temperature_c"] > approved_range.y:
+			_add_operator_alarm(alarms, "high", "high_temperature", runtime_route["heater"], String(heater["name"]), "HIGH TEMPERATURE")
+	if pump["running"]:
+		if not valve["open"]:
+			_add_operator_alarm(alarms, "medium", "low_flow", runtime_route["pump"], pump_name, "LOW FLOW")
+		elif source["contents"] != "crude" or source["volume_l"] <= 0.001:
+			_add_operator_alarm(alarms, "medium", "low_flow", runtime_route["pump"], pump_name, "LOW FLOW")
+		elif pump["actual_flow_lps"] < float(pump["flow_setpoint_lps"]) * 0.9:
+			_add_operator_alarm(alarms, "medium", "low_flow", runtime_route["pump"], pump_name, "LOW FLOW")
+	for product_name in ["light", "diesel", "heavy"]:
+		var tank_id: String = runtime_route["products"][product_name]
+		var tank: Dictionary = equipment[tank_id]
+		if tank["contents"] == product_name and tank["volume_l"] >= tank["capacity_l"] - 0.001:
+			_add_operator_alarm(alarms, "medium", "tank_full", tank_id, String(tank["name"]), "TANK FULL")
+		elif tank["contents"] == product_name and tank["volume_l"] >= tank["capacity_l"] * 0.9:
+			_add_operator_alarm(alarms, "low", "high_level", tank_id, String(tank["name"]), "HIGH LEVEL")
+	return alarms
+
+
+func _add_operator_alarm(
+	alarms: Array[Dictionary], severity: String, alarm_id: String,
+	equipment_id: String, equipment_name: String, message: String
+) -> void:
+	alarms.append({
+		"severity": severity.to_upper(),
+		"id": alarm_id,
+		"equipment_id": equipment_id,
+		"equipment_name": equipment_name,
+		"message": message,
+	})
 
 
 func control_snapshot() -> Dictionary:
@@ -1576,6 +1649,7 @@ func control_snapshot() -> Dictionary:
 		"heavy_volume_l": float(heavy_tank["volume_l"]),
 		"temperature_guard_active": _remote_guard_pump_id == route["pump"],
 		"temperature_trip_message": _remote_guard_trip_message,
+		"operator_alarms": operator_alarms(),
 		"alarm": alarm_text(),
 		"status": last_status,
 	}
@@ -1937,39 +2011,6 @@ func _stop_all_pumps() -> void:
 			state["actual_flow_lps"] = 0.0
 	actual_flow_lps = 0.0
 	_remote_guard_pump_id = ""
-
-
-func _process_alarm_text() -> String:
-	# The HUD/alarm channel follows the train the player has explicitly selected
-	# on a shared feed header. It must never report a sibling branch by accident.
-	var route: Dictionary = _resolved_route(active_route())
-	if route.is_empty():
-		return ""
-	var pump: Dictionary = equipment[route["pump"]]
-	var valve: Dictionary = equipment[route["valve"]]
-	var source: Dictionary = equipment[route["source"]]
-	var state: Dictionary = equipment[route["heater"]]
-	if not CrudeCatalog.is_valid(active_contract_id):
-		return ""
-	var approved_range := CrudeCatalog.approved_temperature_range(
-		active_contract_id, pump["flow_setpoint_lps"], PUMP_CAPACITY_LPS
-	)
-	var alarms: Array[String] = []
-	if state["temperature_c"] > approved_range.y:
-		alarms.append("HIGH TEMPERATURE — dieselkvalitet i fare")
-	if pump["running"] and not valve["open"]:
-		alarms.append("LOW FLOW — pumpen går, men flow er 0.0 L/s")
-	if (
-		pump["running"]
-		and valve["open"]
-		and source["contents"] == "crude"
-		and source["volume_l"] > 0.001
-		and not String(pump.get("fault_id", "")).is_empty()
-	):
-		alarms.append("LOW FLOW — %s leverer under flowmålet" % pump["name"])
-	if actual_flow_lps > 0.01 and state["temperature_c"] < approved_range.x:
-		alarms.append("LOW TEMPERATURE — dårlig separasjon og kvalitet")
-	return "\n".join(alarms)
 
 
 func _process_input(

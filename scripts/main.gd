@@ -1298,6 +1298,14 @@ func _update_control_station_text() -> void:
 		process_message = String(snapshot.get("status", ""))
 	if process_message.is_empty():
 		process_message = control_station_feedback
+	var alarm_section := "ACTIVE ALARMS: 0\n"
+	var alarms: Array = snapshot.get("operator_alarms", [])
+	if not alarms.is_empty():
+		alarm_section = "ACTIVE ALARMS: %d\n" % alarms.size()
+		for alarm in alarms.slice(0, 3):
+			alarm_section += "[%s] %s — %s\n" % [
+				alarm["severity"], alarm["equipment_name"], alarm["message"],
+			]
 	var crude_heading := "Ingen aktiv råolje  |  driftsmål —"
 	if snapshot["ideal_temperature_c"] > 0.0:
 		crude_heading = "%s råolje  |  driftsmål %.0f °C" % [
@@ -1315,6 +1323,7 @@ func _update_control_station_text() -> void:
 	control_station_label.text = (
 		"LS-201 — LOKALSTASJON\n"
 		+ crude_heading + "\n\n"
+		+ alarm_section + "\n"
 		+ "LT-201 NIVÅ, KILDE     %4.0f / %4.0f L    %3.0f %%\n" % [
 			snapshot["source_volume_l"], snapshot["source_capacity_l"],
 			snapshot["source_level_percent"],

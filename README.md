@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.18 – Instrumentering og temperaturkontroll**
+**Prototypeversjon: 0.19 – Operatøralarmer og prosessinterlocks**
 
 En liten 3D-prototype der spilleren driver et forenklet pilotraffineri. Første mål
 er å behandle 1 000 liter råolje og selge minst 200 liter diesel med 90 % eller
@@ -53,6 +53,8 @@ Den første komplette «vertical slice»-en inneholder:
   ingen rute før drift; valgt tank fylles alene og fullt lager stopper prosessen
 - TIC-201 temperaturkontroll etter commissioning: velg MANUELL eller AUTO og
   la eksisterende varmeenhet holde et valgt temperaturmål
+- operatøralarmer i LS-201: LOW FLOW, HIGH TEMPERATURE, HIGH LEVEL og TANK
+  FULL peker på relevant utstyr uten å avsløre underliggende vedlikeholdsårsak
 
 Alle objekter er foreløpig bygget av Godots primitive 3D-former. Det gjør at vi
 kan teste gameplay før vi bruker tid på modeller og grafikk.
@@ -133,6 +135,8 @@ for å veksle mellom **MANUELL** og **AUTO**. `E` beholder det kjente
 temperaturmålet. I AUTO sammenligner TIC-201 målt temperatur (PV) med målet
 (SP) og justerer heater-utgangen. LS-201 viser PV, SP, modus og utgang; en
 lukket feltventil gir fortsatt LOW FLOW og blokkerer automatisk varmeutgang.
+LS-201 samler aktive alarmer fra hver komplette prosesslinje. Alarmen viser
+symptom og utstyrstag; feltinspeksjon brukes fortsatt til å finne årsaken.
 
 ## Første produksjonsrunde
 

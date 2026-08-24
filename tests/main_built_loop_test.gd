@@ -213,7 +213,7 @@ func _test_heavy_contract_through_main() -> void:
 	_expect(main.built_refinery_model.equipment[pump.unit_id]["running"], "Main Heavy batch can start its active-route pump from LS-201")
 	main.built_refinery_model.tick(1.0)
 	main._update_user_interface()
-	_expect("LOW FLOW" in main.control_station_label.text and not ("P-201 er startet" in main.control_station_label.text), "a live LOW FLOW alarm outranks stale successful-command feedback")
+	_expect("ACTIVE ALARMS: 1" in main.control_station_label.text and "LOW FLOW" in main.control_station_label.text and not ("P-201 er startet" in main.control_station_label.text), "LS-201 lists the active LOW FLOW alarm ahead of stale successful-command feedback")
 	var close_for_valve := InputEventKey.new()
 	close_for_valve.keycode = KEY_ESCAPE
 	close_for_valve.pressed = true
@@ -225,7 +225,7 @@ func _test_heavy_contract_through_main() -> void:
 	light_tank_state["volume_l"] = light_tank_state["capacity_l"]
 	main.built_refinery_model.tick(1.0)
 	main._update_user_interface()
-	_expect("er full" in main.control_station_label.text and not ("P-201 er startet" in main.control_station_label.text), "current tank-full status outranks cached remote-start feedback")
+	_expect("TANK FULL" in main.control_station_label.text and not ("P-201 er startet" in main.control_station_label.text), "current tank-full alarm outranks cached remote-start feedback")
 	light_tank_state["contents"] = "empty"
 	light_tank_state["volume_l"] = 0.0
 	main.built_refinery_model.tick(100.0)

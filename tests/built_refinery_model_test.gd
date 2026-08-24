@@ -23,6 +23,7 @@ func _run_tests() -> void:
 	_test_shared_source_runtime_allocation()
 	_test_manual_valve_low_flow()
 	_test_automatic_heater_control()
+	_test_operator_alarm_lifecycle_and_isolation()
 	_test_mass_conserving_ideal_batch_and_sale()
 	_test_full_tank_backpressure()
 	_test_commissioning_and_paid_batches()
@@ -857,6 +858,63 @@ func _test_automatic_heater_control() -> void:
 	quality_model.interact("pump")
 	quality_model.tick(10.0)
 	_expect(is_equal_approx(quality_model.equipment["diesel_tank"]["quality_percent"], 100.0), "AUTO uses the existing temperature-quality rules without an artificial quality bonus")
+
+
+func _test_operator_alarm_lifecycle_and_isolation() -> void:
+	var model = _complete_model()
+	model.commissioning_batch_available = false
+	model.commissioning_contract_complete = true
+	model.load_crude_batch("source", true, "standard")
+	model.equipment["heater"]["temperature_c"] = 200.0
+	model.equipment["heater"]["setpoint_c"] = 200.0
+	model.equipment["pump"]["running"] = true
+	model.tick(1.0)
+	var blocked_alarms: Array[Dictionary] = model.operator_alarms()
+	_expect(_has_operator_alarm(blocked_alarms, "low_flow", "pump") and not ("filter" in model.alarm_text().to_lower()), "closed valve creates a symptom-only LOW FLOW operator alarm")
+	model.toggle_heater_auto("heater")
+	model.tick(1.0)
+	_expect("HEAT PERMISSIVE: BLOCKED" in model.inspect_unit("heater"), "heater inspection exposes the LOW FLOW safety interlock without a second alarm")
+	model.interact("valve")
+	model.tick(1.0)
+	_expect(not _has_operator_alarm(model.operator_alarms(), "low_flow", "pump"), "restored valve flow clears the derived LOW FLOW alarm")
+	model.equipment["heater"]["temperature_c"] = 240.0
+	_expect(_has_operator_alarm(model.operator_alarms(), "high_temperature", "heater"), "excess process temperature raises a high-priority heater alarm")
+	model.equipment["diesel_tank"]["contents"] = "diesel"
+	model.equipment["diesel_tank"]["volume_l"] = 900.0
+	_expect(_has_operator_alarm(model.operator_alarms(), "high_level", "diesel_tank"), "a routed product tank warns at high level before it is full")
+	model.equipment["diesel_tank"]["volume_l"] = 1000.0
+	_expect(_has_operator_alarm(model.operator_alarms(), "tank_full", "diesel_tank"), "a routed full product tank raises a tank-full operator alarm")
+	var restored = _complete_model()
+	restored.apply_saved_state(model.save_state())
+	_expect(_has_operator_alarm(restored.operator_alarms(), "tank_full", "diesel_tank"), "saved physical tank state reconstructs alarms without stale alarm storage")
+
+	var multi = _complete_model()
+	multi.commissioning_batch_available = false
+	multi.commissioning_contract_complete = true
+	_add_second_complete_route(multi)
+	for source_id in ["source", "b_source"]:
+		multi.equipment[source_id]["contents"] = "crude"
+		multi.equipment[source_id]["volume_l"] = 100.0
+		multi.equipment[source_id]["contract_id"] = "standard"
+	for heater_id in ["heater", "b_heater"]:
+		multi.equipment[heater_id]["temperature_c"] = 200.0
+		multi.equipment[heater_id]["setpoint_c"] = 200.0
+	for valve_id in ["valve", "b_valve"]:
+		multi.equipment[valve_id]["open"] = true
+	for pump_id in ["pump", "b_pump"]:
+		multi.equipment[pump_id]["running"] = true
+	multi.equipment["b_treatment"]["running"] = true
+	multi.equipment["b_pump"]["fault_id"] = "blocked_filter"
+	multi.tick(1.0)
+	var multi_alarms: Array[Dictionary] = multi.operator_alarms()
+	_expect(_has_operator_alarm(multi_alarms, "low_flow", "b_pump") and not _has_operator_alarm(multi_alarms, "low_flow", "pump"), "a restricted Train B pump raises only its own LOW FLOW alarm")
+
+
+func _has_operator_alarm(alarms: Array[Dictionary], alarm_id: String, equipment_id: String) -> bool:
+	for alarm in alarms:
+		if alarm["id"] == alarm_id and alarm["equipment_id"] == equipment_id:
+			return true
+	return false
 
 
 func _add_second_complete_route(model) -> void:

@@ -8,7 +8,8 @@
   training progression.
 - `scripts/built_refinery_model.gd`: Area 02 material, operating state,
   contracts, sulfur-aware quality, lab authorization, dispatch, first
-  recoverable pump fault, TIC-201 heater control and process simulation.
+  recoverable pump fault, TIC-201 heater control, derived operator alarms and
+  process simulation.
 - `scripts/process_network.gd`: authoritative directed topology. It validates
   ports, equipment order and cycles, and discovers independent complete Area 02
   trains plus optional crude/product headers.
@@ -51,6 +52,9 @@ product-header storage choice -> sample -> lab -> conditional dispatch.
 - Each heater owns exactly one PV/SP/output state. AUTO adjusts that existing
   state, while field LOW FLOW safety can block AUTO output without routing or
   restarting equipment.
+- Operator alarms are derived from route/equipment state per train. They do
+  not persist independently, so cleared physical conditions cannot leave stale
+  alarms after a load or repair.
 - A Product Routing Header sends each product only to its explicit selected tank;
   it never splits, blends or auto-switches storage.
 - Sale consumes authorized inventory atomically; no free repeated value.
