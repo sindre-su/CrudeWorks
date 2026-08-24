@@ -4,6 +4,18 @@ extends InteractiveUnit
 const Catalog = preload("res://scripts/equipment_catalog.gd")
 const ProcessPortScript = preload("res://scripts/process_port.gd")
 
+const TANK_LIQUID_COLORS := {
+	"crude": Color("241815"),
+	"light": Color("a8e5dc"),
+	"diesel": Color("e8bd22"),
+	"heavy": Color("241c20"),
+	"vacuum_gas_oil": Color("687a32"),
+	"vacuum_residue": Color("17131d"),
+	"gasoline_blendstock": Color("d85a39"),
+	"lpg": Color("b98ff0"),
+	"light_cycle_oil": Color("855d39"),
+}
+
 var equipment_type := ""
 var serial_number := 0
 var purchase_cost := 0
@@ -18,6 +30,9 @@ var liquid_max_height := 0.0
 var liquid_bottom_y := 0.0
 var valve_handle: Node3D
 var valve_handle_material: StandardMaterial3D
+var pump_rotor: Node3D
+var pump_rotor_material: StandardMaterial3D
+var pump_rotor_running := false
 
 
 func configure_buildable(type: String, serial_number: int) -> void:
@@ -62,6 +77,8 @@ func configure_buildable(type: String, serial_number: int) -> void:
 	if equipment_type == "tank":
 		make_transparent(0.48)
 		_create_tank_liquid(size)
+	elif equipment_type == "pump":
+		_create_pump_rotor(size)
 	elif equipment_type == "valve":
 		_create_valve_handle(size)
 	set_status(data["name"].to_upper())
@@ -101,12 +118,7 @@ func set_tank_fill(fill_ratio: float, contents: String) -> void:
 	liquid_level.scale.y = display_height
 	liquid_level.position.y = liquid_bottom_y + display_height * 0.5
 	liquid_level.visible = ratio > 0.001
-	var color: Color = {
-		"crude": Color("241815"),
-		"light": Color("a8e5dc"),
-		"diesel": Color("e8bd22"),
-		"heavy": Color("241c20"),
-	}.get(contents, Color("65777c"))
+	var color: Color = TANK_LIQUID_COLORS.get(contents, Color("65777c"))
 	liquid_material.albedo_color = color
 	liquid_material.emission = color
 
@@ -129,6 +141,37 @@ func _create_tank_liquid(size: Vector3) -> void:
 	liquid_level.material_override = liquid_material
 	liquid_level.visible = false
 	add_child(liquid_level)
+
+
+func _create_pump_rotor(size: Vector3) -> void:
+	pump_rotor = Node3D.new()
+	pump_rotor.position = Vector3(0.0, 0.0, -size.z * 0.5 - 0.07)
+	add_child(pump_rotor)
+	pump_rotor_material = StandardMaterial3D.new()
+	pump_rotor_material.albedo_color = Color("c7dcdd")
+	pump_rotor_material.metallic = 0.75
+	pump_rotor_material.roughness = 0.22
+	pump_rotor_material.emission_enabled = true
+	pump_rotor_material.emission = Color("28464b")
+	pump_rotor_material.emission_energy_multiplier = 0.1
+	for angle_degrees in [0.0, 60.0, 120.0]:
+		var spoke := MeshInstance3D.new()
+		var spoke_mesh := BoxMesh.new()
+		spoke_mesh.size = Vector3(0.92, 0.10, 0.10)
+		spoke.mesh = spoke_mesh
+		spoke.rotation.z = deg_to_rad(angle_degrees)
+		spoke.material_override = pump_rotor_material
+		pump_rotor.add_child(spoke)
+	var hub := MeshInstance3D.new()
+	var hub_mesh := CylinderMesh.new()
+	hub_mesh.top_radius = 0.18
+	hub_mesh.bottom_radius = 0.18
+	hub_mesh.height = 0.18
+	hub_mesh.radial_segments = 16
+	hub.mesh = hub_mesh
+	hub.rotation.x = deg_to_rad(90.0)
+	hub.material_override = pump_rotor_material
+	pump_rotor.add_child(hub)
 
 
 func _create_valve_handle(size: Vector3) -> void:
@@ -157,6 +200,20 @@ func set_valve_open(value: bool) -> void:
 	valve_handle_material.albedo_color = color
 	valve_handle_material.emission = color
 	valve_handle_material.emission_energy_multiplier = 0.7 if value else 0.25
+
+
+func set_pump_operating(value: bool) -> void:
+	if not is_instance_valid(pump_rotor):
+		return
+	pump_rotor_running = value
+	pump_rotor_material.emission_enabled = true
+	pump_rotor_material.emission = Color("7ce7e0") if value else Color("28464b")
+	pump_rotor_material.emission_energy_multiplier = 1.2 if value else 0.1
+
+
+func _process(delta: float) -> void:
+	if pump_rotor_running and is_instance_valid(pump_rotor):
+		pump_rotor.rotation.z = fmod(pump_rotor.rotation.z - delta * 8.0, TAU)
 
 
 func rotated_footprint() -> Vector2:

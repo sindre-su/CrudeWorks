@@ -731,6 +731,7 @@ func _update_unit_statuses() -> void:
 			)
 		elif state.get("type", "") == "pump":
 			built_unit.set_active(state["running"])
+			built_unit.set_pump_operating(state["running"])
 		elif state.get("type", "") == "valve":
 			built_unit.set_valve_open(state["open"])
 			built_unit.set_active(state["open"], Color("78e08f"))

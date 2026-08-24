@@ -151,6 +151,12 @@ func _test_placement_and_connections(world: Node3D, controller) -> void:
 	_expect(is_instance_valid(tank.liquid_level), "built tank has a visible-fill component")
 	tank.set_tank_fill(0.5, "crude")
 	_expect(tank.liquid_level.visible, "non-empty built tank displays its liquid level")
+	for product_id in ["vacuum_gas_oil", "vacuum_residue", "gasoline_blendstock", "lpg", "light_cycle_oil"]:
+		tank.set_tank_fill(0.5, product_id)
+		_expect(
+			tank.liquid_material.albedo_color.is_equal_approx(BuildableUnitScript.TANK_LIQUID_COLORS[product_id]),
+			"%s receives its own physical tank-liquid color" % product_id
+		)
 
 	_expect(
 		not controller._position_is_valid(Vector3(0.5, 1.0, 20.0), Vector2(2.0, 2.0)),
@@ -174,6 +180,15 @@ func _test_placement_and_connections(world: Node3D, controller) -> void:
 	pump.position = Vector3(0.0, 0.86, 26.0)
 	world.add_child(pump)
 	controller.register_unit(pump)
+	_expect(is_instance_valid(pump.pump_rotor), "built pump has a local physical rotor")
+	pump.set_pump_operating(true)
+	var rotor_angle_before: float = pump.pump_rotor.rotation.z
+	pump._process(0.5)
+	_expect(not is_equal_approx(pump.pump_rotor.rotation.z, rotor_angle_before), "running pump animates its local rotor")
+	pump.set_pump_operating(false)
+	var stopped_rotor_angle: float = pump.pump_rotor.rotation.z
+	pump._process(0.5)
+	_expect(is_equal_approx(pump.pump_rotor.rotation.z, stopped_rotor_angle), "stopped pump leaves its rotor stationary")
 	var result: Dictionary = controller._connect_ports(tank.output_port, pump.input_port)
 	_expect(result["ok"], "controller accepts a valid tank-to-pump connection")
 	_expect(controller.connections.size() == 1, "OUT-to-IN connection creates one pipe record")

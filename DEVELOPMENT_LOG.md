@@ -759,3 +759,15 @@
 - The same normal-game systems must support a focused ~20-minute concept, a
   coherent 45–90 minute session and multi-hour sandbox expansion. The deferred
   hands-on playtest is therefore the next decision input, not a cosmetic task.
+
+## v0.24.1 — Physical Refinery Feedback
+
+- Extended built-tank liquid visuals to distinguish every material currently
+  producible in Area 02: crude, the atmospheric fractions, VGO, vacuum residue,
+  Gasoline Blendstock, LPG and Light Cycle Oil.
+- Added a small local rotor to each player-built pump. It spins only while that
+  pump is commanded on, making a running motor readable independently of the
+  existing build/connection highlight.
+- Validation: focused building/Main integration coverage passed. The remaining
+  1280×720 first-person readability and interaction-feel check still needs a
+  human playtest and is not claimed as complete.

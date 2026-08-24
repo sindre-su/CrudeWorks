@@ -56,6 +56,8 @@ func _run_test() -> void:
 	main.built_refinery_model.interact(heater.unit_id)
 	main.built_refinery_model.tick(10.0)
 	_expect(main.built_refinery_model.interact(pump.unit_id)["ok"], "Main-integrated built pump starts")
+	main._update_unit_statuses()
+	_expect(pump.pump_rotor_running, "Main status refresh runs the built pump's physical rotor only while commanded on")
 	var source_before_low_flow: float = main.built_refinery_model.equipment[source.unit_id]["volume_l"]
 	main.built_refinery_model.tick(1.0)
 	main._update_user_interface()
