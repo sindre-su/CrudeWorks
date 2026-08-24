@@ -11,6 +11,8 @@ const CRUDE_BATCH_COST := 300
 const PUMP_CAPACITY_LPS := 10.0
 const PUMP_MAX_FLOW_LPS := 15.0
 const PUMP_FLOW_STEPS := [5.0, 10.0, 15.0]
+const FILTER_RESTRICTION_FACTOR := 0.35
+const FIRST_FILTER_FAULT_AFTER_L := 300.0
 const DIESEL_TARGET_L := 200.0
 const APPROVED_QUALITY_PERCENT := 90.0
 const DIESEL_PRICE_PER_L := 8.0
@@ -54,6 +56,8 @@ func save_state() -> Dictionary:
 				saved_state["open"] = state["open"]
 			"pump":
 				saved_state["flow_setpoint_lps"] = state["flow_setpoint_lps"]
+				for field in ["fault_id", "fault_inspected", "fault_triggered", "processed_since_service_l"]:
+					saved_state[field] = state[field]
 			"heater":
 				saved_state["setpoint_c"] = state["setpoint_c"]
 				saved_state["temperature_c"] = state["temperature_c"]
@@ -106,6 +110,10 @@ func apply_saved_state(state: Dictionary) -> void:
 					"flow_setpoint_lps",
 					PUMP_CAPACITY_LPS
 				))
+				target["fault_id"] = String(saved.get("fault_id", ""))
+				target["fault_inspected"] = bool(saved.get("fault_inspected", false))
+				target["fault_triggered"] = bool(saved.get("fault_triggered", false))
+				target["processed_since_service_l"] = float(saved.get("processed_since_service_l", 0.0))
 			"valve":
 				target["open"] = bool(saved["open"])
 			"heater":
@@ -145,6 +153,10 @@ func register_unit(unit_id: String, equipment_type: String, display_name := "") 
 				"max_flow_lps": PUMP_MAX_FLOW_LPS,
 				"flow_setpoint_lps": PUMP_CAPACITY_LPS,
 				"actual_flow_lps": 0.0,
+				"fault_id": "",
+				"fault_inspected": false,
+				"fault_triggered": false,
+				"processed_since_service_l": 0.0,
 			})
 		"valve":
 			state["open"] = false
@@ -218,11 +230,16 @@ func interaction_prompt(unit_id: String) -> String:
 	var state: Dictionary = equipment[unit_id]
 	match state["type"]:
 		"pump":
-			return (
+			var prompt := (
 				"E — start/stopp pumpe  |  Q — endre flowmål (%.0f L/s)" % state["flow_setpoint_lps"]
 				if commissioning_contract_complete
 				else "E — start/stopp bygd pumpe"
 			)
+			if not String(state["fault_id"]).is_empty():
+				prompt += "  |  F — %s" % (
+					"rens filter" if state["fault_inspected"] and not state["running"] else "inspiser driftsavvik"
+				)
+			return prompt
 		"valve":
 			return "E — %s %s" % [
 				"steng" if state["open"] else "åpne",
@@ -458,7 +475,8 @@ func tick(delta: float) -> void:
 		return
 
 	var fractions := fractions_for_temperature(heater["temperature_c"], active_contract_id)
-	var safe_input := minf(source["volume_l"], pump["flow_setpoint_lps"] * delta)
+	var effective_capacity_lps := _effective_pump_flow_lps(pump)
+	var safe_input := minf(source["volume_l"], effective_capacity_lps * delta)
 	var products: Dictionary = route["products"]
 	for product_name in ["light", "diesel", "heavy"]:
 		var tank: Dictionary = equipment[products[product_name]]
@@ -480,9 +498,14 @@ func tick(delta: float) -> void:
 		heater["temperature_c"],
 		pump["flow_setpoint_lps"]
 	)
+	var fault_triggered_now := _update_pump_fault_progress(pump, safe_input)
 	actual_flow_lps = process_flow_lps
 	pump["actual_flow_lps"] = actual_flow_lps
-	last_status = "Produksjon %.1f L/s ved %.0f °C." % [actual_flow_lps, heater["temperature_c"]]
+	last_status = (
+		"FLOW FALLER — observer faktisk flow og inspiser P-201."
+		if fault_triggered_now
+		else "Produksjon %.1f L/s ved %.0f °C." % [actual_flow_lps, heater["temperature_c"]]
+	)
 	if source["volume_l"] <= 0.001:
 		source["volume_l"] = 0.0
 		source["contents"] = "empty"
@@ -823,10 +846,12 @@ func inspect_unit(unit_id: String) -> String:
 					details += ", kvalitet %.1f %%" % state["quality_percent"]
 			return details + "."
 		"pump":
-			return "Pumpe %s, faktisk flow %.1f L/s, flowmål %.0f L/s." % [
+			var fault_text := " Driftsavvik registrert." if not String(state["fault_id"]).is_empty() else ""
+			return "Pumpe %s, faktisk flow %.1f L/s, flowmål %.0f L/s.%s" % [
 				"PÅ" if state["running"] else "AV",
 				state["actual_flow_lps"],
 				state["flow_setpoint_lps"],
+				fault_text,
 			]
 		"valve":
 			return "Manuell ventil %s." % ("ÅPEN" if state["open"] else "STENGT")
@@ -858,10 +883,11 @@ func unit_status(unit_id: String) -> String:
 					status += "  |  %.1f %%" % state["quality_percent"]
 			return status
 		"pump":
-			return "%s  |  faktisk %.1f L/s  |  mål %.0f" % [
+			return "%s  |  faktisk %.1f L/s  |  mål %.0f%s" % [
 				"PÅ" if state["running"] else "AV",
 				state["actual_flow_lps"],
 				state["flow_setpoint_lps"],
+				"  |  AVVIK" if not String(state["fault_id"]).is_empty() else "",
 			]
 		"valve":
 			return "ÅPEN" if state["open"] else "STENGT"
@@ -1057,12 +1083,55 @@ func cycle_pump_flow(unit_id: String) -> Dictionary:
 	return _result(true, last_status)
 
 
+func inspect_or_service_pump(unit_id: String) -> Dictionary:
+	if not equipment.has(unit_id) or equipment[unit_id]["type"] != "pump":
+		return _result(false, "Driftsavvik kan bare undersøkes på en pumpe.")
+	var pump: Dictionary = equipment[unit_id]
+	if String(pump["fault_id"]).is_empty():
+		return _result(false, "%s har ingen registrert servicefeil." % pump["name"])
+	if not pump["fault_inspected"]:
+		pump["fault_inspected"] = true
+		last_status = "%s har lav kapasitet. Mulig filterrestriksjon — stopp pumpen før service." % pump["name"]
+		return _result(true, last_status)
+	if pump["running"]:
+		return _result(false, "Stopp %s før filteret renses." % pump["name"])
+	pump["fault_id"] = ""
+	pump["fault_inspected"] = false
+	pump["processed_since_service_l"] = 0.0
+	last_status = "Filter renset på %s. Normal kapasitet er gjenopprettet." % pump["name"]
+	return _result(true, last_status)
+
+
 func flow_mode_text(flow_lps: float) -> String:
 	if flow_lps <= 5.1:
 		return "LAV — STØRRE TEMPERATURMARGIN"
 	if flow_lps >= 14.9:
 		return "HØY — MINDRE TEMPERATURMARGIN"
 	return "NORMAL"
+
+
+func _effective_pump_flow_lps(pump: Dictionary) -> float:
+	var target_flow := float(pump["flow_setpoint_lps"])
+	if String(pump.get("fault_id", "")) == "blocked_filter":
+		return target_flow * FILTER_RESTRICTION_FACTOR
+	return target_flow
+
+
+func _update_pump_fault_progress(pump: Dictionary, processed_l: float) -> bool:
+	if (
+		not commissioning_contract_complete
+		or pump["fault_triggered"]
+		or float(pump["flow_setpoint_lps"]) < PUMP_MAX_FLOW_LPS - 0.1
+		or processed_l <= 0.001
+	):
+		return false
+	pump["processed_since_service_l"] += processed_l
+	if pump["processed_since_service_l"] < FIRST_FILTER_FAULT_AFTER_L:
+		return false
+	pump["fault_id"] = "blocked_filter"
+	pump["fault_inspected"] = false
+	pump["fault_triggered"] = true
+	return true
 
 
 func active_connection_keys() -> Dictionary:
@@ -1154,6 +1223,7 @@ func _process_alarm_text() -> String:
 		return ""
 	var pump: Dictionary = equipment[route["pump"]]
 	var valve: Dictionary = equipment[route["valve"]]
+	var source: Dictionary = equipment[route["source"]]
 	var state: Dictionary = equipment[route["heater"]]
 	if not CrudeCatalog.is_valid(active_contract_id):
 		return ""
@@ -1165,6 +1235,14 @@ func _process_alarm_text() -> String:
 		alarms.append("HIGH TEMPERATURE — dieselkvalitet i fare")
 	if pump["running"] and not valve["open"]:
 		alarms.append("LOW FLOW — pumpen går, men flow er 0.0 L/s")
+	if (
+		pump["running"]
+		and valve["open"]
+		and source["contents"] == "crude"
+		and source["volume_l"] > 0.001
+		and not String(pump.get("fault_id", "")).is_empty()
+	):
+		alarms.append("LOW FLOW — %s leverer under flowmålet" % pump["name"])
 	if actual_flow_lps > 0.01 and state["temperature_c"] < approved_range.x:
 		alarms.append("LOW TEMPERATURE — dårlig separasjon og kvalitet")
 	return "\n".join(alarms)

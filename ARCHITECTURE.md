@@ -7,7 +7,8 @@
 - `scripts/process_model.gd`: fixed pilot-plant process, economy and original
   training progression.
 - `scripts/built_refinery_model.gd`: Area 02 material, operating state,
-  contracts, quality, lab authorization, dispatch and process simulation.
+  contracts, quality, lab authorization, dispatch, first recoverable pump fault
+  and process simulation.
 - `scripts/process_network.gd`: authoritative directed topology. It validates
   ports, equipment order, cycles and the single complete Area 02 route.
 - `scripts/build_controller.gd`: placement, rotation, pipe selection and visual

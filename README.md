@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.11 – justerbar pumpeflow**
+**Prototypeversjon: 0.12 – første vedlikeholdsfeil**
 
 En liten 3D-prototype der spilleren driver et forenklet pilotraffineri. Første mål
 er å behandle 1 000 liter råolje og selge minst 200 liter diesel med 90 % eller
@@ -43,6 +43,8 @@ Den første komplette «vertical slice»-en inneholder:
   både tungfraksjon og en godkjent dieselprøve
 - tre pumpetrinn på 5, 10 og 15 L/s etter godkjent oppstart, med en synlig
   avveiing mellom produksjonstid og temperaturmargin
+- første vedlikeholdshendelse: vedvarende høy flow kan gi en diagnostiserbar
+  filterrestriksjon som må undersøkes og repareres i felt
 
 Alle objekter er foreløpig bygget av Godots primitive 3D-former. Det gjør at vi
 kan teste gameplay før vi bruker tid på modeller og grafikk.
@@ -94,6 +96,7 @@ batch som Standard-råolje uten å gi en ny batch eller bonus.
 | Ctrl eller C | Hold inne for å huke |
 | E | Bruk eller inspiser utstyr |
 | Q | Område 02: endre flowmål på pumpen du ser på |
+| F | Område 02: undersøk eller rens en pumpe med driftsavvik |
 | R | Pilot: ny batch. Område 02: trykk to ganger for sikker produkttømming |
 | Enter | Send godkjent labbatch eller lukk batchrapport |
 | 1 / 2 | Velg Standard eller Tung råolje når leveransevinduet er åpent |

@@ -167,6 +167,17 @@
   - Persisted the pump target and accumulated report history while still
     restoring every pump stopped. Older format-2 states default safely to
     10 L/s without a format bump.
+- Maintenance milestone completed:
+  - Added the first recoverable Area 02 fault: sustained 15 L/s paid-batch
+    operation can restrict the active pump's filter and reduce actual flow to
+    35 percent of its selected target.
+  - The symptom is deliberate: the pump remains commanded on, the valve is
+    open and material still moves slowly, so the player must compare actual
+    flow against the target, inspect the pump, stop it and then clean the
+    filter with `F`.
+  - Repair changes no material, money, contract or quality state. The one-time
+    fault state survives save/load while normal load safety still forces pumps
+    off; legacy saves receive a clean no-fault default.
 
 ## Validation
 
@@ -176,6 +187,12 @@
 - Built-refinery model suite: passed.
 - Main integration suite: passed.
 - Main scene: started headlessly without parser, resource, or runtime errors.
+- Final v0.12 maintenance regression:
+  - pilot/economy, process-network, building, built-refinery, Main integration
+    and save-system suites all passed;
+  - the focused fault test covers high-flow restriction, LOW FLOW diagnosis,
+    stop-before-service, mass preservation, repair recovery and safe save/load;
+  - full headless editor/resource scan and `git diff --check` passed.
 - No Codex app terminal session was available; Godot CLI output was used.
 - Final Milestone 1 regression with isolated log files:
   - pilot/economy: 23 checks passed;
@@ -358,7 +375,7 @@
 
 ## Current Stable State
 
-- Version 0.11.0 is verified stable after the adjustable-flow milestone.
+- Version 0.12.0 is verified stable after the first maintenance milestone.
 - The original pilot loop and full player-built loop both pass regression.
 - The first valid Area 02 sale now has a durable achievement and informative
   result, while later paid batches remain repeatable.
@@ -380,6 +397,11 @@
 - After manual commissioning, the player can choose slower, normal or faster
   pumping and see the capacity-versus-quality-margin consequence in both field
   instruments and laboratory evidence.
+- Sustained 15 L/s operation can now trigger one persistent pump filter
+  restriction in paid Area 02 operation. It reduces actual flow without
+  changing material balance or the selected target; the player must inspect the
+  pump, stop it and use field service to restore capacity. Loading preserves the
+  fault but stops the pump safely.
 
 ## Known Issues
 

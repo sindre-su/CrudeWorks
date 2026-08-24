@@ -275,6 +275,7 @@ func _build_player() -> void:
 	add_child(player)
 	player.interacted.connect(_on_unit_interacted)
 	player.secondary_interacted.connect(_on_secondary_unit_interacted)
+	player.maintenance_interacted.connect(_on_maintenance_unit_interacted)
 	player.reset_requested.connect(_on_reset_requested)
 
 
@@ -818,6 +819,16 @@ func _on_secondary_unit_interacted(unit_id: String) -> void:
 	var before: Dictionary = built_refinery_model.save_state()
 	var result: Dictionary = built_refinery_model.cycle_pump_flow(unit_id)
 	_show_notification(result["message"])
+	if result["ok"] and before != built_refinery_model.save_state():
+		_schedule_save()
+
+
+func _on_maintenance_unit_interacted(unit_id: String) -> void:
+	if not unit_id.begins_with("built_"):
+		return
+	var before: Dictionary = built_refinery_model.save_state()
+	var result: Dictionary = built_refinery_model.inspect_or_service_pump(unit_id)
+	_show_notification(result["message"], 6.0)
 	if result["ok"] and before != built_refinery_model.save_state():
 		_schedule_save()
 

@@ -96,9 +96,17 @@ func _test_schema_validation(snapshot: Dictionary, live_main) -> void:
 	var invalid_flow_history := snapshot.duplicate(true)
 	invalid_flow_history["built_refinery"]["report_flow_total"] = 999999.0
 	_expect(not SaveSystemScript.validate_snapshot(invalid_flow_history)["ok"], "impossible accumulated flow history is rejected")
+	var invalid_fault := snapshot.duplicate(true)
+	invalid_fault["built_refinery"]["equipment"]["built_pump_2"]["fault_id"] = "unknown_fault"
+	_expect(not SaveSystemScript.validate_snapshot(invalid_fault)["ok"], "unknown saved maintenance faults are rejected")
+	var invalid_service_counter := snapshot.duplicate(true)
+	invalid_service_counter["built_refinery"]["equipment"]["built_pump_2"]["processed_since_service_l"] = -1.0
+	_expect(not SaveSystemScript.validate_snapshot(invalid_service_counter)["ok"], "negative saved maintenance counters are rejected")
 	var legacy_flow := snapshot.duplicate(true)
 	legacy_flow["built_refinery"].erase("report_flow_total")
 	legacy_flow["built_refinery"]["equipment"]["built_pump_2"].erase("flow_setpoint_lps")
+	for field in ["fault_id", "fault_inspected", "fault_triggered", "processed_since_service_l"]:
+		legacy_flow["built_refinery"]["equipment"]["built_pump_2"].erase(field)
 	_expect(SaveSystemScript.validate_snapshot(legacy_flow)["ok"], "older v2 saves without adjustable-flow fields remain valid")
 
 

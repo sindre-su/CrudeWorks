@@ -3,6 +3,7 @@ extends CharacterBody3D
 
 signal interacted(unit_id: String)
 signal secondary_interacted(unit_id: String)
+signal maintenance_interacted(unit_id: String)
 signal reset_requested
 
 const WALK_SPEED := 6.0
@@ -156,6 +157,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			_try_interaction()
 		elif event.keycode == KEY_Q and not build_mode_active:
 			_try_secondary_interaction()
+		elif event.keycode == KEY_F and not build_mode_active:
+			_try_maintenance_interaction()
 		elif event.keycode == KEY_R and not build_mode_active:
 			reset_requested.emit()
 
@@ -186,6 +189,12 @@ func _try_secondary_interaction() -> void:
 	var unit = focused_unit()
 	if unit != null:
 		secondary_interacted.emit(unit.unit_id)
+
+
+func _try_maintenance_interaction() -> void:
+	var unit = focused_unit()
+	if unit != null:
+		maintenance_interacted.emit(unit.unit_id)
 
 
 func _register_input_actions() -> void:

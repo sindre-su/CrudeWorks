@@ -37,6 +37,7 @@ func _run_tests() -> void:
 	_test_heavy_delivery_order_volume_gate()
 	_test_off_route_product_blocks_dispatch()
 	_test_adjustable_pump_flow_and_quality_tradeoff()
+	_test_recoverable_pump_filter_fault()
 
 
 func _test_invalid_network_cannot_start() -> void:
@@ -169,6 +170,39 @@ func _test_adjustable_pump_flow_and_quality_tradeoff() -> void:
 	_expect(not guarded.remote_toggle_route_pump()["ok"], "LS-201 blocks a high-flow remote start outside the narrower safe range")
 	guarded.remote_cycle_route_pump_flow()
 	_expect(guarded.remote_toggle_route_pump()["ok"], "lowering the flow target widens the guard range without bypassing the process model")
+
+
+func _test_recoverable_pump_filter_fault() -> void:
+	var model = _complete_model()
+	model.commissioning_batch_available = false
+	model.commissioning_contract_complete = true
+	_expect(model.load_crude_batch("source", true, "standard")["ok"], "a paid Area 02 batch can begin normal operation before a maintenance fault")
+	model.equipment["heater"]["temperature_c"] = 200.0
+	model.equipment["heater"]["setpoint_c"] = 200.0
+	model.interact("valve")
+	model.cycle_pump_flow("pump")
+	model.interact("pump")
+	model.tick(30.0)
+	_expect(model.equipment["pump"]["fault_id"] == "blocked_filter", "sustained paid-batch production triggers one reusable pump restriction state")
+	var saved_fault: Dictionary = model.save_state()
+	var restored = _complete_model()
+	restored.apply_saved_state(saved_fault)
+	_expect(restored.equipment["pump"]["fault_id"] == "blocked_filter" and not restored.equipment["pump"]["running"], "a saved pump restriction persists while load safety stops the pump")
+	model.tick(1.0)
+	_expect(is_equal_approx(model.actual_flow_lps, 5.25), "a blocked filter reduces actual flow without changing the selected 15 L/s target")
+	_expect("LOW FLOW" in model.alarm_text(), "restricted pump capacity appears as a diagnosable process symptom")
+	var mass_before_service := _total_tank_volume(model)
+	var diagnosis: Dictionary = model.inspect_or_service_pump("pump")
+	_expect(diagnosis["ok"] and "filterrestriksjon" in diagnosis["message"], "field inspection identifies the likely restriction instead of auto-repairing")
+	var running_service: Dictionary = model.inspect_or_service_pump("pump")
+	_expect(not running_service["ok"] and "Stopp" in running_service["message"], "filter service is blocked while the pump is still commanded on")
+	model.interact("pump")
+	var repair: Dictionary = model.inspect_or_service_pump("pump")
+	_expect(repair["ok"] and model.equipment["pump"]["fault_id"].is_empty(), "stopped inspected pump can be repaired in the field")
+	_expect(is_equal_approx(_total_tank_volume(model), mass_before_service), "inspection and repair create or destroy no process material")
+	model.interact("pump")
+	model.tick(1.0)
+	_expect(is_equal_approx(model.actual_flow_lps, 15.0), "repair restores the selected pump capacity without resetting the batch")
 
 
 func _test_mass_conserving_ideal_batch_and_sale() -> void:
