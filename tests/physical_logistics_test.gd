@@ -69,7 +69,9 @@ func _test_product_dispatch_route() -> void:
 
 
 func _new_model():
-	return BuiltRefineryModelScript.new(ProcessNetworkScript.new())
+	var model = BuiltRefineryModelScript.new(ProcessNetworkScript.new())
+	model.toggle_starter_generator()
+	return model
 
 
 func _register(model, unit_id: String, equipment_type: String, display_name := "", intended_material := "") -> void:

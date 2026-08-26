@@ -197,6 +197,7 @@ func _create_partial_paid_refinery():
 	main._process(0.0)
 	_place_full_refinery(main)
 	_connect_full_refinery(main)
+	main._on_unit_interacted("area02_generator")
 	main.built_refinery_model.commissioning_batch_available = false
 	var source = main.build_controller.registered_unit_by_id("built_tank_1")
 	var heater = main.build_controller.registered_unit_by_id("built_heater_4")
@@ -276,6 +277,16 @@ func _test_schema_validation(snapshot: Dictionary, live_main) -> void:
 		if state["type"] == "tank":
 			state.erase("material_intent")
 	_expect(SaveSystemScript.validate_snapshot(legacy_intent)["ok"], "older saves without material intent remain valid")
+	var legacy_utility := snapshot.duplicate(true)
+	legacy_utility["built_refinery"].erase("utility_state")
+	for state in legacy_utility["built_refinery"]["equipment"].values():
+		if state["type"] == "power_unit":
+			state.erase("running")
+	_expect(SaveSystemScript.validate_snapshot(legacy_utility)["ok"], "legacy v0.26.2 save without generator or MCC state remains valid")
+	var invalid_utility := snapshot.duplicate(true)
+	invalid_utility["built_refinery"]["utility_state"]["electricity"]["tripped"] = true
+	invalid_utility["built_refinery"]["utility_state"]["electricity"]["trip_id"] = "random_failure"
+	_expect(not SaveSystemScript.validate_snapshot(invalid_utility)["ok"], "unknown electrical trip state is rejected before live state mutates")
 	var mismatched_intent := snapshot.duplicate(true)
 	mismatched_intent["built_refinery"]["equipment"]["built_tank_1"]["material_intent"] = "diesel"
 	_expect(not SaveSystemScript.validate_snapshot(mismatched_intent)["ok"], "saved material intent cannot conflict with non-empty actual tank contents")
@@ -362,6 +373,7 @@ func _test_area02_autosave_stress() -> void:
 	main._process(0.0)
 	_place_full_refinery(main)
 	_connect_full_refinery(main)
+	main._on_unit_interacted("area02_generator")
 	main.save_path = AUTOSAVE_STRESS_PATH
 	main.persistence_enabled = true
 	main.persistence_ready = true
@@ -494,6 +506,7 @@ func _test_main_round_trip(snapshot: Dictionary, source_main) -> void:
 	)
 	_expect(restored.build_controller.registered_unit_by_id("built_valve_3").rotation_quadrants == 2, "saved equipment rotation and port orientation are preserved")
 	_expect(restored.built_refinery_model.equipment["built_valve_3"]["open"], "manual valve state restores")
+	_expect(restored.built_refinery_model.starter_generator_running and restored.built_refinery_model.power_status()["bus_available"], "PG-101 running state and valid MCC supply survive save/load")
 	_expect(not restored.built_refinery_model.equipment["built_pump_2"]["running"] and is_equal_approx(restored.built_refinery_model.actual_flow_lps, 0.0), "all pumps and derived flow are stopped on load")
 	_expect(is_equal_approx(restored.built_refinery_model.equipment["built_pump_2"]["flow_setpoint_lps"], 15.0), "saved pump flow target restores while the pump remains stopped")
 	_expect(is_equal_approx(restored.built_refinery_model.equipment["built_pump_2"]["condition_percent"], snapshot["built_refinery"]["equipment"]["built_pump_2"]["condition_percent"]), "saved pump condition restores independently of its safe stopped state")
@@ -551,6 +564,8 @@ func _test_vacuum_intent_and_processing_round_trip() -> void:
 	var vgo = source.build_controller.registered_unit_by_id("built_tank_4")
 	var residue = source.build_controller.registered_unit_by_id("built_tank_5")
 	var power = source.build_controller.registered_unit_by_id("built_power_unit_6")
+	model.toggle_starter_generator()
+	model.interact(power.unit_id)
 	_expect(power != null and is_equal_approx(model.power_status()["capacity_kw"], 200.0), "Power Unit participates in normal construction and raises saved refinery capacity")
 	source.build_controller._connect_ports(feed.get_port("output"), pump.get_port("input"))
 	source.build_controller._connect_ports(pump.get_port("output"), vdu.get_port("input"))
@@ -596,6 +611,7 @@ func _test_fcc_processing_round_trip() -> void:
 	]:
 		_expect(source._create_built_unit(entry[0], entry[1], entry[2], entry[3], false)["ok"], "headless FCC fixture creates normal buildable equipment")
 	var model = source.built_refinery_model
+	model.toggle_starter_generator()
 	model.set_tank_material_intent("built_tank_1", "vacuum_gas_oil")
 	var feed = source.build_controller.registered_unit_by_id("built_tank_1")
 	var pump = source.build_controller.registered_unit_by_id("built_pump_2")

@@ -77,6 +77,11 @@ func _run_test() -> void:
 	var pump = _unit(main, "built_pump_2")
 	var load_result: Dictionary = main.built_refinery_model.interact(source.unit_id)
 	_expect(load_result["ok"] and load_result["charge"] == 0, "first Main-integrated crude load uses the commissioning batch")
+	var no_power_start: Dictionary = main.built_refinery_model.interact(pump.unit_id)
+	_expect(not no_power_start["ok"] and "NO POWER" in no_power_start["message"], "new Area 02 pump clearly refuses its first start while PG-101 is off")
+	main._on_unit_interacted("area02_generator")
+	main._update_unit_statuses()
+	_expect(main.built_refinery_model.starter_generator_running and "RUNNING" in main.units["area02_generator"].status_label.text and "NORMAL" in main.units["area02_mcc"].status_label.text, "physical PG-101 energizes MCC-101 before process startup")
 	main.built_refinery_model.interact(heater.unit_id)
 	main.built_refinery_model.interact(heater.unit_id)
 	main.built_refinery_model.tick(10.0)
@@ -213,6 +218,7 @@ func _test_heavy_contract_through_main() -> void:
 	_connect_full_refinery(main)
 	main.built_refinery_model.commissioning_batch_available = false
 	main.built_refinery_model.commissioning_contract_complete = true
+	main._on_unit_interacted("area02_generator")
 	var source = _unit(main, "built_tank_1")
 	var heavy_load: Dictionary = main.built_refinery_model.load_crude_batch(source.unit_id, true, "heavy")
 	main.process_model.purchase(int(heavy_load.get("charge", 0)))
@@ -317,6 +323,7 @@ func _test_offspec_lab_through_main() -> void:
 	_connect_full_refinery(main)
 	main.built_refinery_model.commissioning_batch_available = false
 	main.built_refinery_model.commissioning_contract_complete = true
+	main._on_unit_interacted("area02_generator")
 	var load: Dictionary = main.built_refinery_model.load_crude_batch("built_tank_1", true, "heavy")
 	main.process_model.purchase(load["charge"])
 	main.built_refinery_model.equipment["built_heater_4"]["temperature_c"] = 200.0

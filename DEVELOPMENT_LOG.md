@@ -1,5 +1,33 @@
 # CrudeWorks Development Log
 
+## v0.27.0 — Power & Utilities Foundation
+
+- Replaced passive starter capacity with a physical 100 kW PG-101 generator
+  feeding a fixed MCC-101 site bus; new games begin with the generator stopped.
+- Made pumps, heater auxiliaries, diesel treatment, LAB-101, LS-201 and existing
+  VDU/FCC auxiliaries canonical electrical consumers without adding cable
+  micromanagement or changing the material process network.
+- Converted buildable PU-101 units into explicit stopped/running expansion
+  generators. Placed-but-stopped units contribute no capacity.
+- Added deterministic MCC overload and supply-loss trips. A trip stops pumps and
+  treatment safely, removes heater output, raises the existing operator alarm,
+  and requires sufficient generation plus an explicit MCC reset.
+- Added local POWER availability/demand/source feedback, central generation,
+  load, reserve, status and active-consumer feedback, plus powered LAB/LS guards.
+- Added reusable `UtilityDistribution` trip/reset state so future utility buses
+  can share the lifecycle without adding Steam, Cooling Water, Instrument Air
+  or Fuel Gas in this release.
+- Persisted generator and MCC trip state while recalculating derived load totals.
+  Older v0.26.2 saves infer their former starter/PU capacity as running
+  generation and remain valid without a format bump.
+- Expanded automated coverage for no-power starts, summed loads, live power
+  loss, deterministic overload, alarms, reset/recovery, Main-world feedback,
+  save/load and legacy compatibility.
+
+Human QA still required: PG-101/MCC-101 discoverability and readability at
+1280 × 720, overload/reset pacing, and whether the added first-hour action feels
+like useful physical operation rather than friction.
+
 ## v0.26.2 — Pilot Diesel Quality Save Bugfix
 
 - Separated Pilot diesel quality (`diesel_quality_percent`) from its canonical

@@ -345,6 +345,16 @@ func _build_build_system() -> void:
 func _build_site_logistics() -> void:
 	_create_fixed_logistics_unit("crude_intake", Vector3(-23.0, 1.3, 34.5))
 	_create_fixed_logistics_unit("product_dispatch", Vector3(23.0, 1.4, 34.5))
+	var generator = _create_box_unit(
+		"area02_generator", "PG-101 GENERATOR", Vector3(-24.0, 1.2, 19.0),
+		Vector3(2.6, 2.4, 2.2), Color("c99b32")
+	)
+	units[generator.unit_id] = generator
+	var mcc = _create_box_unit(
+		"area02_mcc", "MCC-101 POWER", Vector3(-24.0, 1.35, 23.0),
+		Vector3(2.4, 2.7, 1.8), Color("394d59")
+	)
+	units[mcc.unit_id] = mcc
 
 
 func _create_fixed_logistics_unit(equipment_type: String, position_3d: Vector3) -> void:
@@ -642,7 +652,9 @@ func _update_user_interface() -> void:
 			prompt_label.text = built_refinery_model.interaction_prompt(focused.unit_id)
 		elif focused.unit_id == "sales_terminal" and built_refinery_model.commissioning_contract_complete:
 			var lab_status: Dictionary = built_refinery_model.lab_dispatch_status()
-			if lab_status.get("sample_current", false):
+			if not built_refinery_model.can_use_site_consumer("lab")["ok"]:
+				prompt_label.text = "LAB-101 — POWER LOST"
+			elif lab_status.get("sample_current", false):
 				var sample_id: String = String(lab_status.get("sample_id", "dieselprøve"))
 				if lab_status.get("analyzed", false):
 					if lab_status.get("dispatch_ready", false):
@@ -691,6 +703,24 @@ func _update_user_interface() -> void:
 
 
 func _update_unit_statuses() -> void:
+	var power: Dictionary = built_refinery_model.power_status()
+	units["area02_generator"].set_status(
+		"RUNNING  |  %.0f kW" % BuiltRefineryModelScript.STARTER_GENERATOR_CAPACITY_KW
+		if built_refinery_model.starter_generator_running
+		else "STOPPED"
+	)
+	units["area02_generator"].set_active(
+		built_refinery_model.starter_generator_running, Color("f6cf63")
+	)
+	units["area02_mcc"].set_status(
+		"TRIPPED  |  %.0f > %.0f kW" % [power["last_trip_demand_kw"], power["last_trip_capacity_kw"]]
+		if power["tripped"]
+		else "%.0f / %.0f kW  |  %s" % [power["demand_kw"], power["capacity_kw"], power["status"]]
+	)
+	units["area02_mcc"].set_active(
+		power["tripped"] or not power["bus_available"],
+		Color("ff4d4d") if power["tripped"] else Color("ffb347")
+	)
 	units["raw_tank"].set_status("%.0f / 1000 L" % process_model.crude_volume_l)
 	units["pump"].set_status("PÅ" if process_model.pump_running else "AV")
 	units["pump"].set_active(process_model.pump_running)
@@ -716,7 +746,9 @@ func _update_unit_statuses() -> void:
 		sales_ready = built_refinery_model.diesel_is_dispatch_ready()
 		if built_refinery_model.commissioning_contract_complete:
 			var lab_status: Dictionary = built_refinery_model.lab_dispatch_status()
-			if built_refinery_model.product_volume_l() <= 0.001:
+			if not power["bus_available"]:
+				sales_status = "POWER LOST"
+			elif built_refinery_model.product_volume_l() <= 0.001:
 				sales_status = "VENTER"
 			elif lab_status.get("sample_current", false) and not lab_status.get("analyzed", false):
 				sales_status = "PRØVE KLAR"
@@ -737,7 +769,10 @@ func _update_unit_statuses() -> void:
 	var control_status := "LÅST"
 	var control_alarm := false
 	if control_snapshot.get("unlocked", false):
-		if control_snapshot.get("valid", false):
+		if not power["bus_available"]:
+			control_alarm = true
+			control_status = "POWER LOST"
+		elif control_snapshot.get("valid", false):
 			control_alarm = (
 				not String(control_snapshot.get("alarm", "")).is_empty()
 				or not String(control_snapshot.get("temperature_trip_message", "")).is_empty()
@@ -815,7 +850,7 @@ func _update_unit_statuses() -> void:
 		elif state.get("type", "") == "product_header":
 			built_unit.set_active("RUTE " in built_refinery_model.unit_status(built_unit.unit_id), Color("ffc975"))
 		elif state.get("type", "") == "power_unit":
-			built_unit.set_active(true, Color("f6cf63"))
+			built_unit.set_active(state.get("running", false), Color("f6cf63"))
 
 
 func _built_alarm_severities() -> Dictionary:
@@ -900,11 +935,15 @@ func _on_unit_interacted(unit_id: String) -> void:
 				if built_refinery_model.commissioning_contract_complete:
 					var lab_status: Dictionary = built_refinery_model.lab_dispatch_status()
 					if lab_status.get("sample_current", false):
-						var analysis: Dictionary = built_refinery_model.analyze_diesel_sample()
-						if analysis["ok"]:
-							_open_lab_analysis(analysis)
-							return
-						message = analysis["message"]
+						var lab_power: Dictionary = built_refinery_model.can_use_site_consumer("lab")
+						if not lab_power["ok"]:
+							message = lab_power["message"]
+						else:
+							var analysis: Dictionary = built_refinery_model.analyze_diesel_sample()
+							if analysis["ok"]:
+								_open_lab_analysis(analysis)
+								return
+							message = analysis["message"]
 					elif _has_dispatchable_product_order() and not _active_diesel_available():
 						_open_product_dispatch()
 						return
@@ -923,9 +962,17 @@ func _on_unit_interacted(unit_id: String) -> void:
 		"area02_control":
 			if not built_refinery_model.commissioning_contract_complete:
 				message = "LS-201 låses opp etter første godkjente Område 02-batch."
+			elif not built_refinery_model.can_use_site_consumer("control_station")["ok"]:
+				message = built_refinery_model.can_use_site_consumer("control_station")["message"]
 			else:
 				_open_control_station()
 				return
+		"area02_generator":
+			var generator_result: Dictionary = built_refinery_model.toggle_starter_generator()
+			message = generator_result["message"]
+		"area02_mcc":
+			var mcc_result: Dictionary = built_refinery_model.reset_electrical_bus()
+			message = mcc_result["message"]
 		"built_crude_intake_0":
 			_open_contract_selection(unit_id)
 			return
@@ -1400,6 +1447,12 @@ func _handle_control_station_input(event: InputEventKey) -> void:
 	if event.keycode == KEY_ESCAPE:
 		_close_control_station()
 		return
+	var control_power: Dictionary = built_refinery_model.can_use_site_consumer("control_station")
+	if not control_power["ok"]:
+		control_station_feedback = control_power["message"]
+		control_station_feedback_is_error = true
+		_update_control_station_text()
+		return
 	var overview: Dictionary = built_refinery_model.operations_snapshot()
 	var trains: Array = overview.get("trains", [])
 	if event.keycode == KEY_LEFT or event.keycode == KEY_RIGHT:
@@ -1439,8 +1492,9 @@ func _update_control_station_text() -> void:
 		control_station_train_index = clampi(control_station_train_index, 0, trains.size() - 1)
 		var selected: Dictionary = trains[control_station_train_index]
 		var power: Dictionary = overview.get("power", {})
-		var power_line := "POWER: %.0f / %.0f kW — %s\n" % [
-			float(power.get("demand_kw", 0.0)), float(power.get("capacity_kw", 0.0)), String(power.get("status", "NORMAL")),
+		var power_line := "POWER: GEN %.0f kW | LOAD %.0f kW | RESERVE %.0f kW — %s\n" % [
+			float(power.get("capacity_kw", 0.0)), float(power.get("demand_kw", 0.0)),
+			float(power.get("reserve_kw", 0.0)), String(power.get("status", "NORMAL")),
 		]
 		var overview_lines := ""
 		for train in trains:

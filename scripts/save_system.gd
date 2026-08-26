@@ -6,6 +6,7 @@ const ProcessNetworkScript = preload("res://scripts/process_network.gd")
 const CrudeCatalogScript = preload("res://scripts/crude_contract_catalog.gd")
 const BuiltRefineryModelScript = preload("res://scripts/built_refinery_model.gd")
 const ProcessModelScript = preload("res://scripts/process_model.gd")
+const UtilityDistributionScript = preload("res://scripts/utility_distribution.gd")
 
 const FORMAT_VERSION := 2
 const DEFAULT_PATH := "user://crudeworks_save.json"
@@ -328,6 +329,9 @@ static func _validate_built_refinery(state: Dictionary, unit_types: Dictionary, 
 	var logistics_result := _validate_site_logistics(state.get("site_logistics", {}))
 	if not logistics_result["ok"]:
 		return logistics_result
+	var utility_result := _validate_utility_state(state.get("utility_state", {}))
+	if not utility_result["ok"]:
+		return utility_result
 	for field in ["commissioning_batch_available", "commissioning_contract_complete"]:
 		if typeof(state.get(field)) != TYPE_BOOL:
 			return _result(false, "Ugyldig progresjonsstatus: %s." % field)
@@ -454,6 +458,31 @@ static func _validate_site_logistics(state) -> Dictionary:
 	return _result(true, "CI-101-leveranse er gyldig.")
 
 
+static func _validate_utility_state(state) -> Dictionary:
+	if typeof(state) != TYPE_DICTIONARY:
+		return _result(false, "Utility-tilstanden har ugyldig format.")
+	if state.is_empty():
+		return _result(true, "Eldre lagring uten utility-tilstand.")
+	if typeof(state.get("starter_generator_running")) != TYPE_BOOL:
+		return _result(false, "PG-101 har ugyldig generatorstatus.")
+	var electricity = state.get("electricity")
+	if typeof(electricity) != TYPE_DICTIONARY:
+		return _result(false, "MCC-101 mangler gyldig elektrisk tilstand.")
+	if typeof(electricity.get("tripped")) != TYPE_BOOL:
+		return _result(false, "MCC-101 har ugyldig tripstatus.")
+	if (
+		typeof(electricity.get("trip_id")) != TYPE_STRING
+		or electricity["trip_id"] not in UtilityDistributionScript.VALID_TRIP_IDS
+	):
+		return _result(false, "MCC-101 har ukjent tripårsak.")
+	if bool(electricity["tripped"]) != (not String(electricity["trip_id"]).is_empty()):
+		return _result(false, "MCC-101 tripstatus og tripårsak er inkonsistente.")
+	for field in ["last_trip_demand", "last_trip_capacity"]:
+		if not _finite_number(electricity.get(field)) or float(electricity[field]) < 0.0:
+			return _result(false, "MCC-101 har ugyldig %s." % field)
+	return _result(true, "Elektrisk utility-tilstand er gyldig.")
+
+
 static func _validate_equipment_state(state: Dictionary) -> Dictionary:
 	match state["type"]:
 		"tank":
@@ -520,7 +549,10 @@ static func _validate_equipment_state(state: Dictionary) -> Dictionary:
 		"vacuum_distillation", "catalytic_cracking":
 			if not _finite_number(state.get("processed_total_l")) or float(state["processed_total_l"]) < 0.0:
 				return _result(false, "En lagret vakuumdestillasjon har ugyldig prosessteller.")
-		"header", "product_header", "power_unit":
+		"power_unit":
+			if state.has("running") and typeof(state["running"]) != TYPE_BOOL:
+				return _result(false, "En lagret Power Unit har ugyldig generatorstatus.")
+		"header", "product_header":
 			pass
 		_:
 			return _result(false, "Ukjent lagret utstyrstype.")

@@ -9,7 +9,9 @@
 - `scripts/built_refinery_model.gd`: Area 02 material, operating state,
   contracts, sulfur-aware quality, lab authorization, dispatch, first
   recoverable pump filter fault/condition maintenance, TIC-201 heater control, derived operator alarms,
-  operations snapshots and process simulation.
+  electrical consumers/generation integration, operations snapshots and process simulation.
+- `scripts/utility_distribution.gd`: reusable utility-bus trip/reset state and
+  persistence. Electricity is the only instantiated utility in v0.27.
 - `scripts/process_network.gd`: authoritative directed topology. It validates
   ports, equipment order and cycles, and discovers independent complete Area 02
   trains plus optional crude/product headers.
@@ -29,9 +31,10 @@
 
 Pilot: heat -> open valve -> start pump -> distill -> sell diesel -> unlock.
 
-Area 02: build -> validate one or more trains -> load contract -> heat -> open
-manual valve -> pump -> fractions -> optional diesel treatment -> optional
-product-header storage choice -> sample -> lab -> conditional dispatch.
+Area 02: build -> validate one or more trains -> receive contract -> start
+PG-101 -> distribute through MCC-101 -> heat -> open manual valve -> pump ->
+fractions -> optional diesel treatment -> optional product-header storage
+choice -> sample -> powered lab -> conditional dispatch.
 
 ## Test map
 
@@ -48,6 +51,11 @@ product-header storage choice -> sample -> lab -> conditional dispatch.
 - Preserve the pilot loop unless a task explicitly changes it.
 - `ProcessNetwork` is the sole topology authority.
 - `BuiltRefineryModel` is the sole Area 02 operating/material authority.
+- Electricity is a site-wide `UtilityDistribution`; `ProcessNetwork` remains a
+  material topology and does not become an electrical cable graph.
+- Electrical demand metadata lives in `EquipmentCatalog`; active demand and
+  generation are derived from canonical equipment state. MCC trip state is
+  persisted, while totals and UI strings are recalculated.
 - Material transfer is capacity-bounded and mass-conserving.
 - Each heater owns exactly one PV/SP/output state. AUTO adjusts that existing
   state, while field LOW FLOW safety can block AUTO output without routing or
@@ -60,4 +68,5 @@ product-header storage choice -> sample -> lab -> conditional dispatch.
 - A Product Routing Header sends each product only to its explicit selected tank;
   it never splits, blends or auto-switches storage.
 - Sale consumes authorized inventory atomically; no free repeated value.
-- Save/load validates before mutating live state and restores pumps stopped.
+- Save/load validates before mutating live state, restores pumps stopped, and
+  preserves generator/MCC state with v0.26.2 fallback generation.

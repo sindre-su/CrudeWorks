@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.26.2 – Pilot diesel-quality save bugfix**
+**Prototypeversjon: 0.27.0 – Power & Utilities Foundation**
 
 En liten 3D-prototype der spilleren driver et forenklet pilotraffineri. Første mål
 er å behandle 1 000 liter råolje og selge minst 200 liter diesel med 90 % eller
@@ -57,6 +57,12 @@ Den første komplette «vertical slice»-en inneholder:
   FULL peker på relevant utstyr uten å avsløre underliggende vedlikeholdsårsak
 - LS-201 Refinery Operations: oversikt over alle komplette tog, sentraliserte
   alarmer og sikker fjernstyring av valgt pumpes temperaturmål og flowmål
+- fysisk PG-101-generator og MCC-101-fordeling: pumper, heater-auxiliaries,
+  LAB-101 og LS-201 krever tilgjengelig strøm, og faktisk last summeres i kW
+- deterministisk MCC-overlast og supply-loss trip som stopper elektrisk utstyr
+  sikkert; spilleren må gjenopprette generasjon og resette MCC før omstart
+- byggbare PU-101-enheter fungerer som av/på-ekspansjonsgeneratorer i stedet
+  for passiv kapasitet, uten individuelle kabler til hvert prosessobjekt
 - midlertidige CI-101- og PD-101-markører som gjør første fysiske inntak og
   dispatch enklere å finne uten å legge til et waypoint-system
 - byggemodus prioriterer eksplisitte prosessporter foran maskinkroppen når
@@ -83,6 +89,8 @@ godot --headless --path . --script res://tests/process_model_test.gd
 godot --headless --path . --script res://tests/process_network_test.gd
 godot --headless --path . --script res://tests/building_system_test.gd
 godot --headless --path . --script res://tests/built_refinery_model_test.gd
+godot --headless --path . --script res://tests/physical_logistics_test.gd
+godot --headless --path . --script res://tests/progression_test.gd
 godot --headless --path . --script res://tests/main_built_loop_test.gd
 godot --headless --path . --script res://tests/save_system_test.gd
 ```
@@ -94,9 +102,11 @@ forsinkelse, og en stille prosess-snapshot tas omtrent hvert tolvte sekund. Ved
 neste oppstart kan spilleren velge `Enter` for å fortsette eller `N` for nytt
 spill. Nytt spill må bekreftes og den gamle filen arkiveres før den erstattes.
 
-Bygninger, rotasjon, rør, tankinnhold, temperatur, valgt pumpeflow, kvalitet, penger og progresjon
-gjenopprettes. Pumper og faktisk flow stoppes alltid ved lasting, slik at ingen
-prosess starter uten en bevisst handling. En siste kjent god backup beholdes, og
+Bygninger, rotasjon, rør, tankinnhold, temperatur, valgt pumpeflow, kvalitet,
+penger, progresjon, generatorstatus og MCC-trip gjenopprettes. Pumper og faktisk
+flow stoppes alltid ved lasting, slik at ingen prosess starter uten en bevisst
+handling. Elektriske lastsummer beregnes på nytt fra kanonisk utstyrstilstand.
+En siste kjent god backup beholdes, og
 ukjent eller skadet lagringsdata avvises før den kan endre spillet.
 Lagringer fra versjon 0.6 oppgraderes til dagens format og beholder eksisterende
 batch som Standard-råolje uten å gi en ny batch eller bonus.
@@ -110,7 +120,7 @@ batch som Standard-råolje uten å gi en ny batch eller bonus.
 | Shift | Løp |
 | Space | Hopp |
 | Ctrl eller C | Hold inne for å huke |
-| E | Bruk eller inspiser utstyr |
+| E | Bruk eller inspiser utstyr; start/stopp generator og reset MCC ved behov |
 | Q | Område 02: endre flowmål på pumpen du ser på |
 | F | Område 02: undersøk eller rens en pumpe med driftsavvik |
 | R | Pilot: ny batch. Område 02: trykk to ganger for sikker produkttømming |
@@ -128,6 +138,7 @@ Byggemodus låses opp når den første dieselbatchen er solgt.
 | B | Åpne eller lukke byggemodus |
 | 1–4 | Velg tank, pumpe, varmeenhet eller destillasjonskolonne |
 | 5 / 6 / 7 / 8 | Velg manuell ventil, dieselbehandler, Crude Feed Header eller Product Routing Header |
+| 9 / 0 / - | Velg VDU-301, PU-101 ekspansjonsgenerator eller FCC-401 |
 | Q / E | Roter forhåndsvisningen |
 | Venstreklikk | Plasser eller bekreft valgt handling |
 | X | Bytt til fjerningsmodus; fjerning gir full refusjon |
@@ -165,21 +176,27 @@ direkte i 3D. Pumpens rotor og ventilhåndtak beveger seg når utstyret brukes.
 
 1. Selg godkjent pilotdiesel. Treningskontrakten garanterer minst 3 000 kr, slik
    at spilleren kan finansiere startanlegget og beholde litt driftskapital.
-2. Trykk `B` og plasser fire tanker, én pumpe, én manuell ventil, én varmeenhet
-   og én kolonne.
+2. Trykk `B` og plasser fire tanker, tre pumper (inntak, prosess og dispatch),
+   én manuell ventil, én varmeenhet og én kolonne.
 3. Koble `tank OUT → pumpe IN`, `pumpe OUT → ventil IN`,
    `ventil OUT → varme IN` og `varme OUT → kolonne IN`.
 4. Koble kolonnens `LETT`, `DIESEL` og `TUNG` til hver sin tank. Trykk `V` for
    en konkret valideringsmelding. Feil rør kan fjernes med `G`.
-5. Trykk `B` for å avslutte bygging, og `E` på kildetanken for å laste en
-   subsidiert oppstartsbatch. Hvis produktet blir off-spec og tømmes sikkert,
-   kan oppstarten prøves igjen uten kostnad fram til første godkjente levering.
-6. Sett varmeenheten til 200 °C, vent til den er varm, og start pumpen. Ventilen
+5. Trykk `B` for å avslutte bygging, motta råolje ved CI-101 og bygg fysisk
+   inntak til kildetanken.
+6. Prøv pumpen med PG-101 av, start deretter generatoren og kontroller last og
+   reserve ved MCC-101.
+7. Sett varmeenheten til 200 °C, vent til den er varm, og start pumpen. Ventilen
    er stengt som standard, så pumpen gir `LOW FLOW` til spilleren finner og
    åpner ventilen.
-7. Følg væskenivå, flow og kvalitet. Ventilen kan stenge eller gjenopprette flow
+8. Hvis MCC-101 tripper, reduser lasten eller start ekstra PU-101-generasjon,
+   reset MCC-101 og start prosessutstyret bevisst igjen.
+9. En subsidiert oppstartsbatch kan prøves igjen uten kostnad fram til første
+   godkjente levering dersom produktet blir off-spec og tømmes sikkert.
+10. Følg væskenivå, flow og kvalitet. Ventilen kan stenge eller gjenopprette flow
    uten at væske skapes eller forsvinner. Stopp pumpen og selg godkjent diesel ved
-   `LAB / SALG`. Salget sender produktbatchen ut og viser en batchrapport med
+   `LAB / SALG`; bruk produkttank → salgspumpe → PD-101 for fysisk dispatch.
+   Salget sender produktbatchen ut og viser en batchrapport med
    faktisk råolje behandlet, fraksjoner, kvalitet, inntekt, kostnad og resultat.
 
 Etter godkjent oppstart åpner `E` på en tom kildetank leveransevalget. Valget

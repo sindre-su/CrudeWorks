@@ -115,5 +115,9 @@ func interaction_prompt() -> String:
 			return "E — analyser og selg diesel"
 		"area02_control":
 			return "E — åpne LS-201 lokalstasjon"
+		"area02_generator":
+			return "E — start/stopp PG-101 generator"
+		"area02_mcc":
+			return "E — inspiser/reset MCC-101"
 		_:
 			return "E — inspiser %s" % display_name

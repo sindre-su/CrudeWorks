@@ -16,6 +16,7 @@ static func definition(equipment_type: String) -> Dictionary:
 				"shape": "cylinder",
 				"has_input": true,
 				"has_output": true,
+				"power_demand_kw": 0.0,
 			}
 		"pump":
 			return {
@@ -27,6 +28,7 @@ static func definition(equipment_type: String) -> Dictionary:
 				"shape": "box",
 				"has_input": true,
 				"has_output": true,
+				"power_demand_kw": 25.0,
 			}
 		"valve":
 			return {
@@ -38,6 +40,7 @@ static func definition(equipment_type: String) -> Dictionary:
 				"shape": "box",
 				"has_input": true,
 				"has_output": true,
+				"power_demand_kw": 0.0,
 			}
 		"heater":
 			return {
@@ -49,6 +52,7 @@ static func definition(equipment_type: String) -> Dictionary:
 				"shape": "box",
 				"has_input": true,
 				"has_output": true,
+				"power_demand_kw": 10.0,
 			}
 		"column":
 			return {
@@ -60,6 +64,7 @@ static func definition(equipment_type: String) -> Dictionary:
 				"shape": "cylinder",
 				"has_input": true,
 				"has_output": true,
+				"power_demand_kw": 0.0,
 			}
 		"treatment":
 			return {
@@ -71,6 +76,7 @@ static func definition(equipment_type: String) -> Dictionary:
 				"shape": "box",
 				"has_input": true,
 				"has_output": true,
+				"power_demand_kw": 20.0,
 			}
 		"header":
 			return {
@@ -82,6 +88,7 @@ static func definition(equipment_type: String) -> Dictionary:
 				"shape": "box",
 				"has_input": true,
 				"has_output": true,
+				"power_demand_kw": 0.0,
 			}
 		"product_header":
 			return {
@@ -93,6 +100,7 @@ static func definition(equipment_type: String) -> Dictionary:
 				"shape": "box",
 				"has_input": true,
 				"has_output": true,
+				"power_demand_kw": 0.0,
 			}
 		"vacuum_distillation":
 			return {
@@ -104,6 +112,7 @@ static func definition(equipment_type: String) -> Dictionary:
 				"shape": "cylinder",
 				"has_input": true,
 				"has_output": true,
+				"power_demand_kw": 25.0,
 			}
 		"power_unit":
 			return {
@@ -115,6 +124,8 @@ static func definition(equipment_type: String) -> Dictionary:
 				"shape": "box",
 				"has_input": false,
 				"has_output": false,
+				"power_demand_kw": 0.0,
+				"generation_capacity_kw": 100.0,
 			}
 		"catalytic_cracking":
 			return {
@@ -126,6 +137,7 @@ static func definition(equipment_type: String) -> Dictionary:
 				"shape": "cylinder",
 				"has_input": true,
 				"has_output": true,
+				"power_demand_kw": 40.0,
 			}
 		"crude_intake":
 			return {
@@ -137,6 +149,7 @@ static func definition(equipment_type: String) -> Dictionary:
 				"shape": "box",
 				"has_input": false,
 				"has_output": true,
+				"power_demand_kw": 0.0,
 			}
 		"product_dispatch":
 			return {
@@ -148,6 +161,7 @@ static func definition(equipment_type: String) -> Dictionary:
 				"shape": "box",
 				"has_input": true,
 				"has_output": false,
+				"power_demand_kw": 0.0,
 			}
 	return {}
 
