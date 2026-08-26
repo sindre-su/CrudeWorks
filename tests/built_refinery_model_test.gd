@@ -55,6 +55,7 @@ func _run_tests() -> void:
 	_test_player_facing_vacuum_operation_and_dispatch()
 	_test_atomic_fcc_upgrading_and_dispatch()
 	_test_secondary_pump_start_and_stop_guards()
+	_test_utility_expansion()
 	_test_electrical_power_capacity()
 
 
@@ -65,6 +66,69 @@ func _test_invalid_network_cannot_start() -> void:
 	_expect(not result["ok"], "pump cannot start on a disconnected network")
 	_expect(not model.equipment["pump"]["running"], "rejected start leaves pump stopped")
 	_expect(not result["message"].is_empty(), "rejected start gives actionable player feedback")
+
+
+func _test_utility_expansion() -> void:
+	var cold_start = BuiltRefineryModelScript.new()
+	_expect(is_equal_approx(cold_start.generator_fuel_l, 40.0) and not cold_start.starter_generator_running, "new utility yard starts with a finite recovery-safe diesel reserve and PG-101 stopped")
+	_expect(not cold_start.toggle_instrument_air_compressor()["ok"] and not cold_start.toggle_cooling_water_pump()["ok"], "IA-101 and CWP-101 cannot start before electrical generation")
+	_expect(EquipmentCatalog.definition("valve")["instrument_air_required"] == false and EquipmentCatalog.definition("heater")["fail_action"] == "fail_closed" and EquipmentCatalog.definition("column")["cooling_water_required"], "catalog metadata distinguishes manual valves, fail-closed TIC actuation and CDU cooling demand")
+
+	var model = _complete_model()
+	_expect(model.instrument_air_available() and model.cooling_water_available() and is_equal_approx(model.power_status()["demand_kw"], 35.0), "PG-101 supports the fixed 15 kW instrument-air and 20 kW cooling-water loads")
+	model.load_crude_batch("source")
+	model.equipment["heater"]["setpoint_c"] = 200.0
+	model.equipment["heater"]["temperature_c"] = 200.0
+	model.equipment["valve"]["open"] = true
+	_expect(model.interact("pump")["ok"], "CDU process starts only after electricity, IA and cooling water are available")
+	var expected_use_lpm: float = model.current_generator_fuel_use_lpm()
+	var fuel_before: float = model.generator_fuel_l
+	model.tick(60.0)
+	_expect(expected_use_lpm > 0.1 and is_equal_approx(model.generator_fuel_l, fuel_before - expected_use_lpm), "generator diesel use is deterministic and rises with connected electrical load")
+
+	var diesel_before: float = model.equipment["diesel_tank"]["volume_l"]
+	var inventory_revision_before: int = model.product_inventory_revision
+	var refuel: Dictionary = model.refuel_generator_day_tank()
+	_expect(refuel["ok"] and is_equal_approx(refuel["transferred_l"], 25.0), "GF-101 transfers one bounded physical batch from stored diesel")
+	_expect(
+		is_equal_approx(model.equipment["diesel_tank"]["volume_l"], diesel_before - 25.0)
+		and is_equal_approx(model.equipment["diesel_tank"]["volume_l"] + model.generator_fuel_l, diesel_before + fuel_before - expected_use_lpm)
+		and model.product_inventory_revision == inventory_revision_before + 1,
+		"fuel transfer conserves canonical diesel, creates no duplicate inventory and invalidates stale product authorization"
+	)
+
+	var valve_before := bool(model.equipment["valve"]["open"])
+	model.toggle_instrument_air_compressor()
+	_expect(not model.equipment["pump"]["running"] and is_zero_approx(model.equipment["heater"]["setpoint_c"]) and is_zero_approx(model.equipment["heater"]["output_percent"]), "instrument-air loss stops CDU flow and drives TIC-201 to its canonical fail-closed state")
+	_expect(model.equipment["valve"]["open"] == valve_before and "INSTRUMENT AIR LOST" in model.alarm_text(), "manual field valve position survives IA loss while the existing alarm layer reports the root utility")
+	_expect(model.toggle_instrument_air_compressor()["ok"], "IA-101 recovery clears its utility trip without restarting heat or process")
+	model.equipment["heater"]["setpoint_c"] = 200.0
+	model.equipment["heater"]["temperature_c"] = 200.0
+	_expect(model.interact("pump")["ok"], "operator can deliberately restart the recovered IA-dependent process")
+	model.toggle_cooling_water_pump()
+	_expect(not model.equipment["pump"]["running"] and "COOLING WATER LOST" in model.alarm_text() and "NO COOLING WATER" in model.unit_status("column"), "cooling-water loss blocks CDU condensation, stops flow and reports locally")
+	_expect(model.toggle_cooling_water_pump()["ok"] and not model.equipment["pump"]["running"], "CWP-101 recovery restores cooling but never auto-restarts the process pump")
+
+	var saved: Dictionary = model.save_state()
+	var restored = _complete_model()
+	restored.apply_saved_state(saved)
+	_expect(is_equal_approx(restored.generator_fuel_l, model.generator_fuel_l) and restored.instrument_air_available() and restored.cooling_water_available(), "save/load preserves canonical fuel and utility machine/distribution state")
+	var legacy: Dictionary = saved.duplicate(true)
+	legacy["utility_state"].erase("generator_fuel_l")
+	legacy["utility_state"].erase("instrument_air_compressor_running")
+	legacy["utility_state"].erase("instrument_air")
+	legacy["utility_state"].erase("cooling_water_pump_running")
+	legacy["utility_state"].erase("cooling_water")
+	var legacy_restored = _complete_model()
+	legacy_restored.apply_saved_state(legacy)
+	_expect(is_equal_approx(legacy_restored.generator_fuel_l, 40.0) and legacy_restored.instrument_air_available() and legacy_restored.cooling_water_available(), "v0.27 saves infer a safe finite fuel reserve and running utilities when their generator was running")
+
+	model.generator_fuel_l = 0.01
+	model.tick(60.0)
+	_expect(is_zero_approx(model.generator_fuel_l) and not model.starter_generator_running and model.power_status()["tripped"] and not model.instrument_air_available() and not model.cooling_water_available() and "GENERATOR FUEL EMPTY" in model.alarm_text(), "fuel exhaustion propagates power loss through IA/CW and enters the existing electrical/alarm recovery path")
+	_expect(not model.toggle_starter_generator()["ok"] and is_zero_approx(model.power_status()["capacity_kw"]), "a zero-fuel generator cannot start or produce generation")
+	_expect(model.refuel_generator_day_tank()["ok"] and model.toggle_starter_generator()["ok"] and model.reset_electrical_bus()["ok"], "blackout recovery can refill GF-101 without an electric transfer-pump self-lock")
+	_expect(model.toggle_instrument_air_compressor()["ok"] and model.toggle_cooling_water_pump()["ok"] and model.instrument_air_available() and model.cooling_water_available(), "full utility recovery follows diesel to generation to MCC to IA/CW with deliberate restarts")
 
 
 func _test_electrical_power_capacity() -> void:
@@ -83,44 +147,35 @@ func _test_electrical_power_capacity() -> void:
 	_expect(not model.can_use_site_consumer("lab")["ok"] and not model.can_use_site_consumer("control_station")["ok"], "LAB-101 and LS-201 are unavailable without electrical supply")
 	var generator_start: Dictionary = model.toggle_starter_generator()
 	_expect("MCC-101 ENERGIZED" in generator_start["message"] and "Reserve" in generator_start["message"], "starting PG-101 immediately confirms the bus, load and reserve")
-	_expect(model.power_status()["bus_available"] and is_equal_approx(model.power_status()["capacity_kw"], 100.0), "PG-101 running energizes MCC-101 with its canonical capacity")
-	_expect(model.interact("main_pump")["ok"], "generator ON with sufficient capacity lets the atmospheric pump run")
-	_expect(is_equal_approx(model.power_status()["demand_kw"], 35.0), "running pump plus LAB-101 and LS-201 service loads sum exactly once")
-	_expect("BUS ENERGIZED / NORMAL" in model.mcc_inspection_text() and "Generation 100 kW" in model.mcc_inspection_text() and "Reserve 65 kW" in model.mcc_inspection_text() and "P-201 25 kW" in model.mcc_inspection_text() and "LAB-101 5 kW" in model.mcc_inspection_text() and "LS-201 5 kW" in model.mcc_inspection_text(), "MCC inspection states bus health, load/reserve and active consumers centrally")
-	_expect("POWER" in model.power_overview_text() and "PG-101: RUNNING" in model.power_overview_text() and "PU-101: NOT INSTALLED" in model.power_overview_text() and "MCC-101: ENERGIZED — NORMAL" in model.power_overview_text(), "LS-201 receives a compact source, load, reserve and MCC overview")
-	_expect(model.interact("vacuum_pump")["ok"], "VDU feed pump starts when its combined pump and VDU load fits capacity")
-	_expect(is_equal_approx(model.power_status()["demand_kw"], 85.0), "multiple electrical loads include VDU auxiliaries and central services")
-	model.register_unit("treatment", "treatment", "HT-201")
-	var overload: Dictionary = model.interact("treatment")
-	_expect(not overload["ok"] and "OVERLOAD TRIP" in overload["message"] and model.power_status()["tripped"], "starting demand above generation deterministically trips MCC-101")
-	_expect(not model.equipment["main_pump"]["running"] and not model.equipment["vacuum_pump"]["running"] and not model.equipment["treatment"]["running"], "MCC overload safely stops every affected running load")
+	_expect(model.toggle_instrument_air_compressor()["ok"] and model.toggle_cooling_water_pump()["ok"], "powered utility yard starts IA-101 and CWP-101 in a logical sequence")
+	_expect(model.power_status()["bus_available"] and is_equal_approx(model.power_status()["demand_kw"], 45.0), "IA, cooling water, LAB and LS loads sum once on the 100 kW starter bus")
+	_expect(model.interact("main_pump")["ok"] and is_equal_approx(model.power_status()["demand_kw"], 70.0), "one atmospheric pump fits the utility-aware starter capacity")
+	_expect("BUS ENERGIZED / NORMAL" in model.mcc_inspection_text() and "Reserve 30 kW" in model.mcc_inspection_text() and "IA-101 15 kW" in model.mcc_inspection_text() and "CWP-101 20 kW" in model.mcc_inspection_text(), "MCC inspection exposes utility loads and remaining reserve centrally")
+	_expect("UTILITIES" in model.power_overview_text() and "INST AIR: NORMAL" in model.power_overview_text() and "COOLING WATER: NORMAL" in model.power_overview_text(), "LS-201 receives one compact utilities overview")
+	var overload: Dictionary = model.interact("vacuum_pump")
+	_expect(not overload["ok"] and "OVERLOAD TRIP" in overload["message"] and model.power_status()["tripped"], "a 50 kW VDU start above the remaining reserve deterministically trips MCC-101")
+	_expect(not model.equipment["main_pump"]["running"] and not model.instrument_air_compressor_running and not model.cooling_water_pump_running, "MCC overload safely stops process and utility loads")
 	_expect("MCC-101" in model.alarm_text() and "OVERLOAD TRIP" in model.alarm_text(), "electrical overload enters the existing operator-alarm layer")
-	_expect("BUS TRIPPED / OVERLOAD" in model.mcc_inspection_text() and "Trip demand 105 kW | Generation 100 kW" in model.mcc_inspection_text(), "MCC inspection preserves the exact trip cause and demand after affected equipment stops")
+	_expect("BUS TRIPPED / OVERLOAD" in model.mcc_inspection_text() and "Trip demand 120 kW | Generation 100 kW" in model.mcc_inspection_text(), "MCC inspection preserves the exact utility-aware trip demand")
 	var tripped_saved: Dictionary = model.save_state()
 	var tripped_restored = _vacuum_model(0.0)
 	_add_power_atmospheric_route(tripped_restored, "main")
-	tripped_restored.register_unit("treatment", "treatment", "HT-201")
 	tripped_restored.apply_saved_state(tripped_saved)
 	_expect(tripped_restored.power_status()["tripped"] and tripped_restored.power_status()["trip_id"] == "overload", "save/load preserves the canonical MCC trip and reason without restoring stopped loads")
 	_expect(model.reset_electrical_bus()["ok"] and model.power_status()["bus_available"], "removing tripped running loads permits a deliberate MCC reset")
-	_expect(model.interact("main_pump")["ok"], "refinery can restart deliberately after overload recovery")
-	model.toggle_starter_generator()
-	_expect(model.power_status()["tripped"] and not model.equipment["main_pump"]["running"], "power loss while a pump runs trips the bus and stops the pump safely")
-	_expect("SUPPLY LOSS" in model.mcc_inspection_text() and "start PG-101 or PU-101" in model.mcc_inspection_text(), "MCC supply-loss diagnosis gives the distinct generation recovery action")
-	var blocked_reset: Dictionary = model.reset_electrical_bus()
-	_expect(not blocked_reset["ok"] and "RESET BLOCKED" in blocked_reset["message"] and not model.equipment["main_pump"]["running"], "MCC reset cannot bypass an active supply-loss condition or restart the pump")
-	model.toggle_starter_generator()
-	_expect(model.reset_electrical_bus()["ok"] and not model.equipment["main_pump"]["running"], "restoring generation still requires an explicit reset and never auto-restarts equipment")
+	_expect(model.toggle_instrument_air_compressor()["ok"] and model.toggle_cooling_water_pump()["ok"] and model.interact("main_pump")["ok"], "utilities and process restart deliberately after overload recovery")
 	model.register_unit("power", "power_unit", "PU-101")
 	_expect(is_equal_approx(model.power_status()["capacity_kw"], 100.0), "a placed but stopped PU-101 adds no fictitious generation")
 	_expect(model.interact("power")["ok"] and is_equal_approx(model.power_status()["capacity_kw"], 200.0), "a running expansion generator adds one stackable capacity increment")
-	_expect("PU-101: 1 RUNNING" in model.power_overview_text() and "Generation: 200 kW" in model.power_overview_text(), "LS-201 overview makes the first expansion generator's contribution explicit")
-	_expect(model.interact("main_pump")["ok"] and model.interact("vacuum_pump")["ok"] and model.interact("treatment")["ok"], "additional generation supports the previously overloading combined load")
-	_expect(is_equal_approx(model.power_status()["demand_kw"], 105.0), "expanded MCC sums all simultaneous demand deterministically")
+	_expect(model.interact("vacuum_pump")["ok"] and is_equal_approx(model.power_status()["demand_kw"], 120.0), "additional generation supports concurrent atmospheric and VDU demand")
 	_expect(not model.can_remove("power")["ok"], "a running Power Unit must be stopped before removal")
-	model.interact("main_pump")
-	model.interact("treatment")
-	model.interact("vacuum_pump")
+	model.toggle_starter_generator()
+	_expect(model.power_status()["tripped"] and not model.equipment["main_pump"]["running"] and not model.equipment["vacuum_pump"]["running"], "losing one required generator trips the bus and safely stops running loads")
+	_expect("SUPPLY LOSS" in model.mcc_inspection_text() and "start PG-101 or PU-101" in model.mcc_inspection_text(), "MCC supply-loss diagnosis gives the distinct generation recovery action")
+	var blocked_reset: Dictionary = model.reset_electrical_bus()
+	_expect(blocked_reset["ok"] and not model.equipment["main_pump"]["running"], "remaining PU-101 capacity permits reset but never auto-restarts equipment")
+	model.toggle_starter_generator()
+	_expect("PU-101: 1 RUNNING" in model.power_overview_text() and "Generation: 200 kW" in model.power_overview_text(), "LS-201 overview makes expansion generation explicit")
 	model.interact("power")
 	_expect(model.can_remove("power")["ok"], "an idle Power Unit can be removed safely after electrical demand is stopped")
 	model.interact("power")
@@ -130,7 +185,6 @@ func _test_electrical_power_capacity() -> void:
 	var saved: Dictionary = model.save_state()
 	var restored = _vacuum_model(0.0)
 	_add_power_atmospheric_route(restored, "main")
-	restored.register_unit("treatment", "treatment", "HT-201")
 	restored.register_unit("power", "power_unit", "PU-101")
 	restored.apply_saved_state(saved)
 	_expect(restored.starter_generator_running and restored.equipment["power"]["running"] and is_equal_approx(restored.power_status()["capacity_kw"], 200.0) and not restored.power_status()["tripped"], "save/load preserves generator and valid MCC state while process pumps restore stopped")
@@ -139,10 +193,9 @@ func _test_electrical_power_capacity() -> void:
 	legacy["equipment"]["power"].erase("running")
 	var legacy_restored = _vacuum_model(0.0)
 	_add_power_atmospheric_route(legacy_restored, "main")
-	legacy_restored.register_unit("treatment", "treatment", "HT-201")
 	legacy_restored.register_unit("power", "power_unit", "PU-101")
 	legacy_restored.apply_saved_state(legacy)
-	_expect(legacy_restored.starter_generator_running and legacy_restored.equipment["power"]["running"] and is_equal_approx(legacy_restored.power_status()["capacity_kw"], 200.0), "legacy v0.26.2 electrical capacity loads as running generation without a migration softlock")
+	_expect(legacy_restored.starter_generator_running and legacy_restored.equipment["power"]["running"] and legacy_restored.instrument_air_available() and legacy_restored.cooling_water_available(), "legacy v0.27 utility-free saves infer safe running utilities without a migration softlock")
 
 
 func _test_feed_allocation_foundation() -> void:
@@ -1024,6 +1077,7 @@ func _add_second_complete_route(model) -> void:
 	model.network.try_connect("b_column", "diesel", "b_treatment", "input")
 	model.network.try_connect("b_treatment", "output", "b_diesel", "input")
 	model.network.try_connect("b_column", "heavy", "b_heavy", "input")
+	_ensure_expansion_power(model)
 
 
 func _add_shared_header_route(model) -> void:
@@ -1305,6 +1359,7 @@ func _test_vacuum_capacity_and_multi_stage_processing() -> void:
 	var staged = _complete_model()
 	staged.set_tank_material_intent("heavy_tank", "heavy")
 	_add_vacuum_route(staged, "heavy_tank")
+	_ensure_expansion_power(staged)
 	staged.load_crude_batch("source")
 	staged.equipment["heater"]["temperature_c"] = 200.0
 	staged.equipment["valve"]["open"] = true
@@ -1318,6 +1373,7 @@ func _test_vacuum_capacity_and_multi_stage_processing() -> void:
 	var blocked_vdu = _complete_model()
 	blocked_vdu.set_tank_material_intent("heavy_tank", "heavy")
 	_add_vacuum_route(blocked_vdu, "heavy_tank")
+	_ensure_expansion_power(blocked_vdu)
 	blocked_vdu.load_crude_batch("source")
 	blocked_vdu.equipment["heater"]["temperature_c"] = 200.0
 	blocked_vdu.equipment["valve"]["open"] = true
@@ -1508,6 +1564,8 @@ func _complete_model():
 	model.network.try_connect("column", "light", "light_tank", "input")
 	model.network.try_connect("column", "diesel", "diesel_tank", "input")
 	model.network.try_connect("column", "heavy", "heavy_tank", "input")
+	model.toggle_instrument_air_compressor()
+	model.toggle_cooling_water_pump()
 	return model
 
 
@@ -1567,6 +1625,13 @@ func _add_vacuum_route(model, source_id: String) -> void:
 	model.network.try_connect("vacuum_pump", "output", "vdu", "input")
 	model.network.try_connect("vdu", "vgo", "vgo_tank", "input")
 	model.network.try_connect("vdu", "vacuum_residue", "vacuum_residue_tank", "input")
+
+
+func _ensure_expansion_power(model) -> void:
+	if not model.equipment.has("expansion_power"):
+		model.register_unit("expansion_power", "power_unit", "PU-TEST")
+	if not model.equipment["expansion_power"]["running"]:
+		model.interact("expansion_power")
 
 
 func _add_power_atmospheric_route(model, prefix: String) -> void:

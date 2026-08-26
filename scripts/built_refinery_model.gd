@@ -43,6 +43,9 @@ const CATALYTIC_CRACKING_POWER_KW := 40.0
 const LAB_POWER_KW := 5.0
 const CONTROL_STATION_POWER_KW := 5.0
 const HIGH_POWER_LOAD_RATIO := 0.85
+const GENERATOR_FUEL_CAPACITY_L := 100.0
+const STARTER_GENERATOR_FUEL_L := 40.0
+const GENERATOR_REFUEL_BATCH_L := 25.0
 const TANK_MATERIALS := ["", "crude", "light", "diesel", "heavy", "vacuum_gas_oil", "vacuum_residue", "gasoline_blendstock", "lpg", "light_cycle_oil"]
 
 var network
@@ -72,6 +75,11 @@ var first_atmospheric_production := false
 var first_physical_dispatch_completed := false
 var starter_generator_running := false
 var electrical_bus = UtilityDistributionScript.new("electricity")
+var generator_fuel_l := STARTER_GENERATOR_FUEL_L
+var instrument_air_compressor_running := false
+var cooling_water_pump_running := false
+var instrument_air_bus = UtilityDistributionScript.new("instrument_air")
+var cooling_water_bus = UtilityDistributionScript.new("cooling_water")
 
 
 func _init(p_network = null) -> void:
@@ -134,6 +142,11 @@ func save_state() -> Dictionary:
 		"utility_state": {
 			"starter_generator_running": starter_generator_running,
 			"electricity": electrical_bus.save_state(),
+			"generator_fuel_l": generator_fuel_l,
+			"instrument_air_compressor_running": instrument_air_compressor_running,
+			"instrument_air": instrument_air_bus.save_state(),
+			"cooling_water_pump_running": cooling_water_pump_running,
+			"cooling_water": cooling_water_bus.save_state(),
 		},
 		"equipment": saved_equipment,
 	}
@@ -142,10 +155,27 @@ func save_state() -> Dictionary:
 func apply_saved_state(state: Dictionary) -> void:
 	var has_utility_state := typeof(state.get("utility_state")) == TYPE_DICTIONARY
 	var utility_state: Dictionary = state.get("utility_state", {})
+	var has_expanded_utilities := utility_state.has("generator_fuel_l")
 	starter_generator_running = bool(utility_state.get("starter_generator_running", true))
 	electrical_bus.clear()
 	if has_utility_state and typeof(utility_state.get("electricity")) == TYPE_DICTIONARY:
 		electrical_bus.apply_saved_state(utility_state["electricity"])
+	generator_fuel_l = clampf(
+		float(utility_state.get("generator_fuel_l", STARTER_GENERATOR_FUEL_L)),
+		0.0, GENERATOR_FUEL_CAPACITY_L
+	)
+	instrument_air_compressor_running = bool(utility_state.get(
+		"instrument_air_compressor_running", starter_generator_running
+	))
+	cooling_water_pump_running = bool(utility_state.get(
+		"cooling_water_pump_running", starter_generator_running
+	))
+	instrument_air_bus.clear()
+	cooling_water_bus.clear()
+	if has_expanded_utilities and typeof(utility_state.get("instrument_air")) == TYPE_DICTIONARY:
+		instrument_air_bus.apply_saved_state(utility_state["instrument_air"])
+	if has_expanded_utilities and typeof(utility_state.get("cooling_water")) == TYPE_DICTIONARY:
+		cooling_water_bus.apply_saved_state(utility_state["cooling_water"])
 	commissioning_batch_available = bool(state["commissioning_batch_available"])
 	commissioning_contract_complete = bool(state["commissioning_contract_complete"])
 	successful_sales = int(state["successful_sales"])
@@ -631,6 +661,15 @@ func interaction_prompt(unit_id: String) -> String:
 	var power_prompt := _power_blocked_interaction_prompt(unit_id)
 	if not power_prompt.is_empty():
 		return power_prompt
+	if state["type"] == "heater" and not instrument_air_available():
+		return "TIC-201 BLOCKED — INSTRUMENT AIR LOST. Start IA-101; actuator is FAIL CLOSED."
+	if state["type"] == "column" and not cooling_water_available():
+		return "CDU BLOCKED — COOLING WATER LOST. Start CWP-101."
+	if state["type"] == "pump" and not state["running"] and not _atmospheric_route_for_unit(unit_id).is_empty():
+		if not instrument_air_available():
+			return "%s BLOCKED — INSTRUMENT AIR LOST. Start IA-101." % state["name"]
+		if not cooling_water_available():
+			return "%s BLOCKED — COOLING WATER LOST. Start CWP-101." % state["name"]
 	match state["type"]:
 		"pump":
 			var prompt := (
@@ -951,6 +990,7 @@ func tick(delta: float) -> void:
 	for state in equipment.values():
 		if state["type"] == "pump":
 			state["actual_flow_lps"] = 0.0
+	_consume_generator_fuel(delta)
 	_enforce_electrical_supply()
 	var routes: Array[Dictionary] = network.find_complete_routes()
 	# Physical site logistics intentionally sit beside process-route discovery.
@@ -1045,6 +1085,16 @@ func _tick_atmospheric_route(route: Dictionary, delta: float) -> void:
 	var valve: Dictionary = equipment[route["valve"]]
 	var heater: Dictionary = equipment[route["heater"]]
 	var treatment: Dictionary = equipment[route["treatment"]] if not String(route.get("treatment", "")).is_empty() else {}
+	if pump["running"] and not instrument_air_available():
+		pump["running"] = false
+		pump["actual_flow_lps"] = 0.0
+		last_status = "INSTRUMENT AIR LOST — TIC-201 FAIL CLOSED. Restart IA-101, heat and process deliberately."
+		return
+	if pump["running"] and not cooling_water_available():
+		pump["running"] = false
+		pump["actual_flow_lps"] = 0.0
+		last_status = "COOLING WATER LOST — CDU condensation unavailable. Restart CWP-101 and process deliberately."
+		return
 	var contract_id := _contract_id_for_route(route)
 	var profile := _contract_for_route(route)
 	if pump["running"] and _remote_guard_pump_id == route["pump"]:
@@ -1826,6 +1876,10 @@ func objective_text() -> String:
 		return prefix + "reduser belastningen og reset MCC-101"
 	if not _electrical_supply_available():
 		return prefix + "start PG-101 for å gi prosesstoget strøm"
+	if not instrument_air_available():
+		return prefix + "start IA-101 for instrumentluft til TIC-201"
+	if not cooling_water_available():
+		return prefix + "start CWP-101 for kjølevann til CDU"
 	if source["volume_l"] <= 0.001 and product_volume_l() <= 0.001:
 		return prefix + "motta neste råoljeleveranse ved CI-101"
 	if pump["running"] and not valve["open"]:
@@ -1942,17 +1996,22 @@ func inspect_unit(unit_id: String) -> String:
 				heat_block_reason = (
 					". HEAT PERMISSIVE: BLOCKED. Reason: NO POWER"
 					if not equipment_power_state(unit_id)["available"]
+					else ". HEAT PERMISSIVE: BLOCKED. Reason: NO INSTRUMENT AIR"
+					if not instrument_air_available()
 					else ". HEAT PERMISSIVE: BLOCKED. Reason: LOW FLOW"
 				)
-			return "TIC-201 %s: PV %.0f °C, SP %.0f °C, utgang %.0f %%%s%s%s" % [
+			return "TIC-201 %s: PV %.0f °C, SP %.0f °C, utgang %.0f %%%s%s%s\nINSTRUMENT AIR: %s — actuator FAIL CLOSED" % [
 				String(state["control_mode"]).to_upper(), state["temperature_c"],
 				state["setpoint_c"], state["output_percent"],
 				" — BLOKKERT" if state.get("auto_blocked", false) else "",
 				heat_block_reason if not heat_block_reason.is_empty() else ".",
 				_power_inspection_suffix(unit_id),
+				"AVAILABLE" if instrument_air_available() else "LOST",
 			]
 		"column":
-			return "Destillasjon: %.0f L totalt prosessert." % state["processed_total_l"]
+			return "Destillasjon: %.0f L totalt prosessert.\nCOOLING WATER: %s — CT-101 / CWP-101" % [
+				state["processed_total_l"], "AVAILABLE" if cooling_water_available() else "LOST — PROCESS BLOCKED",
+			]
 		"treatment":
 			return "Dieselbehandler %s, %.0f L behandlet.%s" % ["PÅ" if state["running"] else "AV", state["processed_total_l"], _power_inspection_suffix(unit_id)]
 		"header":
@@ -2030,13 +2089,16 @@ func unit_status(unit_id: String) -> String:
 		"valve":
 			return "ÅPEN" if state["open"] else "STENGT"
 		"heater":
-			return "%s  |  PV %.0f °C  |  SP %.0f °C  |  UT %.0f %%%s" % [
+			return "%s  |  PV %.0f °C  |  SP %.0f °C  |  UT %.0f %%%s%s" % [
 				String(state["control_mode"]).to_upper(), state["temperature_c"],
 				state["setpoint_c"], state["output_percent"],
 				"  |  POWER LOST" if not equipment_power_state(unit_id)["available"] else "",
+				"  |  INST AIR LOST — FAIL CLOSED" if not instrument_air_available() else "",
 			]
 		"column":
-			return "%.0f L prosessert" % state["processed_total_l"]
+			return "%.0f L prosessert%s" % [
+				state["processed_total_l"], "  |  NO COOLING WATER" if not cooling_water_available() else "",
+			]
 		"treatment":
 			return "%s  |  %.0f L behandlet%s" % ["PÅ" if state["running"] else "AV", state["processed_total_l"], "  |  POWER LOST" if not equipment_power_state(unit_id)["available"] else ""]
 		"header":
@@ -2228,6 +2290,8 @@ func operator_alarms() -> Array[Dictionary]:
 	# the physical condition that actually exists now.
 	var alarms: Array[Dictionary] = []
 	var power := power_status()
+	if generator_fuel_l <= 0.001:
+		_add_operator_alarm(alarms, "high", "generator_fuel_empty", "generator_fuel", "GF-101", "GENERATOR FUEL EMPTY")
 	if power["tripped"]:
 		_add_operator_alarm(
 			alarms, "high", "electrical_trip", "area02_mcc", "MCC-101",
@@ -2237,6 +2301,10 @@ func operator_alarms() -> Array[Dictionary]:
 		_add_operator_alarm(alarms, "high", "no_power", "area02_mcc", "MCC-101", "NO POWER")
 	elif power["high_load"]:
 		_add_operator_alarm(alarms, "low", "high_power_load", "area02_mcc", "MCC-101", "HIGH ELECTRICAL LOAD")
+	if power["bus_available"] and instrument_air_bus.tripped:
+		_add_operator_alarm(alarms, "high", "instrument_air_loss", "instrument_air", "IA-101", "INSTRUMENT AIR LOST — TIC-201 FAIL CLOSED")
+	if power["bus_available"] and cooling_water_bus.tripped:
+		_add_operator_alarm(alarms, "high", "cooling_water_loss", "cooling_water", "CWP-101", "COOLING WATER LOST — CDU BLOCKED")
 	for route in network.atmospheric_routes():
 		alarms.append_array(_operator_alarms_for_route(route))
 	return alarms
@@ -2402,6 +2470,7 @@ func operations_snapshot() -> Dictionary:
 		"trains": trains,
 		"alarms": operator_alarms(),
 		"power": power_status(),
+		"utilities": utility_status(),
 	}
 
 
@@ -2784,6 +2853,14 @@ func _toggle_pump(unit_id: String) -> Dictionary:
 			else:
 				if route["pump"] != unit_id:
 					return _result(false, "%s er ikke del av den komplette prosesslinjen." % pump["name"])
+				if not _electrical_supply_available():
+					var early_power_check := _can_start_electrical_load(unit_id)
+					if not early_power_check["ok"]:
+						return early_power_check
+				if not instrument_air_available():
+					return _result(false, "%s START BLOCKED — NO INSTRUMENT AIR. Start IA-101." % pump["name"])
+				if not cooling_water_available():
+					return _result(false, "%s START BLOCKED — NO COOLING WATER. Start CWP-101." % pump["name"])
 				if not _route_has_feed_access(route):
 					return _result(false, "Velg denne ruten på Crude Feed Header før %s startes." % pump["name"])
 				if _resolved_route(route).is_empty():
@@ -2817,6 +2894,8 @@ func _toggle_treatment(unit_id: String) -> Dictionary:
 func _cycle_heater(unit_id: String) -> Dictionary:
 	var heater: Dictionary = equipment[unit_id]
 	if heater["setpoint_c"] < 1.0:
+		if bool(EquipmentCatalog.definition("heater").get("instrument_air_required", false)) and not instrument_air_available():
+			return _result(false, "TIC-201 START BLOCKED — NO INSTRUMENT AIR. Start IA-101; actuator fails closed.")
 		var power_check := _can_start_electrical_load(unit_id)
 		if not power_check["ok"]:
 			return power_check
@@ -2838,6 +2917,8 @@ func toggle_heater_auto(unit_id: String) -> Dictionary:
 		return _result(false, "TIC-201 låses opp etter første godkjente Område 02-batch.")
 	if not _electrical_supply_available():
 		return _result(false, "TIC-201 CONTROL UNAVAILABLE — NO POWER FROM MCC-101.")
+	if not instrument_air_available():
+		return _result(false, "TIC-201 CONTROL UNAVAILABLE — NO INSTRUMENT AIR. Actuator is FAIL CLOSED.")
 	var heater: Dictionary = equipment[unit_id]
 	if heater["control_mode"] == "manual":
 		if heater["setpoint_c"] <= 0.0:
@@ -2863,7 +2944,7 @@ func _update_heaters(delta: float, routes: Array[Dictionary]) -> void:
 		var state: Dictionary = equipment[unit_id]
 		if state["type"] != "heater":
 			continue
-		if not _electrical_supply_available():
+		if not _electrical_supply_available() or not instrument_air_available():
 			state["output_percent"] = 0.0
 			state["auto_blocked"] = state["setpoint_c"] > 0.0
 			state["temperature_c"] = move_toward(
@@ -3065,6 +3146,185 @@ func _any_pump_running() -> bool:
 	return false
 
 
+func instrument_air_available() -> bool:
+	return (
+		instrument_air_compressor_running
+		and not instrument_air_bus.tripped
+		and _electrical_supply_available()
+	)
+
+
+func cooling_water_available() -> bool:
+	return (
+		cooling_water_pump_running
+		and not cooling_water_bus.tripped
+		and _electrical_supply_available()
+	)
+
+
+func utility_status() -> Dictionary:
+	return {
+		"generator_fuel_l": generator_fuel_l,
+		"generator_fuel_capacity_l": GENERATOR_FUEL_CAPACITY_L,
+		"generator_fuel_use_lpm": current_generator_fuel_use_lpm(),
+		"instrument_air_running": instrument_air_compressor_running,
+		"instrument_air_available": instrument_air_available(),
+		"instrument_air_tripped": instrument_air_bus.tripped,
+		"instrument_air_demand_kw": utility_power_demand_kw("instrument_air"),
+		"cooling_water_running": cooling_water_pump_running,
+		"cooling_water_available": cooling_water_available(),
+		"cooling_water_tripped": cooling_water_bus.tripped,
+		"cooling_water_demand_kw": utility_power_demand_kw("cooling_water"),
+	}
+
+
+func utility_power_demand_kw(utility_id: String) -> float:
+	var equipment_type: String = {
+		"instrument_air": "instrument_air_compressor",
+		"cooling_water": "cooling_water_pump",
+	}.get(utility_id, "")
+	return float(EquipmentCatalog.definition(equipment_type).get("power_demand_kw", 0.0))
+
+
+func current_generator_fuel_use_lpm() -> float:
+	var running_generators := int(starter_generator_running) + _running_power_unit_count()
+	if running_generators <= 0 or generator_fuel_l <= 0.001:
+		return 0.0
+	var starter_definition := EquipmentCatalog.definition("starter_generator")
+	var load_kw := 0.0 if electrical_bus.tripped else minf(
+		_current_requested_electrical_demand_kw(), _electrical_generation_capacity_kw()
+	)
+	return (
+		float(running_generators) * float(starter_definition["idle_fuel_use_lpm"])
+		+ load_kw * float(starter_definition["fuel_use_l_per_kwh"]) / 60.0
+	)
+
+
+func _consume_generator_fuel(delta: float) -> void:
+	if delta <= 0.0 or generator_fuel_l <= 0.001:
+		return
+	var use_l := current_generator_fuel_use_lpm() * delta / 60.0
+	if use_l <= 0.0:
+		return
+	if use_l + 0.0001 < generator_fuel_l:
+		generator_fuel_l -= use_l
+		return
+	generator_fuel_l = 0.0
+	starter_generator_running = false
+	for state in equipment.values():
+		if state["type"] == "power_unit":
+			state["running"] = false
+	var demand := _current_requested_electrical_demand_kw()
+	if demand > 0.001:
+		_trip_electrical_bus(UtilityDistributionScript.TRIP_SUPPLY_LOSS, demand, 0.0)
+	last_status = "GENERATOR FUEL EMPTY — PG-101/PU-101 stopped. Refill GF-101 with saleable diesel."
+
+
+func refuel_generator_day_tank() -> Dictionary:
+	var room := GENERATOR_FUEL_CAPACITY_L - generator_fuel_l
+	if room <= 0.001:
+		return _result(false, "GF-101 FULL — %.0f / %.0f L diesel." % [generator_fuel_l, GENERATOR_FUEL_CAPACITY_L])
+	var diesel_tank_ids: Array[String] = []
+	for unit_id in equipment:
+		var state: Dictionary = equipment[unit_id]
+		if state["type"] == "tank" and state["contents"] == "diesel" and float(state["volume_l"]) > 0.001:
+			diesel_tank_ids.append(unit_id)
+	diesel_tank_ids.sort()
+	if diesel_tank_ids.is_empty():
+		return _result(false, "GF-101 REFILL BLOCKED — no saleable diesel is stored on site.")
+	var source_id := diesel_tank_ids[0]
+	var source: Dictionary = equipment[source_id]
+	var moved_l := minf(GENERATOR_REFUEL_BATCH_L, minf(room, float(source["volume_l"])))
+	source["volume_l"] -= moved_l
+	generator_fuel_l += moved_l
+	if source["volume_l"] <= 0.001:
+		source["volume_l"] = 0.0
+		source["contents"] = "empty"
+		source["quality_percent"] = 0.0
+		source["sulfur_ppm"] = 0.0
+	product_inventory_revision += 1
+	_diesel_sample = {}
+	last_status = "GF-101 received %.0f L diesel from %s. This inventory can no longer be sold." % [moved_l, source["name"]]
+	return {"ok": true, "message": last_status, "transferred_l": moved_l, "source_id": source_id}
+
+
+func toggle_instrument_air_compressor() -> Dictionary:
+	if instrument_air_compressor_running:
+		instrument_air_compressor_running = false
+		_lose_instrument_air()
+		last_status = "IA-101 STOPPED — TIC-201 actuator FAILED CLOSED. Restart heat and process deliberately."
+		return _result(true, last_status)
+	var power_check := _can_start_electrical_demand("IA-101", utility_power_demand_kw("instrument_air"))
+	if not power_check["ok"]:
+		return power_check
+	instrument_air_compressor_running = true
+	instrument_air_bus.clear()
+	last_status = "IA-101 STARTED — instrument air NORMAL. TIC-201 remains shut until commanded."
+	return _result(true, last_status)
+
+
+func toggle_cooling_water_pump() -> Dictionary:
+	if cooling_water_pump_running:
+		cooling_water_pump_running = false
+		_lose_cooling_water()
+		last_status = "CWP-101 STOPPED — CDU cooling water LOST. Restart process deliberately."
+		return _result(true, last_status)
+	var power_check := _can_start_electrical_demand("CWP-101", utility_power_demand_kw("cooling_water"))
+	if not power_check["ok"]:
+		return power_check
+	cooling_water_pump_running = true
+	cooling_water_bus.clear()
+	last_status = "CWP-101 STARTED — CT-101 cooling water NORMAL."
+	return _result(true, last_status)
+
+
+func generator_fuel_inspection_text() -> String:
+	return "GF-101 — GENERATOR FUEL DAY TANK\nDiesel: %.1f / %.0f L\nCurrent use: %.2f L/min\nE transfers up to %.0f L from a stored diesel product tank." % [
+		generator_fuel_l, GENERATOR_FUEL_CAPACITY_L, current_generator_fuel_use_lpm(), GENERATOR_REFUEL_BATCH_L,
+	]
+
+
+func instrument_air_inspection_text() -> String:
+	return "IA-101 — INSTRUMENT AIR\nCompressor: %s | Demand %.0f kW\nHeader: %s\nTIC-201 actuator: FAIL CLOSED on air loss; manual valves unaffected." % [
+		"RUNNING" if instrument_air_compressor_running else "STOPPED", utility_power_demand_kw("instrument_air"),
+		"NORMAL" if instrument_air_available() else "LOST",
+	]
+
+
+func cooling_water_inspection_text() -> String:
+	return "CT-101 / CWP-101 — COOLING WATER\nTower: READY | Pump: %s | Demand %.0f kW\nCDU cooling: %s" % [
+		"RUNNING" if cooling_water_pump_running else "STOPPED", utility_power_demand_kw("cooling_water"),
+		"AVAILABLE" if cooling_water_available() else "LOST — PROCESS BLOCKED",
+	]
+
+
+func _lose_instrument_air() -> void:
+	instrument_air_compressor_running = false
+	instrument_air_bus.trip(UtilityDistributionScript.TRIP_SUPPLY_LOSS, 1.0, 0.0)
+	for state in equipment.values():
+		if state["type"] == "heater" and EquipmentCatalog.definition("heater").get("fail_action", "") == "fail_closed":
+			state["setpoint_c"] = 0.0
+			state["output_percent"] = 0.0
+			state["auto_blocked"] = true
+	_stop_atmospheric_pumps()
+
+
+func _lose_cooling_water() -> void:
+	cooling_water_pump_running = false
+	cooling_water_bus.trip(UtilityDistributionScript.TRIP_SUPPLY_LOSS, 1.0, 0.0)
+	_stop_atmospheric_pumps()
+
+
+func _stop_atmospheric_pumps() -> void:
+	for route in network.atmospheric_routes():
+		var pump_id := String(route.get("pump", ""))
+		if equipment.has(pump_id):
+			equipment[pump_id]["running"] = false
+			equipment[pump_id]["actual_flow_lps"] = 0.0
+	actual_flow_lps = 0.0
+	_remote_guard_pump_id = ""
+
+
 func power_status() -> Dictionary:
 	var capacity_kw := _electrical_generation_capacity_kw()
 	var consumers := _active_electrical_consumers()
@@ -3102,12 +3362,15 @@ func power_status() -> Dictionary:
 func _can_start_electrical_load(unit_id: String) -> Dictionary:
 	if not equipment.has(unit_id):
 		return _result(false, "Ukjent elektrisk utstyr.")
-	var requested_kw := required_power_kw(unit_id)
+	return _can_start_electrical_demand(String(equipment[unit_id]["name"]), required_power_kw(unit_id))
+
+
+func _can_start_electrical_demand(equipment_name: String, requested_kw: float) -> Dictionary:
 	var power := power_status()
 	if electrical_bus.tripped:
-		return _result(false, "%s START BLOCKED — MCC-101 TRIPPED. Reset MCC-101." % equipment[unit_id]["name"])
+		return _result(false, "%s START BLOCKED — MCC-101 TRIPPED. Reset MCC-101." % equipment_name)
 	if power["capacity_kw"] <= 0.001:
-		return _result(false, "%s START BLOCKED — NO POWER. Start PG-101." % equipment[unit_id]["name"])
+		return _result(false, "%s START BLOCKED — NO POWER. Start PG-101." % equipment_name)
 	var projected_demand := float(power["demand_kw"]) + requested_kw
 	if projected_demand > float(power["capacity_kw"]) + 0.001:
 		_trip_electrical_bus(
@@ -3176,6 +3439,8 @@ func can_use_site_consumer(consumer_id: String) -> Dictionary:
 
 
 func toggle_starter_generator() -> Dictionary:
+	if not starter_generator_running and generator_fuel_l <= 0.001:
+		return _result(false, "PG-101 START BLOCKED — GF-101 has no diesel fuel.")
 	starter_generator_running = not starter_generator_running
 	if not starter_generator_running:
 		var was_tripped: bool = bool(electrical_bus.tripped)
@@ -3207,10 +3472,11 @@ func reset_electrical_bus() -> Dictionary:
 
 func generator_inspection_text() -> String:
 	var power := power_status()
-	return "PG-101 — PRIMARY GENERATOR\nState: %s\nGeneration: %.0f / %.0f kW\nSite load: %.0f kW\nMCC-101 bus: %s" % [
+	return "PG-101 — PRIMARY GENERATOR\nState: %s\nGeneration: %.0f / %.0f kW\nFuel: %.1f / %.0f L | %.2f L/min\nSite load: %.0f kW\nMCC-101 bus: %s" % [
 		"RUNNING" if starter_generator_running else "STOPPED",
 		STARTER_GENERATOR_CAPACITY_KW if starter_generator_running else 0.0,
-		STARTER_GENERATOR_CAPACITY_KW, power["demand_kw"], _mcc_bus_state_text(power),
+		STARTER_GENERATOR_CAPACITY_KW, generator_fuel_l, GENERATOR_FUEL_CAPACITY_L,
+		current_generator_fuel_use_lpm(), power["demand_kw"], _mcc_bus_state_text(power),
 	]
 
 
@@ -3235,10 +3501,10 @@ func mcc_inspection_text() -> String:
 
 func generator_context_prompt() -> String:
 	var power := power_status()
-	return "PG-101 %s | GEN %.0f kW | LOAD %.0f kW | BUS %s\nE — %s generator" % [
+	return "PG-101 %s | FUEL %.1f L @ %.2f L/min | BUS %s\nGEN %.0f kW | LOAD %.0f kW — E %s generator" % [
 		"RUNNING" if starter_generator_running else "STOPPED",
-		STARTER_GENERATOR_CAPACITY_KW if starter_generator_running else 0.0,
-		power["demand_kw"], _mcc_bus_state_text(power),
+		generator_fuel_l, current_generator_fuel_use_lpm(), _mcc_bus_state_text(power),
+		STARTER_GENERATOR_CAPACITY_KW if starter_generator_running else 0.0, power["demand_kw"],
 		"stop" if starter_generator_running else "start",
 	]
 
@@ -3259,10 +3525,13 @@ func mcc_context_prompt() -> String:
 
 func power_overview_text() -> String:
 	var power := power_status()
-	return "POWER\nPG-101: %s | PU-101: %s\nGeneration: %.0f kW | Load: %.0f kW | Reserve: %.0f kW\nMCC-101: %s — %s" % [
+	return "UTILITIES\nPOWER — PG-101: %s | PU-101: %s\nGeneration: %.0f kW | Load: %.0f kW | Reserve: %.0f kW\nMCC-101: %s — %s\nFUEL: %.1f L @ %.2f L/min | INST AIR: %s | COOLING WATER: %s" % [
 		"RUNNING" if starter_generator_running else "STOPPED",
 		_power_unit_overview_text(), power["capacity_kw"], power["demand_kw"], power["reserve_kw"],
 		_mcc_bus_state_text(power), _mcc_status_text(power),
+		generator_fuel_l, current_generator_fuel_use_lpm(),
+		"NORMAL" if instrument_air_available() else ("TRIPPED" if instrument_air_bus.tripped else "OFF"),
+		"NORMAL" if cooling_water_available() else ("TRIPPED" if cooling_water_bus.tripped else "OFF"),
 	]
 
 
@@ -3299,6 +3568,8 @@ func _power_unit_overview_text() -> String:
 
 func _toggle_power_unit(unit_id: String) -> Dictionary:
 	var unit: Dictionary = equipment[unit_id]
+	if not unit["running"] and generator_fuel_l <= 0.001:
+		return _result(false, "%s START BLOCKED — GF-101 has no diesel fuel." % unit["name"])
 	unit["running"] = not unit["running"]
 	if not unit["running"]:
 		var was_tripped: bool = bool(electrical_bus.tripped)
@@ -3314,6 +3585,8 @@ func _toggle_power_unit(unit_id: String) -> Dictionary:
 
 
 func _electrical_generation_capacity_kw() -> float:
+	if generator_fuel_l <= 0.001:
+		return 0.0
 	var capacity := STARTER_GENERATOR_CAPACITY_KW if starter_generator_running else 0.0
 	for state in equipment.values():
 		if state["type"] == "power_unit" and state.get("running", false):
@@ -3331,6 +3604,10 @@ func _running_power_unit_count() -> int:
 
 func _active_electrical_consumers() -> Array[Dictionary]:
 	var consumers: Array[Dictionary] = []
+	if instrument_air_compressor_running:
+		consumers.append({"id": "instrument_air", "name": "IA-101", "demand_kw": utility_power_demand_kw("instrument_air")})
+	if cooling_water_pump_running:
+		consumers.append({"id": "cooling_water", "name": "CWP-101", "demand_kw": utility_power_demand_kw("cooling_water")})
 	for unit_id in equipment:
 		var state: Dictionary = equipment[unit_id]
 		var active: bool = (
@@ -3394,6 +3671,10 @@ func _trip_electrical_bus(trip_id: String, demand: float, capacity: float) -> vo
 
 
 func _stop_powered_equipment() -> void:
+	if instrument_air_compressor_running:
+		_lose_instrument_air()
+	if cooling_water_pump_running:
+		_lose_cooling_water()
 	for state in equipment.values():
 		if state["type"] == "pump":
 			state["running"] = false

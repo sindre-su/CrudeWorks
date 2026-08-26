@@ -1,5 +1,39 @@
 # CrudeWorks Development Log
 
+## v0.28.0 — Utilities Expansion
+
+- Turned the fixed Utilities Yard into a functional dependency chain:
+  Diesel → GF-101 → PG/PU generation → MCC-101 → IA-101/CWP-101 → CDU.
+- Added one canonical 100 L generator day tank with 40 L starter fuel and
+  bounded 25 L refills from real stored diesel. Refills reduce saleable tank
+  inventory atomically; generators consume deterministic idle- and load-based
+  fuel and stop visibly on exhaustion.
+- Added canonical catalog fuel tunables to PG-101/PU-101. A blackout never
+  requires an electric transfer pump, so stored diesel remains a valid recovery
+  path without an electricity↔generator deadlock.
+- Added fixed IA-101 (15 kW), CT-101 and CWP-101 (20 kW) using the existing
+  `UtilityDistribution` trip/recovery lifecycle and canonical MCC load sum.
+- Marked manual V-201 valves as independent of Instrument Air. TIC-201's
+  automated heater/fuel actuator is metadata-driven `fail_closed`; IA loss
+  removes heat demand/output, stops atmospheric flow and leaves manual valve
+  position untouched.
+- Made Cooling Water a CDU condensation permissive. CWP loss stops atmospheric
+  flow, shows `NO COOLING WATER`, raises the existing alarm layer and requires
+  deliberate utility/process restart without adding exchanger thermodynamics.
+- Extended field prompts/statuses, PG fuel feedback, MCC active loads and the
+  compact LS-201 block with fuel, Instrument Air and Cooling Water state.
+  Root electrical loss suppresses redundant downstream utility alarms.
+- Persisted only canonical fuel, utility machine and trip states; derived fuel
+  rate, demand and visual strings are rebuilt. v0.27.x saves receive 40 L and
+  safe inferred IA/CW state based on their previous generator state.
+- Preserved early progression and prices. Fixed utilities cost 0, starter fuel
+  supports commissioning, the first Standard delivery remains free, and one
+  normal/Sour CDU train fits the 100 kW PG while expansion makes PU-101 useful.
+- Added comprehensive fuel, IA, CW, cross-utility, failure/recovery, save-schema,
+  legacy and Main-world regression coverage. Existing VDU/FCC implementation
+  was left unchanged; Steam, boilers, Fuel Gas and utility piping/cabling remain
+  out of scope.
+
 ## v0.27.3 — Gameplay Integrity & Dispatch Cleanup
 
 - Kept tank liquid visuals derived from canonical stored volume and synchronised

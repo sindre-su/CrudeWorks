@@ -84,9 +84,19 @@ func _run_test() -> void:
 	_expect("NO POWER" in main.built_refinery_model.interaction_prompt(pump.unit_id) and "start PG-101" in main.built_refinery_model.interaction_prompt(pump.unit_id), "focused unpowered pump exposes its recovery action before a repeated failed start")
 	main._on_unit_interacted("area02_generator")
 	main._update_unit_statuses()
-	_expect(main.built_refinery_model.starter_generator_running and "BUS ENERGIZED" in main.units["area02_generator"].status_label.text and "NORMAL" in main.units["area02_mcc"].status_label.text and "RESERVE" in main.units["area02_mcc"].status_label.text, "physical PG-101 and MCC-101 world labels expose bus state and reserve before process startup")
+	_expect(main.built_refinery_model.starter_generator_running and "FUEL" in main.units["area02_generator"].status_label.text and "NORMAL" in main.units["area02_mcc"].status_label.text and "RESERVE" in main.units["area02_mcc"].status_label.text, "physical PG-101 and MCC-101 world labels expose fuel, bus state and reserve before process startup")
 	main._on_unit_interacted("area02_mcc")
 	_expect("MCC-101 — BUS ENERGIZED" in main.notification_label.text and "Reserve" in main.notification_label.text, "MCC inspection uses the temporary feedback band for a concise load diagnosis")
+	main._on_unit_interacted("instrument_air")
+	main._on_unit_interacted("cooling_water")
+	main._update_unit_statuses()
+	_expect(
+		main.built_refinery_model.instrument_air_available()
+		and main.built_refinery_model.cooling_water_available()
+		and "NORMAL" in main.units["instrument_air"].status_label.text
+		and "NORMAL" in main.units["cooling_water"].status_label.text,
+		"physical IA-101 and CWP-101 complete the utility startup before CDU operation"
+	)
 	main.built_refinery_model.interact(heater.unit_id)
 	main.built_refinery_model.interact(heater.unit_id)
 	main.built_refinery_model.tick(10.0)
@@ -241,6 +251,8 @@ func _test_heavy_contract_through_main() -> void:
 	main.built_refinery_model.commissioning_batch_available = false
 	main.built_refinery_model.commissioning_contract_complete = true
 	main._on_unit_interacted("area02_generator")
+	main._on_unit_interacted("instrument_air")
+	main._on_unit_interacted("cooling_water")
 	var source = _unit(main, "built_tank_1")
 	var heavy_load: Dictionary = main.built_refinery_model.load_crude_batch(source.unit_id, true, "heavy")
 	main.process_model.purchase(int(heavy_load.get("charge", 0)))
@@ -349,6 +361,8 @@ func _test_offspec_lab_through_main() -> void:
 	main.built_refinery_model.commissioning_batch_available = false
 	main.built_refinery_model.commissioning_contract_complete = true
 	main._on_unit_interacted("area02_generator")
+	main._on_unit_interacted("instrument_air")
+	main._on_unit_interacted("cooling_water")
 	var load: Dictionary = main.built_refinery_model.load_crude_batch("built_tank_1", true, "heavy")
 	main.process_model.purchase(load["charge"])
 	main.built_refinery_model.equipment["built_heater_4"]["temperature_c"] = 200.0

@@ -2,12 +2,15 @@
 
 ## Current baseline
 
-Version 0.27.1 has a tested pilot plant and a substantial Area 02 refinery
+Version 0.28.0 has a tested pilot plant and a substantial Area 02 refinery
 slice: free building, directed process networks, multiple independent trains,
 shared-feed/product routing, Standard/Heavy/Sour crude, diesel treatment,
 quality/LAB dispatch, VDU-301, FCC-401, electrical capacity, controls, alarms,
 pump condition/filter repair, economy, validated save/load and functional
-PG-101 → MCC-101 electrical gameplay with load, overload trip and recovery.
+PG-101 → MCC-101 electrical gameplay with load, overload trip and recovery,
+plus a functional Utilities Yard. Diesel feeds one canonical GF-101 day tank;
+PG/PU generation consumes it deterministically. MCC power starts IA-101 and
+CWP-101, whose Instrument Air and Cooling Water supplies interlock the CDU.
 
 The core conclusion is deliberate: **process depth is no longer the primary
 bottleneck.** Further process-unit expansion is lower priority until existing
@@ -19,15 +22,16 @@ running sales pump before it can invoke the existing dispatch transaction.
 
 ## Current priority
 
-**Hands-on 1280 × 720 usability and game-feel pass.** Validate port aiming,
+**Hands-on 1280 × 720 utility/startup usability and game-feel pass.** Validate port aiming,
 pipe/valve readability, equipment interaction, alarms, tank levels, LAB-101,
 LS-201, power feedback, VDU/FCC placement and pump-condition pacing in the
 running game. Headless tests protect logic; they cannot replace human play.
 
-Power is now mechanically meaningful and has a focused UX pass in automated
-coverage: PG-101/MCC-101 field labels, contextual start-block copy, trip
-diagnosis, reset guidance and LS-201 source/load overview. Human QA must still
-verify these at walking distance in a live 1280 × 720 playthrough.
+Utilities are now mechanically meaningful and have focused automated coverage:
+PG/GF/MCC/IA/CT/CWP field state, contextual interlocks, fail-safe behavior,
+trip diagnosis, recovery and LS-201 overview. Human QA must still verify yard
+discoverability, the full blackout-recovery sequence and local readability at
+walking distance in a live 1280 × 720 playthrough.
 
 The first-hour flow now starts with state-based Pilot objectives, then asks the
 player to receive the free first Standard delivery at CI-101, build its
@@ -46,10 +50,13 @@ it instead of using XP.
 | Standard gross output | ~5,000 kr | 300 L Naphtha, 350 L Diesel, 350 L Heavy Residue at target |
 | HT-201 / PU-101 / VDU-301 / FCC-401 | 800 / 700 / 1,200 / 2,200 kr | Reachable after a successful first physical delivery; exact feel still needs human QA |
 
-No economy or power-demand values changed in v0.27.1: the v0.27 values keep a
-35 kW first atmospheric train (45 kW with LAB/LS) comfortably inside PG-101's
-100 kW capacity, while PU-101 doubles available generation to 200 kW. The fixed
-PG-101/MCC-101 preserve the starter line budget, while the initial free delivery and full refund
+v0.28 keeps the existing equipment prices and adds the fixed Utilities Yard at
+no purchase cost. IA-101 and CWP-101 add 35 kW, so one first atmospheric train
+uses 70 kW before commissioning, 80 kW with LAB/LS, and 100 kW with Sour
+treatment. PU-101 still doubles generation to 200 kW for concurrent trains and
+secondary processing. GF-101 starts with 40 L and accepts 25 L transfers from
+real saleable diesel; no money or duplicate inventory is created. The fixed
+yard preserves the starter line budget, while the initial free delivery and full refund
 of placed equipment already avoid an obvious early financial soft-lock. The
 next playtest should verify that the three required pumps are legible at
 1280×720 and that this provisional pace feels satisfying.
@@ -136,7 +143,7 @@ that bottleneck and preserves both short-session usefulness and long-form value.
 ## Deferred work
 
 - Human playtesting at 1280 × 720, including expanded Area 02 layout.
-- Economy/load balancing for multi-train, PU-101, VDU/FCC, electricity and maintenance.
+- Economy/load balancing for multi-train, PU-101, VDU/FCC, fuel consumption and maintenance.
 - Larger storage/manifolds, advanced automation, pressure/energy systems,
   logistics and additional process families only after a demonstrated gameplay
   need.

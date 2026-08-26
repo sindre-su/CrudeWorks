@@ -41,6 +41,7 @@ static func definition(equipment_type: String) -> Dictionary:
 				"has_input": true,
 				"has_output": true,
 				"power_demand_kw": 0.0,
+				"instrument_air_required": false,
 			}
 		"heater":
 			return {
@@ -53,6 +54,8 @@ static func definition(equipment_type: String) -> Dictionary:
 				"has_input": true,
 				"has_output": true,
 				"power_demand_kw": 10.0,
+				"instrument_air_required": true,
+				"fail_action": "fail_closed",
 			}
 		"column":
 			return {
@@ -65,6 +68,7 @@ static func definition(equipment_type: String) -> Dictionary:
 				"has_input": true,
 				"has_output": true,
 				"power_demand_kw": 0.0,
+				"cooling_water_required": true,
 			}
 		"treatment":
 			return {
@@ -126,6 +130,41 @@ static func definition(equipment_type: String) -> Dictionary:
 				"has_output": false,
 				"power_demand_kw": 0.0,
 				"generation_capacity_kw": 100.0,
+				"fuel_use_l_per_kwh": 0.5,
+				"idle_fuel_use_lpm": 0.1,
+			}
+		"starter_generator":
+			return {
+				"name": "Primary Generator",
+				"tag": "PG-101",
+				"power_demand_kw": 0.0,
+				"generation_capacity_kw": 100.0,
+				"fuel_use_l_per_kwh": 0.5,
+				"idle_fuel_use_lpm": 0.1,
+			}
+		"generator_fuel_tank":
+			return {
+				"name": "Generator Fuel Day Tank",
+				"tag": "GF-101",
+				"power_demand_kw": 0.0,
+			}
+		"instrument_air_compressor":
+			return {
+				"name": "Instrument Air Compressor",
+				"tag": "IA-101",
+				"power_demand_kw": 15.0,
+			}
+		"cooling_tower":
+			return {
+				"name": "Cooling Tower",
+				"tag": "CT-101",
+				"power_demand_kw": 0.0,
+			}
+		"cooling_water_pump":
+			return {
+				"name": "Cooling Water Pump",
+				"tag": "CWP-101",
+				"power_demand_kw": 20.0,
 			}
 		"catalytic_cracking":
 			return {

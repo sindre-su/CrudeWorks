@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.27.3 – Gameplay integrity & dispatch cleanup**
+**Prototypeversjon: 0.28.0 – Utilities Expansion**
 
 En liten 3D-prototype der spilleren driver et forenklet pilotraffineri. Første mål
 er å behandle 1 000 liter råolje og selge minst 200 liter diesel med 90 % eller
@@ -66,6 +66,17 @@ Den første komplette «vertical slice»-en inneholder:
 - kontekstuell strømfeedback: PG-101 viser generasjon, last og busstilstand;
   MCC-101 viser energisert/trippet buss, reserve og aktive laster; LS-201 viser
   PG/PU-status, generasjon, last, reserve og MCC-status uten et nytt panel
+- fysisk Utilities Yard med `GF-101` dieseldagtank, `IA-101`
+  instrumentluftkompressor, `CT-101` kjøletårn og `CWP-101` kjølevannspumpe
+- deterministisk generatorforbruk basert på tomgang og elektrisk last; samme
+  dieselbeholdning kan beholdes som strømbrensel eller sendes fra PD-101 for salg
+- kanonisk dagtankoverføring som trekker inntil 25 L fra lagret diesel uten å
+  duplisere produkt, og 40 L startbrensel som hindrer tidlig blackout-softlock
+- instrumentluft og kjølevann som reelle 15/20 kW MCC-laster: TIC-201 sitt
+  pneumatiske aktuatorsignal feiler stengt ved lufttap, mens manuelle ventiler
+  beholder stillingen; CDU-produksjon blokkeres uten aktiv kjølevannssirkulasjon
+- utility-alarmer, lokale statuser og en kompakt LS-201-oversikt som viser
+  drivstoff, Instrument Air og Cooling Water sammen med eksisterende kraftdata
 - midlertidige CI-101- og PD-101-markører som gjør første fysiske inntak og
   dispatch enklere å finne uten å legge til et waypoint-system
 - byggemodus prioriterer eksplisitte prosessporter foran maskinkroppen når
@@ -106,7 +117,8 @@ neste oppstart kan spilleren velge `Enter` for å fortsette eller `N` for nytt
 spill. Nytt spill må bekreftes og den gamle filen arkiveres før den erstattes.
 
 Bygninger, rotasjon, rør, tankinnhold, temperatur, valgt pumpeflow, kvalitet,
-penger, progresjon, generatorstatus og MCC-trip gjenopprettes. Pumper og faktisk
+penger, progresjon, generatorbrensel, generatorstatus, MCC-trip og kanonisk
+IA/CW-maskin- og tripstatus gjenopprettes. Pumper og faktisk
 flow stoppes alltid ved lasting, slik at ingen prosess starter uten en bevisst
 handling. Elektriske lastsummer beregnes på nytt fra kanonisk utstyrstilstand.
 En siste kjent god backup beholdes, og
@@ -123,7 +135,7 @@ batch som Standard-råolje uten å gi en ny batch eller bonus.
 | Shift | Løp |
 | Space | Hopp |
 | Ctrl eller C | Hold inne for å huke |
-| E | Bruk eller inspiser utstyr; start/stopp generator og reset MCC ved behov |
+| E | Bruk eller inspiser utstyr; fyll GF-101, start/stopp generator og utilities, eller reset MCC |
 | Q | Område 02: endre flowmål på pumpen du ser på |
 | F | Område 02: undersøk eller rens en pumpe med driftsavvik |
 | R | Pilot: ny batch. Område 02: trykk to ganger for sikker produkttømming |
@@ -187,17 +199,23 @@ direkte i 3D. Pumpens rotor og ventilhåndtak beveger seg når utstyret brukes.
    en konkret valideringsmelding. Feil rør kan fjernes med `G`.
 5. Trykk `B` for å avslutte bygging, motta råolje ved CI-101 og bygg fysisk
    inntak til kildetanken.
-6. Prøv pumpen med PG-101 av. Den forklarer `START BLOCKED — NO POWER`; start
-   deretter PG-101 og kontroller `BUS ENERGIZED`, last og reserve ved MCC-101.
-7. Sett varmeenheten til 200 °C, vent til den er varm, og start pumpen. Ventilen
+6. Prøv pumpen med PG-101 av. Den forklarer `START BLOCKED — NO POWER`; kontroller
+   brensel i GF-101, start PG-101 og les last/reserve ved MCC-101.
+7. Start IA-101 og CWP-101. De legger henholdsvis 15 og 20 kW til MCC-lasten.
+   Deretter kan varmeenheten settes til 200 °C og prosesspumpen startes. Ventilen
    er stengt som standard, så pumpen gir `LOW FLOW` til spilleren finner og
    åpner ventilen.
-8. Hvis MCC-101 tripper, les tripplast og årsak ved MCC-101. Reduser lasten
+8. Hvis IA-101 stopper, feiler TIC-201-aktuatoren stengt uten å flytte den
+   manuelle ventilen. Hvis CWP-101 stopper, blokkeres CDU-kondensering. Begge
+   krever bevisst utility- og prosessomstart.
+9. Hvis MCC-101 tripper, les tripplast og årsak ved MCC-101. Reduser lasten
    eller start ekstra PU-101-generasjon, reset MCC-101 og start prosessutstyret
    bevisst igjen.
-9. En subsidiert oppstartsbatch kan prøves igjen uten kostnad fram til første
+10. En subsidiert oppstartsbatch kan prøves igjen uten kostnad fram til første
    godkjente levering dersom produktet blir off-spec og tømmes sikkert.
-10. Følg væskenivå, flow og kvalitet. Ventilen kan stenge eller gjenopprette flow
+11. Følg væskenivå, flow og kvalitet. Behold noe diesel og fyll GF-101, eller
+   send produktet via PD-101; dette er nå en faktisk driftsøkonomisk avveiing.
+   Ventilen kan stenge eller gjenopprette flow
    uten at væske skapes eller forsvinner. Stopp pumpen, ta dieselprøve ved tanken,
    analyser den ved `LAB-101`, og bruk produkttank → salgspumpe → PD-101 for fysisk
    dispatch. Salget sender produktbatchen ut og viser en batchrapport med

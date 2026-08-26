@@ -198,6 +198,8 @@ func _create_partial_paid_refinery():
 	_place_full_refinery(main)
 	_connect_full_refinery(main)
 	main._on_unit_interacted("area02_generator")
+	main._on_unit_interacted("instrument_air")
+	main._on_unit_interacted("cooling_water")
 	main.built_refinery_model.commissioning_batch_available = false
 	var source = main.build_controller.registered_unit_by_id("built_tank_1")
 	var heater = main.build_controller.registered_unit_by_id("built_heater_4")
@@ -287,6 +289,16 @@ func _test_schema_validation(snapshot: Dictionary, live_main) -> void:
 	invalid_utility["built_refinery"]["utility_state"]["electricity"]["tripped"] = true
 	invalid_utility["built_refinery"]["utility_state"]["electricity"]["trip_id"] = "random_failure"
 	_expect(not SaveSystemScript.validate_snapshot(invalid_utility)["ok"], "unknown electrical trip state is rejected before live state mutates")
+	var invalid_fuel := snapshot.duplicate(true)
+	invalid_fuel["built_refinery"]["utility_state"]["generator_fuel_l"] = 101.0
+	_expect(not SaveSystemScript.validate_snapshot(invalid_fuel)["ok"], "fuel above GF-101 capacity is rejected before live state mutates")
+	var invalid_air := snapshot.duplicate(true)
+	invalid_air["built_refinery"]["utility_state"]["instrument_air"]["tripped"] = true
+	invalid_air["built_refinery"]["utility_state"]["instrument_air"]["trip_id"] = ""
+	_expect(not SaveSystemScript.validate_snapshot(invalid_air)["ok"], "inconsistent instrument-air trip state is rejected")
+	var invalid_cooling := snapshot.duplicate(true)
+	invalid_cooling["built_refinery"]["utility_state"]["cooling_water_pump_running"] = "yes"
+	_expect(not SaveSystemScript.validate_snapshot(invalid_cooling)["ok"], "non-boolean cooling-water machine state is rejected")
 	var mismatched_intent := snapshot.duplicate(true)
 	mismatched_intent["built_refinery"]["equipment"]["built_tank_1"]["material_intent"] = "diesel"
 	_expect(not SaveSystemScript.validate_snapshot(mismatched_intent)["ok"], "saved material intent cannot conflict with non-empty actual tank contents")
@@ -374,6 +386,8 @@ func _test_area02_autosave_stress() -> void:
 	_place_full_refinery(main)
 	_connect_full_refinery(main)
 	main._on_unit_interacted("area02_generator")
+	main._on_unit_interacted("instrument_air")
+	main._on_unit_interacted("cooling_water")
 	main.save_path = AUTOSAVE_STRESS_PATH
 	main.persistence_enabled = true
 	main.persistence_ready = true

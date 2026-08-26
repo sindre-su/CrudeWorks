@@ -371,6 +371,30 @@ func _build_site_logistics() -> void:
 		Vector3(2.4, 2.7, 1.8), Color("394d59")
 	)
 	units[mcc.unit_id] = mcc
+	var fuel_tank = _create_cylinder_unit(
+		"generator_fuel", "GF-101 DIESEL DAY TANK", Vector3(-19.5, 1.5, 19.0),
+		1.15, 3.0, Color("8a7134")
+	)
+	units[fuel_tank.unit_id] = fuel_tank
+	fuel_tank.make_transparent(0.72)
+	fuel_tank.create_alarm_beacon(Vector3(0.0, 1.72, 0.0))
+	var instrument_air = _create_box_unit(
+		"instrument_air", "IA-101 INSTRUMENT AIR", Vector3(-16.0, 1.1, 19.0),
+		Vector3(2.4, 2.2, 2.0), Color("47768a")
+	)
+	units[instrument_air.unit_id] = instrument_air
+	instrument_air.create_alarm_beacon(Vector3(0.0, 1.32, 0.0))
+	var cooling_tower = _create_cylinder_unit(
+		"cooling_tower", "CT-101 COOLING TOWER", Vector3(-19.5, 2.0, 24.5),
+		1.45, 4.0, Color("587d75")
+	)
+	units[cooling_tower.unit_id] = cooling_tower
+	var cooling_pump = _create_box_unit(
+		"cooling_water", "CWP-101 COOLING WATER", Vector3(-16.0, 0.85, 24.5),
+		Vector3(2.2, 1.7, 2.0), Color("356c78")
+	)
+	units[cooling_pump.unit_id] = cooling_pump
+	cooling_pump.create_alarm_beacon(Vector3(0.0, 1.07, 0.0))
 
 
 func _create_fixed_logistics_unit(equipment_type: String, position_3d: Vector3) -> void:
@@ -668,6 +692,23 @@ func _update_user_interface() -> void:
 			prompt_label.text = built_refinery_model.generator_context_prompt()
 		elif focused.unit_id == "area02_mcc":
 			prompt_label.text = built_refinery_model.mcc_context_prompt()
+		elif focused.unit_id == "generator_fuel":
+			prompt_label.text = "GF-101 %.1f / %.0f L | use %.2f L/min\nE — transfer up to %.0f L stored diesel" % [
+				built_refinery_model.generator_fuel_l, BuiltRefineryModelScript.GENERATOR_FUEL_CAPACITY_L,
+				built_refinery_model.current_generator_fuel_use_lpm(), BuiltRefineryModelScript.GENERATOR_REFUEL_BATCH_L,
+			]
+		elif focused.unit_id == "instrument_air":
+			prompt_label.text = "IA-101 %s | %.0f kW | TIC-201 FAIL CLOSED\nE — %s compressor" % [
+				"NORMAL" if built_refinery_model.instrument_air_available() else "LOST",
+				built_refinery_model.utility_power_demand_kw("instrument_air"),
+				"stop" if built_refinery_model.instrument_air_compressor_running else "start",
+			]
+		elif focused.unit_id in ["cooling_tower", "cooling_water"]:
+			prompt_label.text = "CT-101 / CWP-101 %s | %.0f kW\nE — %s cooling-water pump" % [
+				"NORMAL" if built_refinery_model.cooling_water_available() else "LOST",
+				built_refinery_model.utility_power_demand_kw("cooling_water"),
+				"stop" if built_refinery_model.cooling_water_pump_running else "start",
+			]
 		elif focused.unit_id.begins_with("built_"):
 			prompt_label.text = built_refinery_model.interaction_prompt(focused.unit_id)
 		elif focused.unit_id == "sales_terminal" and built_refinery_model.commissioning_contract_complete:
@@ -723,9 +764,13 @@ func _update_user_interface() -> void:
 func _update_unit_statuses() -> void:
 	var power: Dictionary = built_refinery_model.power_status()
 	units["area02_generator"].set_status(
-		"RUNNING | %.0f kW\nBUS ENERGIZED" % BuiltRefineryModelScript.STARTER_GENERATOR_CAPACITY_KW
+		"RUNNING | %.0f kW\nFUEL %.1f L | %.2f L/min" % [
+			BuiltRefineryModelScript.STARTER_GENERATOR_CAPACITY_KW,
+			built_refinery_model.generator_fuel_l,
+			built_refinery_model.current_generator_fuel_use_lpm(),
+		]
 		if built_refinery_model.starter_generator_running
-		else "STOPPED | 0 kW\nBUS OFFLINE"
+		else "STOPPED | 0 kW\nFUEL %.1f L" % built_refinery_model.generator_fuel_l
 	)
 	units["area02_generator"].set_active(
 		built_refinery_model.starter_generator_running, Color("f6cf63")
@@ -746,6 +791,27 @@ func _update_unit_statuses() -> void:
 		power["tripped"] or not power["bus_available"],
 		Color("ff4d4d") if power["tripped"] else Color("ffb347")
 	)
+	units["generator_fuel"].set_status("%.1f / %.0f L\nUSE %.2f L/min" % [
+		built_refinery_model.generator_fuel_l, BuiltRefineryModelScript.GENERATOR_FUEL_CAPACITY_L,
+		built_refinery_model.current_generator_fuel_use_lpm(),
+	])
+	units["generator_fuel"].set_active(built_refinery_model.generator_fuel_l <= 5.0, Color("ff6b5f"))
+	units["instrument_air"].set_status("%s | %.0f kW\nTIC-201 FAIL CLOSED" % [
+		"NORMAL" if built_refinery_model.instrument_air_available() else "LOST",
+		built_refinery_model.utility_power_demand_kw("instrument_air"),
+	])
+	units["instrument_air"].set_active(built_refinery_model.instrument_air_available(), Color("7fc8ff"))
+	units["cooling_tower"].set_status("READY\nCDU HEAT REJECTION")
+	units["cooling_tower"].set_active(built_refinery_model.cooling_water_available(), Color("75ddff"))
+	units["cooling_water"].set_status("%s | %.0f kW\nCDU COOLING" % [
+		"NORMAL" if built_refinery_model.cooling_water_available() else "LOST",
+		built_refinery_model.utility_power_demand_kw("cooling_water"),
+	])
+	units["cooling_water"].set_active(built_refinery_model.cooling_water_available(), Color("75ddff"))
+	var fixed_alarm_severities := _built_alarm_severities()
+	units["generator_fuel"].set_alarm_severity(String(fixed_alarm_severities.get("generator_fuel", "")))
+	units["instrument_air"].set_alarm_severity(String(fixed_alarm_severities.get("instrument_air", "")))
+	units["cooling_water"].set_alarm_severity(String(fixed_alarm_severities.get("cooling_water", "")))
 	units["raw_tank"].set_status("%.0f / 1000 L" % process_model.crude_volume_l)
 	units["pump"].set_status("PÅ" if process_model.pump_running else "AV")
 	units["pump"].set_active(process_model.pump_running)
@@ -989,6 +1055,12 @@ func _on_unit_interacted(unit_id: String) -> void:
 		"area02_mcc":
 			var mcc_result: Dictionary = built_refinery_model.reset_electrical_bus()
 			message = mcc_result["message"]
+		"generator_fuel":
+			message = built_refinery_model.refuel_generator_day_tank()["message"]
+		"instrument_air":
+			message = built_refinery_model.toggle_instrument_air_compressor()["message"]
+		"cooling_tower", "cooling_water":
+			message = built_refinery_model.toggle_cooling_water_pump()["message"]
 		"built_crude_intake_0":
 			_open_contract_selection(unit_id)
 			return

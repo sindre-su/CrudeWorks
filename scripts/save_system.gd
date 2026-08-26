@@ -480,7 +480,34 @@ static func _validate_utility_state(state) -> Dictionary:
 	for field in ["last_trip_demand", "last_trip_capacity"]:
 		if not _finite_number(electricity.get(field)) or float(electricity[field]) < 0.0:
 			return _result(false, "MCC-101 har ugyldig %s." % field)
+	if state.has("generator_fuel_l"):
+		if not _finite_number(state.get("generator_fuel_l")) or not _in_range(
+			state["generator_fuel_l"], 0.0, BuiltRefineryModelScript.GENERATOR_FUEL_CAPACITY_L
+		):
+			return _result(false, "GF-101 har ugyldig drivstoffnivå.")
+		for field in ["instrument_air_compressor_running", "cooling_water_pump_running"]:
+			if typeof(state.get(field)) != TYPE_BOOL:
+				return _result(false, "Utility-maskinen har ugyldig %s." % field)
+		for utility_id in ["instrument_air", "cooling_water"]:
+			var distribution_check := _validate_distribution_state(state.get(utility_id), utility_id)
+			if not distribution_check["ok"]:
+				return distribution_check
 	return _result(true, "Elektrisk utility-tilstand er gyldig.")
+
+
+static func _validate_distribution_state(state, utility_id: String) -> Dictionary:
+	if typeof(state) != TYPE_DICTIONARY:
+		return _result(false, "%s mangler gyldig distribution state." % utility_id)
+	if typeof(state.get("tripped")) != TYPE_BOOL:
+		return _result(false, "%s har ugyldig tripstatus." % utility_id)
+	if typeof(state.get("trip_id")) != TYPE_STRING or state["trip_id"] not in UtilityDistributionScript.VALID_TRIP_IDS:
+		return _result(false, "%s har ukjent tripårsak." % utility_id)
+	if bool(state["tripped"]) != (not String(state["trip_id"]).is_empty()):
+		return _result(false, "%s tripstatus og tripårsak er inkonsistente." % utility_id)
+	for field in ["last_trip_demand", "last_trip_capacity"]:
+		if not _finite_number(state.get(field)) or float(state[field]) < 0.0:
+			return _result(false, "%s har ugyldig %s." % [utility_id, field])
+	return _result(true, "%s er gyldig." % utility_id)
 
 
 static func _validate_equipment_state(state: Dictionary) -> Dictionary:

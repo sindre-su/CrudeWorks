@@ -119,5 +119,11 @@ func interaction_prompt() -> String:
 			return "E — start/stopp PG-101 generator"
 		"area02_mcc":
 			return "E — inspiser/reset MCC-101"
+		"generator_fuel":
+			return "E — fyll GF-101 fra lagret diesel"
+		"instrument_air":
+			return "E — start/stopp IA-101"
+		"cooling_tower", "cooling_water":
+			return "E — start/stopp CWP-101"
 		_:
 			return "E — inspiser %s" % display_name
