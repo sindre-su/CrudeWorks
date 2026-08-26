@@ -47,6 +47,39 @@ const GENERATOR_FUEL_CAPACITY_L := 100.0
 const STARTER_GENERATOR_FUEL_L := 40.0
 const GENERATOR_REFUEL_BATCH_L := 25.0
 const TANK_MATERIALS := ["", "crude", "light", "diesel", "heavy", "vacuum_gas_oil", "vacuum_residue", "gasoline_blendstock", "lpg", "light_cycle_oil"]
+const TANK_QUALITY_EMPTY := "empty"
+const TANK_QUALITY_NOT_APPLICABLE := "not_applicable"
+const TANK_QUALITY_UNANALYZED := "unanalyzed"
+const TANK_QUALITY_ON_SPEC := "on_spec"
+const TANK_QUALITY_OFF_SPEC := "off_spec"
+const VALID_TANK_QUALITY_STATUSES := [
+	TANK_QUALITY_EMPTY,
+	TANK_QUALITY_NOT_APPLICABLE,
+	TANK_QUALITY_UNANALYZED,
+	TANK_QUALITY_ON_SPEC,
+	TANK_QUALITY_OFF_SPEC,
+]
+const PUMP_TRIP_POWER_LOSS := "power_loss"
+const PUMP_TRIP_MCC := "mcc_trip"
+const PUMP_TRIP_INSTRUMENT_AIR := "instrument_air_loss"
+const PUMP_TRIP_COOLING_WATER := "cooling_water_loss"
+const PUMP_TRIP_TEMPERATURE := "temperature_guard"
+const PUMP_TRIP_ROUTE := "route_invalid"
+const PUMP_TRIP_PROCESS := "process_mismatch"
+const PUMP_TRIP_EQUIPMENT := "equipment_failure"
+const PUMP_TRIP_DRY_RUN := "dry_run"
+const VALID_PUMP_TRIP_REASONS := [
+	"",
+	PUMP_TRIP_POWER_LOSS,
+	PUMP_TRIP_MCC,
+	PUMP_TRIP_INSTRUMENT_AIR,
+	PUMP_TRIP_COOLING_WATER,
+	PUMP_TRIP_TEMPERATURE,
+	PUMP_TRIP_ROUTE,
+	PUMP_TRIP_PROCESS,
+	PUMP_TRIP_EQUIPMENT,
+	PUMP_TRIP_DRY_RUN,
+]
 
 var network
 var equipment: Dictionary = {}
@@ -96,13 +129,13 @@ func save_state() -> Dictionary:
 		var saved_state := {"type": state["type"]}
 		match state["type"]:
 			"tank":
-				for field in ["volume_l", "contents", "material_intent", "temperature_c", "quality_percent", "sulfur_ppm", "crude_cost_per_l", "contract_id", "contract_bonus_available", "report_crude_processed_l", "report_temperature_total", "report_flow_total", "report_crude_cost"]:
+				for field in ["volume_l", "contents", "material_intent", "temperature_c", "quality_percent", "quality_status", "sulfur_ppm", "crude_cost_per_l", "contract_id", "contract_bonus_available", "report_crude_processed_l", "report_temperature_total", "report_flow_total", "report_crude_cost"]:
 					saved_state[field] = state[field]
 			"valve":
 				saved_state["open"] = state["open"]
 			"pump":
 				saved_state["flow_setpoint_lps"] = state["flow_setpoint_lps"]
-				for field in ["condition_percent", "fault_id", "fault_inspected", "fault_triggered", "processed_since_service_l"]:
+				for field in ["condition_percent", "fault_id", "fault_inspected", "fault_triggered", "processed_since_service_l", "trip_reason"]:
 					saved_state[field] = state[field]
 			"heater":
 				saved_state["setpoint_c"] = state["setpoint_c"]
@@ -207,6 +240,9 @@ func apply_saved_state(state: Dictionary) -> void:
 			"tank":
 				for field in ["volume_l", "contents", "temperature_c", "quality_percent", "sulfur_ppm", "crude_cost_per_l", "contract_id", "contract_bonus_available", "report_crude_processed_l", "report_temperature_total", "report_flow_total", "report_crude_cost"]:
 					target[field] = saved.get(field, 0.0 if field == "sulfur_ppm" else target[field])
+				target["quality_status"] = String(saved.get(
+					"quality_status", _legacy_tank_quality_status(saved)
+				))
 				var restored_intent := _saved_tank_material_intent(saved)
 				# A freshly rebuilt VDU outlet can infer its typed empty tank from the
 				# restored connection. Preserve that physical intent when older/newer
@@ -218,6 +254,7 @@ func apply_saved_state(state: Dictionary) -> void:
 			"pump":
 				target["running"] = false
 				target["actual_flow_lps"] = 0.0
+				target["trip_reason"] = String(saved.get("trip_reason", ""))
 				target["flow_setpoint_lps"] = float(saved.get(
 					"flow_setpoint_lps",
 					PUMP_CAPACITY_LPS
@@ -249,6 +286,7 @@ func apply_saved_state(state: Dictionary) -> void:
 				# that behavior when their older save state has no running switch.
 				target["running"] = bool(saved.get("running", not has_utility_state))
 	_infer_legacy_progression()
+	_clear_contract_if_empty()
 	actual_flow_lps = 0.0
 	_remote_guard_pump_id = ""
 	_remote_guard_trip_message = ""
@@ -275,6 +313,7 @@ func register_unit(unit_id: String, equipment_type: String, display_name := "", 
 				"material_intent": intended_material,
 				"temperature_c": AMBIENT_TEMPERATURE_C,
 				"quality_percent": 0.0,
+				"quality_status": TANK_QUALITY_EMPTY,
 				"sulfur_ppm": 0.0,
 				"crude_cost_per_l": 0.0,
 				"contract_id": "",
@@ -287,6 +326,7 @@ func register_unit(unit_id: String, equipment_type: String, display_name := "", 
 		"pump":
 			state.merge({
 				"running": false,
+				"trip_reason": "",
 				"max_flow_lps": PUMP_MAX_FLOW_LPS,
 				"flow_setpoint_lps": PUMP_CAPACITY_LPS,
 				"actual_flow_lps": 0.0,
@@ -371,8 +411,7 @@ func _on_topology_changed() -> void:
 	for unit_id in equipment:
 		var state: Dictionary = equipment[unit_id]
 		if state["type"] == "pump" and state["running"] and not valid_pumps.has(unit_id):
-			state["running"] = false
-			state["actual_flow_lps"] = 0.0
+			_trip_pump(state, PUMP_TRIP_ROUTE, "PROCESS ROUTE LOST — pump tripped safely.")
 	actual_flow_lps = 0.0
 	_remote_guard_trip_message = ""
 	_diesel_sample = {}
@@ -764,7 +803,9 @@ func discard_products(confirmed := false) -> Dictionary:
 			continue
 		state["volume_l"] = 0.0
 		state["contents"] = "empty"
+		state["temperature_c"] = AMBIENT_TEMPERATURE_C
 		state["quality_percent"] = 0.0
+		state["quality_status"] = TANK_QUALITY_EMPTY
 		state["sulfur_ppm"] = 0.0
 	_stop_all_pumps()
 	product_inventory_revision += 1
@@ -849,6 +890,14 @@ func _saved_tank_material_intent(saved: Dictionary) -> String:
 	return intent
 
 
+func _legacy_tank_quality_status(saved: Dictionary) -> String:
+	if float(saved.get("volume_l", 0.0)) <= 0.001 or String(saved.get("contents", "empty")) == "empty":
+		return TANK_QUALITY_EMPTY
+	if String(saved.get("contents", "")) == "diesel":
+		return TANK_QUALITY_UNANALYZED
+	return TANK_QUALITY_NOT_APPLICABLE
+
+
 func _tank_accepts_material(tank: Dictionary, material: String) -> bool:
 	if not TANK_MATERIALS.has(material):
 		return false
@@ -868,6 +917,9 @@ func _commit_tank_material(tank_id: String, material: String, volume_l: float, t
 	tank["volume_l"] += volume_l
 	tank["contents"] = material
 	tank["temperature_c"] = temperature_c
+	tank["quality_status"] = (
+		TANK_QUALITY_UNANALYZED if material == "diesel" else TANK_QUALITY_NOT_APPLICABLE
+	)
 
 
 func load_crude_batch(
@@ -931,6 +983,7 @@ func load_crude_batch(
 		network.set_tank_intended_material(unit_id, "crude", false)
 	tank["temperature_c"] = AMBIENT_TEMPERATURE_C
 	tank["quality_percent"] = 0.0
+	tank["quality_status"] = TANK_QUALITY_NOT_APPLICABLE
 	tank["sulfur_ppm"] = 0.0
 	tank["crude_cost_per_l"] = float(charge) / BATCH_VOLUME_L
 	last_status = "1 000 L %s lastet. Varm mot ca. %.0f °C." % [
@@ -1022,22 +1075,24 @@ func _tick_intake_routes(delta: float) -> void:
 			continue
 		var available := float(pending_intake_delivery.get("volume_l", 0.0))
 		if available <= 0.001:
-			_stop_secondary_pump(pump, "CI-101 TOM — ingen råoljeleveranse er tilgjengelig.")
+			_block_pump(pump, "CI-101 PUMP RUNNING — NO FEED.")
 			continue
 		var tank: Dictionary = equipment.get(route["tank"], {})
 		var contract_id := String(pending_intake_delivery.get("contract_id", ""))
 		if tank.is_empty() or tank["type"] != "tank" or not _tank_accepts_material(tank, "crude"):
-			_stop_secondary_pump(pump, "CI-101 BLOKKERT — valgt råoljetank kan ikke ta imot leveransen.")
+			_block_pump(pump, "CI-101 PUMP RUNNING — BLOCKED: selected tank cannot receive crude.")
 			continue
 		var room := maxf(0.0, float(tank["capacity_l"]) - float(tank["volume_l"]))
 		var moved := minf(minf(available, room), _effective_pump_flow_lps(pump) * delta)
 		if moved <= 0.001:
-			_stop_secondary_pump(pump, "CI-101 BLOKKERT — råoljetanken er full.")
+			_block_pump(pump, "CI-101 PUMP RUNNING — BLOCKED: crude tank full.")
 			continue
 		_commit_tank_material(route["tank"], "crude", moved, AMBIENT_TEMPERATURE_C)
 		tank["contract_id"] = contract_id
 		tank["contract_bonus_available"] = int(CrudeCatalog.definition(contract_id).get("delivery_bonus", 0)) > 0
 		tank["crude_cost_per_l"] = float(contract_cost(contract_id)) / BATCH_VOLUME_L
+		active_contract_id = contract_id
+		active_contract_bonus_available = bool(tank["contract_bonus_available"])
 		pending_intake_delivery["volume_l"] = available - moved
 		pump["actual_flow_lps"] = moved / delta
 		actual_flow_lps = maxf(actual_flow_lps, pump["actual_flow_lps"])
@@ -1045,8 +1100,7 @@ func _tick_intake_routes(delta: float) -> void:
 		_update_pump_fault_progress(pump, moved)
 		if float(pending_intake_delivery["volume_l"]) <= 0.001:
 			pending_intake_delivery = {"contract_id": "", "volume_l": 0.0}
-			pump["running"] = false
-			last_status = "CI-101-leveransen er pumpet til %s." % tank["name"]
+			last_status = "CI-101-leveransen er pumpet til %s. P-101A RUNNING — NO FEED." % tank["name"]
 
 
 func _tick_dispatch_routes() -> void:
@@ -1056,7 +1110,7 @@ func _tick_dispatch_routes() -> void:
 			continue
 		var tank: Dictionary = equipment.get(route["tank"], {})
 		if tank.is_empty() or String(tank.get("contents", "")) != String(route["product_port"]) or float(tank.get("volume_l", 0.0)) <= 0.001:
-			_stop_secondary_pump(pump, "PD-101 VENTER — den valgte produkttanken er tom.")
+			_block_pump(pump, "PD-101 PUMP RUNNING — NO FEED.")
 			continue
 		pump["actual_flow_lps"] = _effective_pump_flow_lps(pump)
 		actual_flow_lps = maxf(actual_flow_lps, pump["actual_flow_lps"])
@@ -1086,14 +1140,10 @@ func _tick_atmospheric_route(route: Dictionary, delta: float) -> void:
 	var heater: Dictionary = equipment[route["heater"]]
 	var treatment: Dictionary = equipment[route["treatment"]] if not String(route.get("treatment", "")).is_empty() else {}
 	if pump["running"] and not instrument_air_available():
-		pump["running"] = false
-		pump["actual_flow_lps"] = 0.0
-		last_status = "INSTRUMENT AIR LOST — TIC-201 FAIL CLOSED. Restart IA-101, heat and process deliberately."
+		_trip_pump(pump, PUMP_TRIP_INSTRUMENT_AIR, "INSTRUMENT AIR LOST — TIC-201 FAIL CLOSED. Restart IA-101, heat and process deliberately.")
 		return
 	if pump["running"] and not cooling_water_available():
-		pump["running"] = false
-		pump["actual_flow_lps"] = 0.0
-		last_status = "COOLING WATER LOST — CDU condensation unavailable. Restart CWP-101 and process deliberately."
+		_trip_pump(pump, PUMP_TRIP_COOLING_WATER, "COOLING WATER LOST — CDU condensation unavailable. Restart CWP-101 and process deliberately.")
 		return
 	var contract_id := _contract_id_for_route(route)
 	var profile := _contract_for_route(route)
@@ -1108,12 +1158,10 @@ func _tick_atmospheric_route(route: Dictionary, delta: float) -> void:
 			or heater["temperature_c"] < safe_range.x
 			or heater["temperature_c"] > safe_range.y
 		):
-			pump["running"] = false
-			pump["actual_flow_lps"] = 0.0
+			_trip_pump(pump, PUMP_TRIP_TEMPERATURE, "PUMPE STOPPET AV TEMPERATURVERN — TT-201 %.0f °C." % heater["temperature_c"])
 			actual_flow_lps = 0.0
 			_remote_guard_pump_id = ""
-			_remote_guard_trip_message = "PUMPE STOPPET AV TEMPERATURVERN — TT-201 %.0f °C." % heater["temperature_c"]
-			last_status = _remote_guard_trip_message
+			_remote_guard_trip_message = last_status
 			return
 	if not pump["running"]:
 		if source["volume_l"] <= 0.001 or source["contents"] != "crude":
@@ -1139,14 +1187,15 @@ func _tick_atmospheric_route(route: Dictionary, delta: float) -> void:
 		else:
 			last_status = "Temperaturen er klar. Trykk E på pumpen for å starte flow."
 		return
-	if source["volume_l"] <= 0.001 or source["contents"] != "crude":
-		pump["running"] = false
+	if source["volume_l"] <= 0.001:
+		_trip_pump(pump, PUMP_TRIP_DRY_RUN, "%s TRIPPED — DRY RUN / NO FEED." % pump["name"])
 		_remote_guard_pump_id = ""
-		last_status = "LOW FLOW — råoljetanken er tom."
+		return
+	if source["contents"] != "crude":
+		_trip_pump(pump, PUMP_TRIP_PROCESS, "%s TRIPPED — source material mismatch." % pump["name"])
 		return
 	if not CrudeCatalog.is_valid(contract_id):
-		pump["running"] = false
-		last_status = "Produksjonen er stoppet: råoljens batchdata er ugyldige."
+		_trip_pump(pump, PUMP_TRIP_PROCESS, "Produksjonen er stoppet: råoljens batchdata er ugyldige.")
 		return
 	if not valve["open"]:
 		last_status = "Kontroller utstyret mellom pumpen og varmeenheten."
@@ -1194,13 +1243,15 @@ func _tick_atmospheric_route(route: Dictionary, delta: float) -> void:
 	if source["volume_l"] <= 0.001:
 		source["volume_l"] = 0.0
 		source["contents"] = "empty"
-		pump["running"] = false
-		pump["actual_flow_lps"] = 0.0
+		source["temperature_c"] = AMBIENT_TEMPERATURE_C
+		source["quality_status"] = TANK_QUALITY_EMPTY
+		if not condition_failed_now:
+			_trip_pump(pump, PUMP_TRIP_DRY_RUN, "%s TRIPPED — DRY RUN after batch completion." % pump["name"])
 		_remote_guard_pump_id = ""
 		last_status = (
 			"PUMP MAINTENANCE REQUIRED — %s må vedlikeholdes." % pump["name"]
 			if condition_failed_now
-			else "Batch ferdig. Ta dieselprøve ved tanken, analyser ved LAB-101 og send fra PD-101."
+			else "Batch ferdig. P-201 TRIPPED — DRY RUN; klar for prøvetaking."
 		)
 
 
@@ -1212,24 +1263,27 @@ func _tick_vacuum_route(route: Dictionary, delta: float) -> void:
 	if not pump["running"]:
 		return
 	if not equipment.has(route["source"]) or not equipment.has(route["vdu"]):
-		_stop_secondary_pump(pump, "VDU FLOW STOPPET — prosessruten er ikke lenger komplett.")
+		_trip_pump(pump, PUMP_TRIP_ROUTE, "VDU TRIPPED — process route is no longer complete.")
 		return
 	var source: Dictionary = equipment[route["source"]]
-	if source["contents"] != "heavy" or source["volume_l"] <= 0.001:
-		_stop_secondary_pump(pump, "VDU FLOW STOPPET — Heavy Residue-tanken er tom eller har feil innhold.")
+	if source["volume_l"] <= 0.001:
+		_block_pump(pump, "VDU PUMP RUNNING — NO FEED.")
+		return
+	if source["contents"] != "heavy":
+		_trip_pump(pump, PUMP_TRIP_PROCESS, "VDU TRIPPED — source material mismatch.")
 		return
 	var outputs: Dictionary = route["outputs"]
 	var vgo: Dictionary = equipment[outputs["vacuum_gas_oil"]]
 	var residue: Dictionary = equipment[outputs["vacuum_residue"]]
 	if not _tank_accepts_material(vgo, "vacuum_gas_oil") or not _tank_accepts_material(residue, "vacuum_residue"):
-		_stop_secondary_pump(pump, "VDU FLOW STOPPET — en vakuumprodukttank har feil innhold eller materialintensjon.")
+		_trip_pump(pump, PUMP_TRIP_PROCESS, "VDU TRIPPED — output material mismatch.")
 		return
 	var requested_feed := minf(source["volume_l"], _effective_pump_flow_lps(pump) * maxf(delta, 0.0))
 	var vgo_capacity_feed := maxf(0.0, vgo["capacity_l"] - vgo["volume_l"]) / VACUUM_GAS_OIL_YIELD
 	var residue_capacity_feed := maxf(0.0, residue["capacity_l"] - residue["volume_l"]) / VACUUM_RESIDUE_YIELD
 	var processed_feed := minf(requested_feed, minf(vgo_capacity_feed, residue_capacity_feed))
 	if processed_feed <= 0.0001:
-		_stop_secondary_pump(pump, "VDU FLOW STOPPET — VGO- eller Vacuum Residue-tanken er full.")
+		_block_pump(pump, "VDU PUMP RUNNING — BLOCKED: product tank full.")
 		return
 	var vgo_output := processed_feed * VACUUM_GAS_OIL_YIELD
 	var residue_output := processed_feed * VACUUM_RESIDUE_YIELD
@@ -1241,6 +1295,9 @@ func _tick_vacuum_route(route: Dictionary, delta: float) -> void:
 		source["contents"] = "empty"
 	_commit_tank_material(outputs["vacuum_gas_oil"], "vacuum_gas_oil", vgo_output, source["temperature_c"])
 	_commit_tank_material(outputs["vacuum_residue"], "vacuum_residue", residue_output, source["temperature_c"])
+	if source["volume_l"] <= 0.0001:
+		source["temperature_c"] = AMBIENT_TEMPERATURE_C
+		source["quality_status"] = TANK_QUALITY_EMPTY
 	equipment[route["vdu"]]["processed_total_l"] += processed_feed
 	var condition_failed_now := _degrade_pump_condition(pump, processed_feed)
 	var flow := processed_feed / delta if delta > 0.0 else 0.0
@@ -1248,12 +1305,12 @@ func _tick_vacuum_route(route: Dictionary, delta: float) -> void:
 	actual_flow_lps += flow
 	product_inventory_revision += 1
 	if source["volume_l"] <= 0.001:
-		pump["running"] = false
-		pump["actual_flow_lps"] = 0.0
+		if not condition_failed_now:
+			_trip_pump(pump, PUMP_TRIP_DRY_RUN, "%s TRIPPED — DRY RUN after VDU batch completion." % pump["name"])
 		last_status = (
 			"PUMP MAINTENANCE REQUIRED — %s må vedlikeholdes." % pump["name"]
 			if condition_failed_now
-			else "VDU-batch ferdig. VGO og Vacuum Residue er klare for levering."
+			else "VDU batch complete. PUMP TRIPPED — DRY RUN."
 		)
 	else:
 		last_status = (
@@ -1271,18 +1328,21 @@ func _tick_fcc_route(route: Dictionary, delta: float) -> void:
 	if not pump["running"]:
 		return
 	if not equipment.has(route["source"]) or not equipment.has(route["fcc"]):
-		_stop_secondary_pump(pump, "FCC FLOW STOPPET — prosessruten er ikke lenger komplett.")
+		_trip_pump(pump, PUMP_TRIP_ROUTE, "FCC TRIPPED — process route is no longer complete.")
 		return
 	var source: Dictionary = equipment[route["source"]]
-	if source["contents"] != "vacuum_gas_oil" or source["volume_l"] <= 0.001:
-		_stop_secondary_pump(pump, "FCC FLOW STOPPET — VGO-tanken er tom eller har feil innhold.")
+	if source["volume_l"] <= 0.001:
+		_block_pump(pump, "FCC PUMP RUNNING — NO FEED.")
+		return
+	if source["contents"] != "vacuum_gas_oil":
+		_trip_pump(pump, PUMP_TRIP_PROCESS, "FCC TRIPPED — source material mismatch.")
 		return
 	var outputs: Dictionary = route["outputs"]
 	var gasoline: Dictionary = equipment[outputs["gasoline_blendstock"]]
 	var lpg: Dictionary = equipment[outputs["lpg"]]
 	var lco: Dictionary = equipment[outputs["light_cycle_oil"]]
 	if not _tank_accepts_material(gasoline, "gasoline_blendstock") or not _tank_accepts_material(lpg, "lpg") or not _tank_accepts_material(lco, "light_cycle_oil"):
-		_stop_secondary_pump(pump, "FCC FLOW STOPPET — en FCC-produkttank har feil innhold eller materialintensjon.")
+		_trip_pump(pump, PUMP_TRIP_PROCESS, "FCC TRIPPED — output material mismatch.")
 		return
 	var requested_feed := minf(source["volume_l"], _effective_pump_flow_lps(pump) * maxf(delta, 0.0))
 	var gasoline_capacity_feed := maxf(0.0, gasoline["capacity_l"] - gasoline["volume_l"]) / FCC_GASOLINE_YIELD
@@ -1290,7 +1350,7 @@ func _tick_fcc_route(route: Dictionary, delta: float) -> void:
 	var lco_capacity_feed := maxf(0.0, lco["capacity_l"] - lco["volume_l"]) / FCC_LCO_YIELD
 	var processed_feed := minf(requested_feed, minf(gasoline_capacity_feed, minf(lpg_capacity_feed, lco_capacity_feed)))
 	if processed_feed <= 0.0001:
-		_stop_secondary_pump(pump, "FCC FLOW STOPPET — Gasoline, LPG eller LCO-tanken er full.")
+		_block_pump(pump, "FCC PUMP RUNNING — BLOCKED: product tank full.")
 		return
 	var gasoline_output := processed_feed * FCC_GASOLINE_YIELD
 	var lpg_output := processed_feed * FCC_LPG_YIELD
@@ -1304,6 +1364,9 @@ func _tick_fcc_route(route: Dictionary, delta: float) -> void:
 	_commit_tank_material(outputs["gasoline_blendstock"], "gasoline_blendstock", gasoline_output, source["temperature_c"])
 	_commit_tank_material(outputs["lpg"], "lpg", lpg_output, source["temperature_c"])
 	_commit_tank_material(outputs["light_cycle_oil"], "light_cycle_oil", lco_output, source["temperature_c"])
+	if source["volume_l"] <= 0.0001:
+		source["temperature_c"] = AMBIENT_TEMPERATURE_C
+		source["quality_status"] = TANK_QUALITY_EMPTY
 	equipment[route["fcc"]]["processed_total_l"] += processed_feed
 	var condition_failed_now := _degrade_pump_condition(pump, processed_feed)
 	var flow := processed_feed / delta if delta > 0.0 else 0.0
@@ -1311,12 +1374,12 @@ func _tick_fcc_route(route: Dictionary, delta: float) -> void:
 	actual_flow_lps += flow
 	product_inventory_revision += 1
 	if source["volume_l"] <= 0.001:
-		pump["running"] = false
-		pump["actual_flow_lps"] = 0.0
+		if not condition_failed_now:
+			_trip_pump(pump, PUMP_TRIP_DRY_RUN, "%s TRIPPED — DRY RUN after FCC batch completion." % pump["name"])
 		last_status = (
 			"PUMP MAINTENANCE REQUIRED — %s må vedlikeholdes." % pump["name"]
 			if condition_failed_now
-			else "FCC-batch ferdig. Gasoline Blendstock, LPG og LCO er klare for levering."
+			else "FCC batch complete. PUMP TRIPPED — DRY RUN."
 		)
 	else:
 		last_status = (
@@ -1352,9 +1415,15 @@ func _secondary_route_start_check(route: Dictionary) -> Dictionary:
 	return _result(true, "%s-ruten kan starte." % label)
 
 
-func _stop_secondary_pump(pump: Dictionary, message: String) -> void:
+func _block_pump(pump: Dictionary, message: String) -> void:
+	pump["actual_flow_lps"] = 0.0
+	last_status = message
+
+
+func _trip_pump(pump: Dictionary, reason: String, message: String) -> void:
 	pump["running"] = false
 	pump["actual_flow_lps"] = 0.0
+	pump["trip_reason"] = reason
 	last_status = message
 
 
@@ -1421,6 +1490,11 @@ func analyze_diesel_sample() -> Dictionary:
 		return _result(false, "Stopp pumpen før dieselprøven analyseres.")
 	_diesel_sample["analyzed"] = true
 	var analysis := _build_sample_analysis()
+	var tank_id := String(_diesel_sample.get("tank_id", ""))
+	if equipment.has(tank_id):
+		equipment[tank_id]["quality_status"] = (
+			TANK_QUALITY_ON_SPEC if analysis.get("approved", false) else TANK_QUALITY_OFF_SPEC
+		)
 	last_status = analysis["message"]
 	return analysis
 
@@ -1562,7 +1636,9 @@ func sell_diesel() -> Dictionary:
 		var state: Dictionary = equipment[route["products"][product_name]]
 		state["volume_l"] = 0.0
 		state["contents"] = "empty"
+		state["temperature_c"] = AMBIENT_TEMPERATURE_C
 		state["quality_percent"] = 0.0
+		state["quality_status"] = TANK_QUALITY_EMPTY
 		state["sulfur_ppm"] = 0.0
 	product_inventory_revision += 1
 	_diesel_sample = {}
@@ -1682,6 +1758,7 @@ func dispatch_product_from_terminal(dispatch_id: String, tank_id: String) -> Dic
 	# sale transaction validates and consumes the real tank inventory.
 	pump["running"] = false
 	pump["actual_flow_lps"] = 0.0
+	pump["trip_reason"] = ""
 	var result: Dictionary = sell_diesel() if product_id == "diesel" else dispatch_product_from_tank(tank_id)
 	if not result["ok"]:
 		pump["running"] = true
@@ -1732,7 +1809,9 @@ func _dispatch_secondary_product(tank_id: String, product_id: String) -> Diction
 	var revenue := int(round(volume_l * float(order["price_per_l"])))
 	tank["volume_l"] = 0.0
 	tank["contents"] = "empty"
+	tank["temperature_c"] = AMBIENT_TEMPERATURE_C
 	tank["quality_percent"] = 0.0
+	tank["quality_status"] = TANK_QUALITY_EMPTY
 	tank["sulfur_ppm"] = 0.0
 	product_inventory_revision += 1
 	successful_sales += 1
@@ -1767,7 +1846,9 @@ func _dispatch_route_product(route: Dictionary, product_id: String) -> Dictionar
 	var revenue := int(round(volume_l * float(order["price_per_l"])))
 	tank["volume_l"] = 0.0
 	tank["contents"] = "empty"
+	tank["temperature_c"] = AMBIENT_TEMPERATURE_C
 	tank["quality_percent"] = 0.0
+	tank["quality_status"] = TANK_QUALITY_EMPTY
 	tank["sulfur_ppm"] = 0.0
 	product_inventory_revision += 1
 	_diesel_sample = {}
@@ -1979,9 +2060,8 @@ func inspect_unit(unit_id: String) -> String:
 			return details + "."
 		"pump":
 			var fault_text := " Driftsavvik registrert." if not String(state["fault_id"]).is_empty() else ""
-			return "Pumpe %s, faktisk flow %.1f L/s, flowmål %.0f L/s, condition %.0f %% (%s).%s%s" % [
-				"PÅ" if state["running"] else "AV",
-				state["actual_flow_lps"],
+			return "Pumpe %s, flowmål %.0f L/s, condition %.0f %% (%s).%s%s" % [
+				pump_state_text(unit_id),
 				state["flow_setpoint_lps"],
 				state.get("condition_percent", 100.0),
 				_pump_condition_label(state),
@@ -2077,14 +2157,12 @@ func unit_status(unit_id: String) -> String:
 					status += "  |  %.1f %%" % state["quality_percent"]
 			return status
 		"pump":
-			return "%s  |  faktisk %.1f L/s  |  mål %.0f  |  condition %.0f %% %s%s%s" % [
-				"PÅ" if state["running"] else "AV",
-				state["actual_flow_lps"],
+			return "%s  |  mål %.0f  |  condition %.0f %% %s%s" % [
+				pump_state_text(unit_id),
 				state["flow_setpoint_lps"],
 				state.get("condition_percent", 100.0),
 				_pump_condition_label(state),
 				"  |  AVVIK" if not String(state["fault_id"]).is_empty() else "",
-				"  |  POWER LOST" if not equipment_power_state(unit_id)["available"] else "",
 			]
 		"valve":
 			return "ÅPEN" if state["open"] else "STENGT"
@@ -2401,19 +2479,20 @@ func control_snapshot() -> Dictionary:
 	var light_tank: Dictionary = equipment[products["light"]]
 	var diesel_tank: Dictionary = equipment[products["diesel"]]
 	var heavy_tank: Dictionary = equipment[products["heavy"]]
-	var profile := contract_definition()
+	var contract_id := _contract_id_for_route(route)
+	var profile := CrudeCatalog.definition(contract_id) if CrudeCatalog.is_valid(contract_id) else {}
 	var safe_range := (
 		CrudeCatalog.approved_temperature_range(
-			active_contract_id, pump["flow_setpoint_lps"], PUMP_CAPACITY_LPS
+			contract_id, pump["flow_setpoint_lps"], PUMP_CAPACITY_LPS
 		)
-		if CrudeCatalog.is_valid(active_contract_id)
+		if CrudeCatalog.is_valid(contract_id)
 		else Vector2.ZERO
 	)
 	return {
 		"unlocked": true,
 		"valid": true,
-		"crude_name": profile["short_name"] if CrudeCatalog.is_valid(active_contract_id) else "INGEN",
-		"ideal_temperature_c": float(profile["ideal_temperature_c"]) if CrudeCatalog.is_valid(active_contract_id) else 0.0,
+		"crude_name": profile["short_name"] if CrudeCatalog.is_valid(contract_id) else "INGEN",
+		"ideal_temperature_c": float(profile["ideal_temperature_c"]) if CrudeCatalog.is_valid(contract_id) else 0.0,
 		"source_volume_l": float(source["volume_l"]),
 		"source_capacity_l": float(source["capacity_l"]),
 		"source_level_percent": 100.0 * float(source["volume_l"]) / float(source["capacity_l"]),
@@ -2423,6 +2502,8 @@ func control_snapshot() -> Dictionary:
 		"heater_output_percent": float(heater["output_percent"]),
 		"heater_auto_blocked": bool(heater.get("auto_blocked", false)),
 		"pump_running": bool(pump["running"]),
+		"pump_state": pump_state_text(route["pump"]),
+		"pump_trip_reason": String(pump.get("trip_reason", "")),
 		"pump_flow_setpoint_lps": float(pump["flow_setpoint_lps"]),
 		"actual_flow_lps": float(pump["actual_flow_lps"]),
 		"approved_temperature_min_c": safe_range.x,
@@ -2448,8 +2529,8 @@ func operations_snapshot() -> Dictionary:
 		var runtime := _resolved_route(route)
 		var heater: Dictionary = equipment[route["heater"]]
 		var route_alarms := _operator_alarms_for_route(route)
-		var status := "RUNNING" if pump["actual_flow_lps"] > 0.01 else "STOPPED"
-		if not route_alarms.is_empty() or (pump["running"] and runtime.is_empty()):
+		var status := "RUNNING" if pump["running"] else "STOPPED"
+		if pump_needs_attention(route["pump"]) or not route_alarms.is_empty() or (pump["running"] and runtime.is_empty()):
 			status = "ATTENTION"
 		var products := {}
 		if not runtime.is_empty():
@@ -2460,7 +2541,7 @@ func operations_snapshot() -> Dictionary:
 			"train_id": route["pump"], "pump_id": route["pump"], "name": pump["name"],
 			"status": status, "crude_name": CrudeCatalog.definition(_contract_id_for_route(route)).get("short_name", "INGEN"),
 			"source_volume_l": source["volume_l"], "source_capacity_l": source["capacity_l"],
-			"pump_running": pump["running"], "target_flow_lps": pump["flow_setpoint_lps"], "actual_flow_lps": pump["actual_flow_lps"],
+			"pump_running": pump["running"], "pump_state": pump_state_text(route["pump"]), "pump_trip_reason": String(pump.get("trip_reason", "")), "target_flow_lps": pump["flow_setpoint_lps"], "actual_flow_lps": pump["actual_flow_lps"],
 			"heater_mode": heater["control_mode"], "heater_pv_c": heater["temperature_c"], "heater_sp_c": heater["setpoint_c"], "heater_output_percent": heater["output_percent"], "heater_blocked": heater["auto_blocked"],
 			"feed_route": "A" if route.get("header_outlet", "") == "out_a" else ("B" if route.get("header_outlet", "") == "out_b" else "DIRECT"),
 			"products": products, "alarms": route_alarms,
@@ -2645,6 +2726,7 @@ func _degrade_pump_condition(pump: Dictionary, processed_l: float) -> bool:
 		return false
 	pump["running"] = false
 	pump["actual_flow_lps"] = 0.0
+	pump["trip_reason"] = PUMP_TRIP_EQUIPMENT
 	return true
 
 
@@ -2816,6 +2898,7 @@ func _toggle_pump(unit_id: String) -> Dictionary:
 	if pump["running"]:
 		pump["running"] = false
 		pump["actual_flow_lps"] = 0.0
+		pump["trip_reason"] = ""
 		actual_flow_lps = 0.0
 	else:
 		if float(pump.get("condition_percent", 100.0)) <= 0.001:
@@ -2869,6 +2952,7 @@ func _toggle_pump(unit_id: String) -> Dictionary:
 		if not power_check["ok"]:
 			return power_check
 		pump["running"] = true
+		pump["trip_reason"] = ""
 	last_status = "%s er %s." % [pump["name"], "startet" if pump["running"] else "stoppet"]
 	return _result(true, last_status)
 
@@ -2998,11 +3082,12 @@ func _temperature_for_output(output_percent: float) -> float:
 	) / 100.0
 
 
-func _stop_all_pumps() -> void:
+func _stop_all_pumps(reason := PUMP_TRIP_ROUTE) -> void:
 	for state in equipment.values():
-		if state["type"] == "pump":
+		if state["type"] == "pump" and state["running"]:
 			state["running"] = false
 			state["actual_flow_lps"] = 0.0
+			state["trip_reason"] = reason
 	actual_flow_lps = 0.0
 	_remote_guard_pump_id = ""
 
@@ -3038,7 +3123,9 @@ func _process_input(
 		if product_name == "diesel":
 			var quality_total: float = tank["quality_percent"] * tank["volume_l"]
 			quality_total += diesel_quality * product_l
-			tank["quality_percent"] = quality_total / (tank["volume_l"] + product_l)
+			tank["quality_percent"] = clampf(
+				quality_total / (tank["volume_l"] + product_l), 0.0, 100.0
+			)
 			var sulfur_total: float = tank.get("sulfur_ppm", 0.0) * tank["volume_l"]
 			sulfur_total += diesel_sulfur * product_l
 			tank["sulfur_ppm"] = sulfur_total / (tank["volume_l"] + product_l)
@@ -3240,7 +3327,9 @@ func refuel_generator_day_tank() -> Dictionary:
 	if source["volume_l"] <= 0.001:
 		source["volume_l"] = 0.0
 		source["contents"] = "empty"
+		source["temperature_c"] = AMBIENT_TEMPERATURE_C
 		source["quality_percent"] = 0.0
+		source["quality_status"] = TANK_QUALITY_EMPTY
 		source["sulfur_ppm"] = 0.0
 	product_inventory_revision += 1
 	_diesel_sample = {}
@@ -3306,21 +3395,22 @@ func _lose_instrument_air() -> void:
 			state["setpoint_c"] = 0.0
 			state["output_percent"] = 0.0
 			state["auto_blocked"] = true
-	_stop_atmospheric_pumps()
+	_stop_atmospheric_pumps(PUMP_TRIP_INSTRUMENT_AIR)
 
 
 func _lose_cooling_water() -> void:
 	cooling_water_pump_running = false
 	cooling_water_bus.trip(UtilityDistributionScript.TRIP_SUPPLY_LOSS, 1.0, 0.0)
-	_stop_atmospheric_pumps()
+	_stop_atmospheric_pumps(PUMP_TRIP_COOLING_WATER)
 
 
-func _stop_atmospheric_pumps() -> void:
+func _stop_atmospheric_pumps(reason: String) -> void:
 	for route in network.atmospheric_routes():
 		var pump_id := String(route.get("pump", ""))
-		if equipment.has(pump_id):
+		if equipment.has(pump_id) and equipment[pump_id]["running"]:
 			equipment[pump_id]["running"] = false
 			equipment[pump_id]["actual_flow_lps"] = 0.0
+			equipment[pump_id]["trip_reason"] = reason
 	actual_flow_lps = 0.0
 	_remote_guard_pump_id = ""
 
@@ -3425,6 +3515,95 @@ func _power_blocked_interaction_prompt(unit_id: String) -> String:
 	return "%s — NO POWER | %.0f kW from MCC-101\nE — start blocked: %s" % [
 		state["name"], power["required_kw"], recovery,
 	]
+
+
+func pump_state_text(unit_id: String) -> String:
+	if not equipment.has(unit_id) or equipment[unit_id]["type"] != "pump":
+		return "NOT REGISTERED"
+	var pump: Dictionary = equipment[unit_id]
+	var trip_reason := String(pump.get("trip_reason", ""))
+	if not trip_reason.is_empty():
+		return "TRIPPED — %s" % _pump_trip_label(trip_reason)
+	if not bool(pump["running"]):
+		return "STOPPED"
+	if float(pump["actual_flow_lps"]) > 0.01:
+		return "RUNNING | FLOW %.1f L/s" % pump["actual_flow_lps"]
+	return "RUNNING | %s" % _pump_block_reason(unit_id)
+
+
+func pump_needs_attention(unit_id: String) -> bool:
+	if not equipment.has(unit_id) or equipment[unit_id]["type"] != "pump":
+		return false
+	var pump: Dictionary = equipment[unit_id]
+	return not String(pump.get("trip_reason", "")).is_empty() or (
+		bool(pump["running"]) and float(pump["actual_flow_lps"]) <= 0.01
+	)
+
+
+func _pump_trip_label(reason: String) -> String:
+	return {
+		PUMP_TRIP_POWER_LOSS: "NO POWER",
+		PUMP_TRIP_MCC: "MCC POWER LOSS",
+		PUMP_TRIP_INSTRUMENT_AIR: "INSTRUMENT AIR LOST",
+		PUMP_TRIP_COOLING_WATER: "COOLING WATER LOST",
+		PUMP_TRIP_TEMPERATURE: "TEMPERATURE GUARD",
+		PUMP_TRIP_ROUTE: "ROUTE LOST",
+		PUMP_TRIP_PROCESS: "PROCESS MISMATCH",
+		PUMP_TRIP_EQUIPMENT: "EQUIPMENT FAILURE",
+		PUMP_TRIP_DRY_RUN: "DRY RUN",
+	}.get(reason, "UNKNOWN")
+
+
+func _pump_block_reason(unit_id: String) -> String:
+	var intake_route := _intake_route_for_pump(unit_id)
+	if not intake_route.is_empty():
+		if float(pending_intake_delivery.get("volume_l", 0.0)) <= 0.001:
+			return "NO FEED"
+		var intake_tank: Dictionary = equipment.get(intake_route["tank"], {})
+		if intake_tank.is_empty() or not _tank_accepts_material(intake_tank, "crude"):
+			return "BLOCKED — RECEIVING TANK"
+		if float(intake_tank["volume_l"]) >= float(intake_tank["capacity_l"]) - 0.001:
+			return "BLOCKED — TANK FULL"
+		return "NO FLOW"
+	var dispatch_route := _dispatch_route_for_pump(unit_id)
+	if not dispatch_route.is_empty():
+		var dispatch_tank: Dictionary = equipment.get(dispatch_route["tank"], {})
+		if dispatch_tank.is_empty() or float(dispatch_tank.get("volume_l", 0.0)) <= 0.001:
+			return "NO FEED"
+		return "WAITING FOR DISPATCH"
+	var route := _atmospheric_route_for_unit(unit_id)
+	if not route.is_empty():
+		if feed_allocations.has(route["source"]):
+			var allocation = feed_allocations[route["source"]]
+			if allocation.selected_train_id.is_empty() or not allocation.is_selected(unit_id):
+				return "BLOCKED — FEED ROUTE"
+		var runtime_route := _resolved_route(route)
+		if runtime_route.is_empty():
+			return "BLOCKED — PRODUCT ROUTE"
+		var source: Dictionary = equipment[runtime_route["source"]]
+		if source["contents"] != "crude" or float(source["volume_l"]) <= 0.001:
+			return "NO FEED"
+		if not bool(equipment[runtime_route["valve"]]["open"]):
+			return "BLOCKED — OUTLET CLOSED"
+		var treatment_id := String(runtime_route.get("treatment", ""))
+		if not treatment_id.is_empty() and not bool(equipment[treatment_id]["running"]):
+			return "BLOCKED — TREATMENT OFF"
+		for product_id in runtime_route["products"]:
+			var product_tank: Dictionary = equipment[runtime_route["products"][product_id]]
+			if not _tank_accepts_material(product_tank, product_id):
+				return "BLOCKED — PRODUCT STORAGE"
+			if float(product_tank["volume_l"]) >= float(product_tank["capacity_l"]) - 0.001:
+				return "BLOCKED — PRODUCT TANK FULL"
+		return "NO FLOW"
+	var secondary_route := _vacuum_route_for_unit(unit_id)
+	if secondary_route.is_empty():
+		secondary_route = _fcc_route_for_unit(unit_id)
+	if not secondary_route.is_empty():
+		var source: Dictionary = equipment.get(secondary_route["source"], {})
+		if source.is_empty() or float(source.get("volume_l", 0.0)) <= 0.001:
+			return "NO FEED"
+		return "BLOCKED"
+	return "BLOCKED — ROUTE"
 
 
 func can_use_site_consumer(consumer_id: String) -> Dictionary:
@@ -3671,15 +3850,18 @@ func _trip_electrical_bus(trip_id: String, demand: float, capacity: float) -> vo
 
 
 func _stop_powered_equipment() -> void:
+	var pump_trip_reason := PUMP_TRIP_MCC if electrical_bus.tripped else PUMP_TRIP_POWER_LOSS
+	for state in equipment.values():
+		if state["type"] == "pump" and state["running"]:
+			state["running"] = false
+			state["actual_flow_lps"] = 0.0
+			state["trip_reason"] = pump_trip_reason
 	if instrument_air_compressor_running:
 		_lose_instrument_air()
 	if cooling_water_pump_running:
 		_lose_cooling_water()
 	for state in equipment.values():
-		if state["type"] == "pump":
-			state["running"] = false
-			state["actual_flow_lps"] = 0.0
-		elif state["type"] == "treatment":
+		if state["type"] == "treatment":
 			state["running"] = false
 		elif state["type"] == "heater":
 			state["output_percent"] = 0.0

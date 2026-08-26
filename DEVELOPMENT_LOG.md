@@ -1,5 +1,67 @@
 # CrudeWorks Development Log
 
+## v0.28.1 — Stability & Operator Experience
+
+- Fixed the playtest save failure `Materiale mangler en aktiv
+  råoljekontrakt`. Physical CI-101 transfer placed contract provenance on the
+  receiving source tank but the validator treated the single global active
+  pointer as universal truth. Validation now requires a valid contract only on
+  atmospheric routes whose source/product/report state depends on it. An empty
+  global pointer is legitimate; a non-empty stale or unknown pointer and
+  missing/unknown route provenance remain rejected. Physical intake also
+  synchronizes the legacy global pointer for existing single-route UI paths.
+- Fixed the Area 02 tank temperature/quality save failure. Repeated weighted
+  diesel-quality updates could drift microscopically outside 0–100, while
+  `IKKE ANALYSERT` existed only as presentation state. Quality is now clamped
+  after every accumulation and tanks persist a canonical `empty`,
+  `not_applicable`, `unanalyzed`, `on_spec` or `off_spec` state separately from
+  numeric quality and formatted HUD text. Legacy v0.27/v0.28 representations
+  are derived safely; NaN, infinity, invalid enums and broken references are
+  still rejected.
+- Fixed the remaining Pilot liquid visual issue at its source. Tank meshes were
+  already volume-driven, but `sell_diesel()` credited the sale without
+  consuming canonical Pilot diesel. A sale now zeroes the sold diesel volume,
+  quality and status while preserving visible unsold light/heavy fractions.
+  Restart and save/load rebuild all fills from canonical inventory only.
+- Added canonical pump `trip_reason` and concise STOPPED, RUNNING/FLOW,
+  RUNNING/BLOCKED-or-NO-FEED and TRIPPED feedback to field inspection and
+  LS-201. Manual stop clears trip state; a successful deliberate start
+  acknowledges it. Restoring the root utility or resetting MCC never restarts
+  the pump or silently erases the recorded trip.
+- Audited every automatic pump shutdown. Topology loss is `route_invalid`;
+  source/output material conflict is `process_mismatch`; zero condition is
+  `equipment_failure`; atmospheric/VDU/FCC batch depletion is protected
+  `dry_run`; temperature guard is `temperature_guard`; IA/CW loss and
+  MCC/power shutdown retain their distinct utility reason. Safe load restore
+  remains STOPPED, successful PD dispatch intentionally completes with its
+  sales pump STOPPED, and manual operator stops remain STOPPED rather than
+  trips.
+- Reclassified normal process waits so they no longer erase RUN: CI-101 no
+  delivery/full receiving storage, PD-101 empty feed, closed manual valve,
+  temporarily unavailable routing, paused treatment/product route and full
+  VDU/FCC destination remain commanded RUNNING with zero flow. When the
+  blockage clears, flow can resume without an arbitrary restart. Existing
+  mass/capacity/material interlocks remain authoritative.
+- Preserved v0.28.0 generator fuel exhaustion, MCC trip/reset, Instrument Air
+  fail-closed behavior, Cooling Water permissive and deliberate post-trip
+  restart. No process unit, utility type, map rebuild or new failure system was
+  added.
+- Added regressions for the real contract/tank save states, NaN/infinity and
+  enum rejection, utility shutdown/recovery, Pilot completion/restart/save-load
+  visuals, physical intake/dispatch blocked recovery, closed-valve flow
+  recovery and exact trip causes for topology, temperature, IA, CW and MCC.
+
+Human QA scenarios for release acceptance:
+
+1. Run CI-101 → crude tank → CDU → products → LAB → PD-101 and observe clean
+   autosaves during intake, processing, before/after analysis and after dispatch.
+2. Close a valve while its pump is running; confirm RUNNING/BLOCKED, unchanged
+   inventory and automatic safe flow recovery after reopening.
+3. Cause real MCC/power loss; confirm TRIPPED, restore utilities/reset MCC and
+   confirm the process remains stopped until deliberate restart.
+4. Complete Pilot, save/load and start a new batch; confirm each visible level
+   exactly matches remaining canonical crude/light/diesel/heavy inventory.
+
 ## v0.28.0 — Utilities Expansion
 
 - Turned the fixed Utilities Yard into a functional dependency chain:

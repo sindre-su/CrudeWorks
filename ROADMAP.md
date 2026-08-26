@@ -2,7 +2,7 @@
 
 ## Current baseline
 
-Version 0.28.0 has a tested pilot plant and a substantial Area 02 refinery
+Version 0.28.1 has a tested pilot plant and a substantial Area 02 refinery
 slice: free building, directed process networks, multiple independent trains,
 shared-feed/product routing, Standard/Heavy/Sour crude, diesel treatment,
 quality/LAB dispatch, VDU-301, FCC-401, electrical capacity, controls, alarms,
@@ -11,6 +11,10 @@ PG-101 → MCC-101 electrical gameplay with load, overload trip and recovery,
 plus a functional Utilities Yard. Diesel feeds one canonical GF-101 day tank;
 PG/PU generation consumes it deterministically. MCC power starts IA-101 and
 CWP-101, whose Instrument Air and Cooling Water supplies interlock the CDU.
+The stability pass also makes route-owned crude provenance authoritative for
+save validation, gives every product tank an explicit quality-analysis state,
+derives Pilot liquid visuals from canonical inventory, and separates pump RUN
+commands from normal blocked/no-feed conditions and genuine safety trips.
 
 The core conclusion is deliberate: **process depth is no longer the primary
 bottleneck.** Further process-unit expansion is lower priority until existing
@@ -22,7 +26,7 @@ running sales pump before it can invoke the existing dispatch transaction.
 
 ## Current priority
 
-**Hands-on 1280 × 720 utility/startup usability and game-feel pass.** Validate port aiming,
+**Hands-on 1280 × 720 v0.28.1 acceptance and game-feel pass.** Validate port aiming,
 pipe/valve readability, equipment interaction, alarms, tank levels, LAB-101,
 LS-201, power feedback, VDU/FCC placement and pump-condition pacing in the
 running game. Headless tests protect logic; they cannot replace human play.
@@ -32,6 +36,14 @@ PG/GF/MCC/IA/CT/CWP field state, contextual interlocks, fail-safe behavior,
 trip diagnosis, recovery and LS-201 overview. Human QA must still verify yard
 discoverability, the full blackout-recovery sequence and local readability at
 walking distance in a live 1280 × 720 playthrough.
+
+The acceptance route should explicitly autosave through CI-101 intake,
+mid-process, unanalyzed product, LAB-analyzed product, dispatch/empty product
+and utility shutdown/recovery. A closed-valve or temporarily starved pump must
+remain visibly commanded RUNNING and resume safely; a real MCC/power trip must
+show TRIPPED, remain stopped after recovery and require deliberate restart.
+Completing and reloading Pilot must leave every tank fill equal to its canonical
+remaining inventory.
 
 The first-hour flow now starts with state-based Pilot objectives, then asks the
 player to receive the free first Standard delivery at CI-101, build its

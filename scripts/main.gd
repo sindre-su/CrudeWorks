@@ -1576,7 +1576,7 @@ func _update_control_station_text() -> void:
 			"REFINERY OPERATIONS\n\n" + power_line + overview_lines + "\n"
 			+ "VALGT TOG: %s — %s\n" % [selected["name"], selected["status"]]
 			+ "Feed: %s  |  %.0f/%.0f L  |  rute %s\n" % [selected["crude_name"], selected["source_volume_l"], selected["source_capacity_l"], selected["feed_route"]]
-			+ "Pumpe: %s  |  %.1f / %.1f L/s\n" % ["RUN" if selected["pump_running"] else "STOP", selected["actual_flow_lps"], selected["target_flow_lps"]]
+			+ "Pumpe: %s  |  mål %.1f L/s\n" % [selected["pump_state"], selected["target_flow_lps"]]
 			+ "TIC: %s  PV %.0f  SP %.0f  UT %.0f %%%s\n" % [String(selected["heater_mode"]).to_upper(), selected["heater_pv_c"], selected["heater_sp_c"], selected["heater_output_percent"], " — HEAT BLOCKED" if selected["heater_blocked"] else ""]
 			+ product_lines + "ALARMS: " + selected_alarms + "\n\n"
 			+ (control_station_feedback if not control_station_feedback.is_empty() else "Feltventiler, ruter, prøver og service betjenes ute i anlegget.") + "\n\n"
@@ -1605,9 +1605,11 @@ func _update_control_station_text() -> void:
 			temperature_state = "HØY"
 		else:
 			temperature_state = "KLAR"
-	var flow_state := "STOPP"
-	if snapshot["pump_running"] and snapshot["actual_flow_lps"] <= 0.01:
-		flow_state = "LOW FLOW"
+	var flow_state := "STOPPED"
+	if not String(snapshot.get("pump_trip_reason", "")).is_empty():
+		flow_state = "TRIPPED"
+	elif snapshot["pump_running"] and snapshot["actual_flow_lps"] <= 0.01:
+		flow_state = "ATTENTION"
 	elif snapshot["actual_flow_lps"] > 0.01:
 		flow_state = "NORMAL"
 	var process_message: String = String(snapshot.get("temperature_trip_message", ""))
@@ -1660,7 +1662,7 @@ func _update_control_station_text() -> void:
 			snapshot["actual_flow_lps"], snapshot["pump_flow_setpoint_lps"], flow_state,
 		]
 		+ "LT-202 NIVÅ, DIESEL    %4.0f / 1000 L\n\n" % snapshot["diesel_volume_l"]
-		+ "P-201 PUMPE            %s\n" % ("PÅ" if snapshot["pump_running"] else "AV")
+		+ "P-201 PUMPE            %s\n" % snapshot["pump_state"]
 		+ "FLOWMODUS              %s\n" % built_refinery_model.flow_mode_text(snapshot["pump_flow_setpoint_lps"])
 		+ "V-201 VENTIL           %s — FELT\n" % ("ÅPEN" if snapshot["valve_open"] else "STENGT")
 		+ "TEMPERATURVERN         %s\n\n" % guard_state

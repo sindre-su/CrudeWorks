@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.28.0 – Utilities Expansion**
+**Prototypeversjon: 0.28.1 – Stability & Operator Experience**
 
 En liten 3D-prototype der spilleren driver et forenklet pilotraffineri. Første mål
 er å behandle 1 000 liter råolje og selge minst 200 liter diesel med 90 % eller
@@ -81,6 +81,14 @@ Den første komplette «vertical slice»-en inneholder:
   dispatch enklere å finne uten å legge til et waypoint-system
 - byggemodus prioriterer eksplisitte prosessporter foran maskinkroppen når
   spilleren sikter på en markert port
+- eksplisitte pumpetilstander skiller `STOPPED`, `RUNNING | FLOW`,
+  `RUNNING | BLOCKED/NO FEED` og kanoniske safety trips; normale blokkeringer
+  beholder operatørens RUN-kommando og kan gjenoppta flow uten en kunstig restart
+- Area 02-lagring godtar legitime route-eide kontrakter, tomme/uanalyserte/
+  analyserte tanktilstander og utility recovery, samtidig som ukjente referanser,
+  ugyldige enumverdier, NaN og infinity fortsatt avvises
+- Pilot-tanknivåer bygges direkte fra kanonisk råolje- og produktbeholdning;
+  salg bruker opp dieselbeholdningen uten å skjule usolgt lett/tung fraksjon
 
 Alle objekter er foreløpig bygget av Godots primitive 3D-former. Det gjør at vi
 kan teste gameplay før vi bruker tid på modeller og grafikk.
@@ -116,9 +124,10 @@ forsinkelse, og en stille prosess-snapshot tas omtrent hvert tolvte sekund. Ved
 neste oppstart kan spilleren velge `Enter` for å fortsette eller `N` for nytt
 spill. Nytt spill må bekreftes og den gamle filen arkiveres før den erstattes.
 
-Bygninger, rotasjon, rør, tankinnhold, temperatur, valgt pumpeflow, kvalitet,
-penger, progresjon, generatorbrensel, generatorstatus, MCC-trip og kanonisk
-IA/CW-maskin- og tripstatus gjenopprettes. Pumper og faktisk
+Bygninger, rotasjon, rør, tankinnhold, temperatur, valgt pumpeflow, numerisk
+kvalitet, eksplisitt analysestatus, kanonisk pumpetrip, penger, progresjon,
+generatorbrensel, generatorstatus, MCC-trip og kanonisk IA/CW-maskin- og
+tripstatus gjenopprettes. Pumper og faktisk
 flow stoppes alltid ved lasting, slik at ingen prosess starter uten en bevisst
 handling. Elektriske lastsummer beregnes på nytt fra kanonisk utstyrstilstand.
 En siste kjent god backup beholdes, og

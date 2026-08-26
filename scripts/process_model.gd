@@ -137,6 +137,8 @@ func tick(delta: float) -> void:
 	if crude_volume_l <= 0.001:
 		crude_volume_l = 0.0
 		flow_lps = 0.0
+		# The Pilot has no trip-state layer; batch depletion is its simple dry-run
+		# protection and still requires a deliberate start after reset/load.
 		pump_running = false
 
 
@@ -266,6 +268,11 @@ func sell_diesel() -> String:
 		PILOT_CONTRACT_MINIMUM_REVENUE
 	)
 	money += revenue
+	# The sale consumes the same canonical diesel inventory that drives the
+	# Pilot tank visual. Light and heavy products remain visible until reset.
+	diesel_volume_l = 0.0
+	diesel_quality_percent = 0.0
+	diesel_spec_status = DIESEL_SPEC_NO_DIESEL
 	batch_sold = true
 	objective_complete = true
 	return "Batch godkjent og solgt for %d kr!" % revenue

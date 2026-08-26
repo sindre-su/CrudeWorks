@@ -38,6 +38,58 @@ func _run_test() -> void:
 		"1280x720 HUD bands keep objective, alarms and controls inside the reference viewport"
 	)
 	main._process(0.0)
+	_expect(
+		main.liquid_levels["raw_tank"]["node"].visible
+		and not main.liquid_levels["diesel_tank"]["node"].visible,
+		"new Pilot visuals derive from the initial canonical crude and product volumes"
+	)
+	main.process_model.crude_volume_l = 500.0
+	main.process_model.light_product_l = 100.0
+	main.process_model.diesel_volume_l = ProcessModel.DIESEL_TARGET_L
+	main.process_model.heavy_product_l = 100.0
+	main.process_model.diesel_quality_percent = 100.0
+	main.process_model.diesel_spec_status = ProcessModel.DIESEL_SPEC_ON_SPEC
+	main._update_process_visuals(0.0)
+	_expect(
+		is_equal_approx(main.liquid_levels["raw_tank"]["node"].scale.y / main.liquid_levels["raw_tank"]["max_height"], 0.5)
+		and main.liquid_levels["light_tank"]["node"].visible
+		and main.liquid_levels["diesel_tank"]["node"].visible
+		and main.liquid_levels["heavy_tank"]["node"].visible,
+		"active Pilot batch visual fill follows each canonical tank volume"
+	)
+	main.process_model.sell_diesel()
+	main._update_process_visuals(0.0)
+	_expect(
+		is_zero_approx(main.process_model.diesel_volume_l)
+		and not main.liquid_levels["diesel_tank"]["node"].visible
+		and main.liquid_levels["light_tank"]["node"].visible
+		and main.liquid_levels["heavy_tank"]["node"].visible,
+		"Pilot completion consumes sold diesel visually while preserving canonical unsold fractions"
+	)
+	var pilot_snapshot: Dictionary = main._build_snapshot()
+	var pilot_restored = MainScene.instantiate()
+	pilot_restored.persistence_enabled = false
+	root.add_child(pilot_restored)
+	await process_frame
+	var pilot_restore_result: Dictionary = pilot_restored._apply_snapshot(pilot_snapshot)
+	pilot_restored._update_process_visuals(0.0)
+	_expect(
+		pilot_restore_result["ok"]
+		and not pilot_restored.liquid_levels["diesel_tank"]["node"].visible
+		and pilot_restored.liquid_levels["light_tank"]["node"].visible,
+		"Pilot save/load rebuilds tank visuals from restored canonical inventory"
+	)
+	pilot_restored.queue_free()
+	main.process_model.reset_batch()
+	main._update_process_visuals(0.0)
+	_expect(
+		main.liquid_levels["raw_tank"]["node"].visible
+		and not main.liquid_levels["light_tank"]["node"].visible
+		and not main.liquid_levels["diesel_tank"]["node"].visible
+		and not main.liquid_levels["heavy_tank"]["node"].visible,
+		"Pilot restart creates no stale product fill"
+	)
+	main._process(0.0)
 	var intake_marker = main.build_controller.registered_unit_by_id("built_crude_intake_0")
 	var dispatch_marker = main.build_controller.registered_unit_by_id("built_product_dispatch_0")
 	_expect(intake_marker.guidance_label.visible and not dispatch_marker.guidance_label.visible, "first Area 02 objective highlights CI-101 without prematurely highlighting PD-101")
@@ -56,8 +108,6 @@ func _run_test() -> void:
 
 	main.process_model.money = ProcessModel.PILOT_CONTRACT_MINIMUM_REVENUE
 	main.process_model.objective_complete = true
-	main.process_model.diesel_volume_l = 200.0
-	main.process_model.diesel_quality_percent = 100.0
 	main._process(0.0)
 	_expect(main.build_mode_unlocked, "pilot completion unlocks Area 02")
 	_expect(main.build_controller.unlocked, "build controller receives the progression unlock")
@@ -177,7 +227,7 @@ func _run_test() -> void:
 	_expect(main.control_station_visible and main.player.input_blocked and main.build_controller.input_blocked, "unlocked LS-201 opens a live modal and blocks field/build controls")
 	main._update_user_interface()
 	_expect("REFINERY OPERATIONS" in main.control_station_label.text and "POWER" in main.control_station_label.text and "PG-101: RUNNING" in main.control_station_label.text and "PU-101: NOT INSTALLED" in main.control_station_label.text and "MCC-101: ENERGIZED — NORMAL" in main.control_station_label.text and "Pumpe:" in main.control_station_label.text and "TIC:" in main.control_station_label.text, "operations console presents a concise source, MCC, flow and temperature overview")
-	_expect("Feed: INGEN" in main.control_station_label.text and "STOPPED" in main.control_station_label.text, "idle operations console clearly shows an unloaded stopped train")
+	_expect("Feed: INGEN" in main.control_station_label.text and "ATTENTION" in main.control_station_label.text and "TRIPPED — DRY RUN" in main.control_station_label.text, "idle operations console preserves the completed batch dry-run trip")
 	main._update_unit_statuses()
 	_expect("VENTER — RÅOLJE" in main.units["area02_control"].status_label.text, "idle LS-201 world status points the player toward the next delivery")
 	var empty_remote_start := InputEventKey.new()
@@ -269,7 +319,7 @@ func _test_heavy_contract_through_main() -> void:
 	main.built_refinery_model.equipment[heater.unit_id]["temperature_c"] = 230.0
 	main.built_refinery_model.equipment[heater.unit_id]["setpoint_c"] = 230.0
 	main._on_unit_interacted("area02_control")
-	_expect("/ 15.0 L/s" in main.control_station_label.text and "Pumpe:" in main.control_station_label.text, "operations console distinguishes actual flow from the selected high-flow target")
+	_expect("mål 15.0 L/s" in main.control_station_label.text and "Pumpe:" in main.control_station_label.text, "operations console distinguishes pump state from the selected high-flow target")
 	var remote_flow := InputEventKey.new()
 	remote_flow.keycode = KEY_3
 	remote_flow.pressed = true

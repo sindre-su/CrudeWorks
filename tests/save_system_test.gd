@@ -8,6 +8,7 @@ const TEST_PATH := "user://crudeworks_save_system_test.json"
 const LEGACY_PATH := "user://crudeworks_save_system_legacy_test.json"
 const AUTOSAVE_STRESS_PATH := "user://crudeworks_area02_autosave_stress_test.json"
 const PILOT_SAVE_PATH := "user://crudeworks_pilot_quality_save_test.json"
+const CANONICAL_STATE_PATH := "user://crudeworks_area02_canonical_state_test.json"
 
 var failures := 0
 
@@ -22,6 +23,7 @@ func _run_tests() -> void:
 	var source_main = await _create_partial_paid_refinery()
 	var snapshot: Dictionary = source_main._build_snapshot()
 	_test_schema_validation(snapshot, source_main)
+	_test_canonical_area02_save_states(snapshot)
 	_test_optional_delivery_report_validation(snapshot)
 	_test_disk_round_trip(snapshot)
 	await _test_area02_autosave_stress()
@@ -302,6 +304,107 @@ func _test_schema_validation(snapshot: Dictionary, live_main) -> void:
 	var mismatched_intent := snapshot.duplicate(true)
 	mismatched_intent["built_refinery"]["equipment"]["built_tank_1"]["material_intent"] = "diesel"
 	_expect(not SaveSystemScript.validate_snapshot(mismatched_intent)["ok"], "saved material intent cannot conflict with non-empty actual tank contents")
+
+
+func _test_canonical_area02_save_states(snapshot: Dictionary) -> void:
+	var no_global_contract := snapshot.duplicate(true)
+	no_global_contract["built_refinery"]["active_contract_id"] = ""
+	no_global_contract["built_refinery"]["active_contract_bonus_available"] = false
+	_expect(
+		SaveSystemScript.validate_snapshot(no_global_contract)["ok"],
+		"route-owned crude material remains saveable without a global active-contract pointer"
+	)
+	_expect_snapshot_disk_round_trip(no_global_contract, "no-global-contract Area 02 state")
+	var stale_global_contract := snapshot.duplicate(true)
+	stale_global_contract["built_refinery"]["active_contract_id"] = "heavy"
+	_expect(
+		not SaveSystemScript.validate_snapshot(stale_global_contract)["ok"],
+		"stale global contract references remain rejected"
+	)
+	var missing_route_contract := snapshot.duplicate(true)
+	missing_route_contract["built_refinery"]["active_contract_id"] = ""
+	missing_route_contract["built_refinery"]["active_contract_bonus_available"] = false
+	missing_route_contract["built_refinery"]["equipment"]["built_tank_1"]["contract_id"] = ""
+	_expect(
+		not SaveSystemScript.validate_snapshot(missing_route_contract)["ok"],
+		"material that genuinely depends on a crude contract still requires its route-owned reference"
+	)
+	var unknown_route_contract := snapshot.duplicate(true)
+	unknown_route_contract["built_refinery"]["equipment"]["built_tank_1"]["contract_id"] = "mystery"
+	_expect(
+		not SaveSystemScript.validate_snapshot(unknown_route_contract)["ok"],
+		"unknown tank contract references remain rejected"
+	)
+
+	var empty_tank := snapshot.duplicate(true)
+	var empty_state: Dictionary = empty_tank["built_refinery"]["equipment"]["built_tank_6"]
+	empty_state["volume_l"] = 0.0
+	empty_state["contents"] = "empty"
+	empty_state["temperature_c"] = 20.0
+	empty_state["quality_percent"] = 0.0
+	empty_state["quality_status"] = "empty"
+	_expect(SaveSystemScript.validate_snapshot(empty_tank)["ok"], "empty product tank saves with explicit empty quality state")
+	_expect_snapshot_disk_round_trip(empty_tank, "empty product tank")
+
+	var unsampled := snapshot.duplicate(true)
+	var diesel_state: Dictionary = unsampled["built_refinery"]["equipment"]["built_tank_7"]
+	diesel_state["quality_status"] = "unanalyzed"
+	_expect(SaveSystemScript.validate_snapshot(unsampled)["ok"], "unsampled diesel saves with numeric process quality and explicit unanalyzed state")
+	_expect_snapshot_disk_round_trip(unsampled, "unsampled product")
+	var on_spec := unsampled.duplicate(true)
+	on_spec["built_refinery"]["equipment"]["built_tank_7"]["quality_status"] = "on_spec"
+	_expect(SaveSystemScript.validate_snapshot(on_spec)["ok"], "analyzed ON_SPEC diesel saves as a canonical enum")
+	_expect_snapshot_disk_round_trip(on_spec, "analyzed ON_SPEC product")
+	var off_spec := unsampled.duplicate(true)
+	off_spec["built_refinery"]["equipment"]["built_tank_7"]["quality_status"] = "off_spec"
+	_expect(SaveSystemScript.validate_snapshot(off_spec)["ok"], "analyzed OFF_SPEC diesel saves as a canonical enum")
+	_expect_snapshot_disk_round_trip(off_spec, "analyzed OFF_SPEC product")
+	var hud_text_status := unsampled.duplicate(true)
+	hud_text_status["built_refinery"]["equipment"]["built_tank_7"]["quality_status"] = "IKKE ANALYSERT — PRØVE KREVES"
+	_expect(not SaveSystemScript.validate_snapshot(hud_text_status)["ok"], "formatted tank HUD text is rejected as canonical quality state")
+
+	var nan_tank_quality := unsampled.duplicate(true)
+	nan_tank_quality["built_refinery"]["equipment"]["built_tank_7"]["quality_percent"] = NAN
+	_expect(not SaveSystemScript.validate_snapshot(nan_tank_quality)["ok"], "NaN Area 2 tank quality remains rejected")
+	var infinite_tank_temperature := unsampled.duplicate(true)
+	infinite_tank_temperature["built_refinery"]["equipment"]["built_tank_7"]["temperature_c"] = INF
+	_expect(not SaveSystemScript.validate_snapshot(infinite_tank_temperature)["ok"], "infinite Area 2 tank temperature remains rejected")
+	var finite_temperature := unsampled.duplicate(true)
+	finite_temperature["built_refinery"]["equipment"]["built_tank_7"]["temperature_c"] = 250.0
+	_expect(SaveSystemScript.validate_snapshot(finite_temperature)["ok"], "finite process-product temperature remains valid")
+	var tripped_pump := snapshot.duplicate(true)
+	tripped_pump["built_refinery"]["equipment"]["built_pump_2"]["trip_reason"] = "cooling_water_loss"
+	_expect(SaveSystemScript.validate_snapshot(tripped_pump)["ok"], "canonical pump trip reasons persist as save data")
+	var invalid_trip := snapshot.duplicate(true)
+	invalid_trip["built_refinery"]["equipment"]["built_pump_2"]["trip_reason"] = "NO FLOW — maybe broken"
+	_expect(not SaveSystemScript.validate_snapshot(invalid_trip)["ok"], "formatted or unknown pump trip text is rejected as canonical state")
+
+	var v028_legacy := snapshot.duplicate(true)
+	for state in v028_legacy["built_refinery"]["equipment"].values():
+		if state["type"] == "tank":
+			state.erase("quality_status")
+		elif state["type"] == "pump":
+			state.erase("trip_reason")
+	_expect(SaveSystemScript.validate_snapshot(v028_legacy)["ok"], "v0.28 saves without explicit quality or pump-trip enums remain valid")
+
+	var utility_shutdown := snapshot.duplicate(true)
+	var utilities: Dictionary = utility_shutdown["built_refinery"]["utility_state"]
+	utilities["starter_generator_running"] = false
+	utilities["instrument_air_compressor_running"] = false
+	utilities["cooling_water_pump_running"] = false
+	_expect(SaveSystemScript.validate_snapshot(utility_shutdown)["ok"], "utility shutdown state remains saveable")
+	_expect_snapshot_disk_round_trip(utility_shutdown, "utility shutdown")
+	_expect(SaveSystemScript.validate_snapshot(snapshot)["ok"], "utility recovery state remains saveable")
+	_expect_snapshot_disk_round_trip(snapshot, "utility recovery")
+
+
+func _expect_snapshot_disk_round_trip(snapshot: Dictionary, label: String) -> void:
+	var write_result: Dictionary = SaveSystemScript.write_snapshot(CANONICAL_STATE_PATH, snapshot)
+	var read_result: Dictionary = SaveSystemScript.read_snapshot(CANONICAL_STATE_PATH) if write_result["ok"] else {}
+	_expect(
+		write_result["ok"] and read_result.get("ok", false),
+		"autosave writer and validator round-trip %s" % label
+	)
 
 
 func _test_optional_delivery_report_validation(snapshot: Dictionary) -> void:
@@ -595,6 +698,7 @@ func _test_vacuum_intent_and_processing_round_trip() -> void:
 	source.build_controller._connect_ports(vdu.get_port("vacuum_residue"), residue.get_port("input"))
 	model.equipment[feed.unit_id]["contents"] = "heavy"
 	model.equipment[feed.unit_id]["volume_l"] = 100.0
+	model.equipment[feed.unit_id]["quality_status"] = model.TANK_QUALITY_NOT_APPLICABLE
 	model.equipment[pump.unit_id]["running"] = true
 	model.tick(2.0)
 	var snapshot: Dictionary = source._build_snapshot()
@@ -648,6 +752,7 @@ func _test_fcc_processing_round_trip() -> void:
 	source.build_controller._connect_ports(fcc.get_port("lco"), lco.get_port("input"))
 	model.equipment[feed.unit_id]["contents"] = "vacuum_gas_oil"
 	model.equipment[feed.unit_id]["volume_l"] = 100.0
+	model.equipment[feed.unit_id]["quality_status"] = model.TANK_QUALITY_NOT_APPLICABLE
 	model.equipment[pump.unit_id]["running"] = true
 	model.tick(2.0)
 	var snapshot: Dictionary = source._build_snapshot()
@@ -742,7 +847,7 @@ func _player_equipment_count(main) -> int:
 
 
 func _cleanup_test_files() -> void:
-	for base_path in [TEST_PATH, LEGACY_PATH, AUTOSAVE_STRESS_PATH, PILOT_SAVE_PATH]:
+	for base_path in [TEST_PATH, LEGACY_PATH, AUTOSAVE_STRESS_PATH, PILOT_SAVE_PATH, CANONICAL_STATE_PATH]:
 		for suffix in ["", ".tmp", ".bak", ".corrupt", ".previous", ".bak.previous", ".corrupt.previous"]:
 			var path: String = base_path + String(suffix)
 			if FileAccess.file_exists(path):

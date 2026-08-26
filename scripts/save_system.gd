@@ -412,27 +412,26 @@ static func _validate_built_refinery(state: Dictionary, unit_types: Dictionary, 
 	_register_site_units(semantic_network)
 	for edge in connections:
 		semantic_network.try_connect(edge["from_unit"], edge["from_port"], edge["to_unit"], edge["to_port"])
-	var atmospheric_tanks := {}
+	var referenced_contracts := {}
 	for route in semantic_network.atmospheric_routes():
-		atmospheric_tanks[route["source"]] = true
-		for product_tank in route["products"].values():
-			atmospheric_tanks[product_tank] = true
-	var has_atmospheric_batch_material := false
-	for tank_id in atmospheric_tanks:
-		var tank_state: Dictionary = saved_equipment[tank_id]
-		if tank_state["type"] == "tank" and float(tank_state["volume_l"]) > 0.001:
-			has_atmospheric_batch_material = true
-			break
-	var has_tracking := (
-		float(state["report_crude_processed_l"]) > 0.001
-		or float(state["report_temperature_total"]) > 0.001
-		or float(state.get("report_flow_total", 0.0)) > 0.001
-		or float(state["report_crude_cost"]) > 0.001
-	)
-	if (has_atmospheric_batch_material or has_tracking) and active_contract_id.is_empty():
-		return _result(false, "Materiale mangler en aktiv råoljekontrakt.")
-	if not has_atmospheric_batch_material and not has_tracking and not active_contract_id.is_empty():
-		return _result(false, "En aktiv råoljekontrakt finnes uten batchmateriale.")
+		var source: Dictionary = saved_equipment[route["source"]]
+		var route_has_batch_state := (
+			float(source["volume_l"]) > 0.001
+			or float(source.get("report_crude_processed_l", 0.0)) > 0.001
+		)
+		for product_tank_id in route["products"].values():
+			if float(saved_equipment[product_tank_id]["volume_l"]) > 0.001:
+				route_has_batch_state = true
+		var route_contract_id := String(source.get("contract_id", ""))
+		if route_has_batch_state and not CrudeCatalogScript.is_valid(route_contract_id):
+			return _result(false, "Atmosfærisk batchmateriale mangler gyldig råoljekontrakt på kildetanken.")
+		if CrudeCatalogScript.is_valid(route_contract_id):
+			referenced_contracts[route_contract_id] = true
+	var pending_contract_id := String(state.get("site_logistics", {}).get("pending_intake_delivery", {}).get("contract_id", ""))
+	if not pending_contract_id.is_empty():
+		referenced_contracts[pending_contract_id] = true
+	if not active_contract_id.is_empty() and not referenced_contracts.has(active_contract_id):
+		return _result(false, "Aktiv råoljekontrakt peker ikke på en pågående leveranse eller batch.")
 	return _result(true, "Bygd prosesstilstand er gyldig.")
 
 
@@ -529,11 +528,28 @@ static func _validate_equipment_state(state: Dictionary) -> Dictionary:
 					return _result(false, "En lagret tank har innhold som ikke stemmer med materialintensjonen.")
 			if not _in_range(state["temperature_c"], -50.0, 500.0) or not _in_range(state["quality_percent"], 0.0, 100.0):
 				return _result(false, "En lagret tank har ugyldig temperatur eller kvalitet.")
+			if state.has("quality_status"):
+				if typeof(state["quality_status"]) != TYPE_STRING or state["quality_status"] not in BuiltRefineryModelScript.VALID_TANK_QUALITY_STATUSES:
+					return _result(false, "En lagret tank har ukjent kvalitetsstatus.")
+				var quality_status: String = state["quality_status"]
+				if float(state["volume_l"]) <= 0.001 and quality_status != BuiltRefineryModelScript.TANK_QUALITY_EMPTY:
+					return _result(false, "En tom tank har feil kvalitetsstatus.")
+				if float(state["volume_l"]) > 0.001 and state["contents"] == "diesel" and quality_status not in [BuiltRefineryModelScript.TANK_QUALITY_UNANALYZED, BuiltRefineryModelScript.TANK_QUALITY_ON_SPEC, BuiltRefineryModelScript.TANK_QUALITY_OFF_SPEC]:
+					return _result(false, "En dieseltank har feil kvalitetsstatus.")
+				if float(state["volume_l"]) > 0.001 and state["contents"] != "diesel" and quality_status != BuiltRefineryModelScript.TANK_QUALITY_NOT_APPLICABLE:
+					return _result(false, "En tank uten diesel har feil kvalitetsstatus.")
+			if typeof(state.get("contract_id", "")) != TYPE_STRING:
+				return _result(false, "En lagret tank har ugyldig kontraktreferanse.")
+			var tank_contract_id := String(state.get("contract_id", ""))
+			if not tank_contract_id.is_empty() and not CrudeCatalogScript.is_valid(tank_contract_id):
+				return _result(false, "En lagret tank peker på en ukjent råoljekontrakt.")
 			if not _in_range(state["crude_cost_per_l"], 0.0, 1000.0):
 				return _result(false, "En lagret tank har ugyldig råoljekost.")
 			if state.has("sulfur_ppm") and (not _finite_number(state["sulfur_ppm"]) or not _in_range(state["sulfur_ppm"], 0.0, 1000000.0)):
 				return _result(false, "En lagret tank har ugyldig svovelinnhold.")
 		"pump":
+			if state.has("trip_reason") and (typeof(state["trip_reason"]) != TYPE_STRING or state["trip_reason"] not in BuiltRefineryModelScript.VALID_PUMP_TRIP_REASONS):
+				return _result(false, "En lagret pumpe har ukjent tripårsak.")
 			if state.has("flow_setpoint_lps"):
 				if not _finite_number(state["flow_setpoint_lps"]):
 					return _result(false, "En lagret pumpe har ugyldig flowmål.")

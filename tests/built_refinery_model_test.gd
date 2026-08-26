@@ -100,14 +100,16 @@ func _test_utility_expansion() -> void:
 	var valve_before := bool(model.equipment["valve"]["open"])
 	model.toggle_instrument_air_compressor()
 	_expect(not model.equipment["pump"]["running"] and is_zero_approx(model.equipment["heater"]["setpoint_c"]) and is_zero_approx(model.equipment["heater"]["output_percent"]), "instrument-air loss stops CDU flow and drives TIC-201 to its canonical fail-closed state")
+	_expect(model.equipment["pump"]["trip_reason"] == BuiltRefineryModelScript.PUMP_TRIP_INSTRUMENT_AIR, "instrument-air loss records its own canonical pump trip instead of a generic stop")
 	_expect(model.equipment["valve"]["open"] == valve_before and "INSTRUMENT AIR LOST" in model.alarm_text(), "manual field valve position survives IA loss while the existing alarm layer reports the root utility")
-	_expect(model.toggle_instrument_air_compressor()["ok"], "IA-101 recovery clears its utility trip without restarting heat or process")
+	_expect(model.toggle_instrument_air_compressor()["ok"] and not model.equipment["pump"]["running"] and model.equipment["pump"]["trip_reason"] == BuiltRefineryModelScript.PUMP_TRIP_INSTRUMENT_AIR, "IA-101 recovery preserves the trip record and never auto-restarts heat or process")
 	model.equipment["heater"]["setpoint_c"] = 200.0
 	model.equipment["heater"]["temperature_c"] = 200.0
-	_expect(model.interact("pump")["ok"], "operator can deliberately restart the recovered IA-dependent process")
+	_expect(model.interact("pump")["ok"] and model.equipment["pump"]["trip_reason"].is_empty(), "operator can deliberately restart the recovered IA-dependent process and acknowledge its trip")
 	model.toggle_cooling_water_pump()
 	_expect(not model.equipment["pump"]["running"] and "COOLING WATER LOST" in model.alarm_text() and "NO COOLING WATER" in model.unit_status("column"), "cooling-water loss blocks CDU condensation, stops flow and reports locally")
-	_expect(model.toggle_cooling_water_pump()["ok"] and not model.equipment["pump"]["running"], "CWP-101 recovery restores cooling but never auto-restarts the process pump")
+	_expect(model.equipment["pump"]["trip_reason"] == BuiltRefineryModelScript.PUMP_TRIP_COOLING_WATER, "cooling-water loss records its distinct canonical pump trip")
+	_expect(model.toggle_cooling_water_pump()["ok"] and not model.equipment["pump"]["running"] and model.equipment["pump"]["trip_reason"] == BuiltRefineryModelScript.PUMP_TRIP_COOLING_WATER, "CWP-101 recovery restores cooling but never auto-restarts or silently clears the process-pump trip")
 
 	var saved: Dictionary = model.save_state()
 	var restored = _complete_model()
@@ -155,6 +157,7 @@ func _test_electrical_power_capacity() -> void:
 	var overload: Dictionary = model.interact("vacuum_pump")
 	_expect(not overload["ok"] and "OVERLOAD TRIP" in overload["message"] and model.power_status()["tripped"], "a 50 kW VDU start above the remaining reserve deterministically trips MCC-101")
 	_expect(not model.equipment["main_pump"]["running"] and not model.instrument_air_compressor_running and not model.cooling_water_pump_running, "MCC overload safely stops process and utility loads")
+	_expect(model.equipment["main_pump"]["trip_reason"] == BuiltRefineryModelScript.PUMP_TRIP_MCC, "MCC overload preserves its exact pump trip cause after utility shutdown propagation")
 	_expect("MCC-101" in model.alarm_text() and "OVERLOAD TRIP" in model.alarm_text(), "electrical overload enters the existing operator-alarm layer")
 	_expect("BUS TRIPPED / OVERLOAD" in model.mcc_inspection_text() and "Trip demand 120 kW | Generation 100 kW" in model.mcc_inspection_text(), "MCC inspection preserves the exact utility-aware trip demand")
 	var tripped_saved: Dictionary = model.save_state()
@@ -162,8 +165,8 @@ func _test_electrical_power_capacity() -> void:
 	_add_power_atmospheric_route(tripped_restored, "main")
 	tripped_restored.apply_saved_state(tripped_saved)
 	_expect(tripped_restored.power_status()["tripped"] and tripped_restored.power_status()["trip_id"] == "overload", "save/load preserves the canonical MCC trip and reason without restoring stopped loads")
-	_expect(model.reset_electrical_bus()["ok"] and model.power_status()["bus_available"], "removing tripped running loads permits a deliberate MCC reset")
-	_expect(model.toggle_instrument_air_compressor()["ok"] and model.toggle_cooling_water_pump()["ok"] and model.interact("main_pump")["ok"], "utilities and process restart deliberately after overload recovery")
+	_expect(model.reset_electrical_bus()["ok"] and model.power_status()["bus_available"] and not model.equipment["main_pump"]["running"] and model.equipment["main_pump"]["trip_reason"] == BuiltRefineryModelScript.PUMP_TRIP_MCC, "removing tripped running loads permits a deliberate MCC reset without auto-restarting or erasing the pump trip")
+	_expect(model.toggle_instrument_air_compressor()["ok"] and model.toggle_cooling_water_pump()["ok"] and model.interact("main_pump")["ok"] and model.equipment["main_pump"]["trip_reason"].is_empty(), "utilities and process restart deliberately after overload recovery and acknowledge the trip")
 	model.register_unit("power", "power_unit", "PU-101")
 	_expect(is_equal_approx(model.power_status()["capacity_kw"], 100.0), "a placed but stopped PU-101 adds no fictitious generation")
 	_expect(model.interact("power")["ok"] and is_equal_approx(model.power_status()["capacity_kw"], 200.0), "a running expansion generator adds one stackable capacity increment")
@@ -592,6 +595,7 @@ func _test_topology_change_stops_flow_and_spare_pump() -> void:
 	model.tick(1.0)
 	model.network.disconnect_ports("valve", "output", "heater", "input")
 	_expect(not model.equipment["pump"]["running"], "disconnecting a live route stops its pump immediately")
+	_expect(model.equipment["pump"]["trip_reason"] == BuiltRefineryModelScript.PUMP_TRIP_ROUTE, "live topology loss records a route-invalid safety trip")
 	_expect(is_equal_approx(model.actual_flow_lps, 0.0), "topology change clears actual flow immediately")
 	model.register_unit("spare_pump", "pump", "P-299")
 	model.network.try_connect("valve", "output", "heater", "input")
@@ -800,7 +804,7 @@ func _test_control_station_telemetry_and_temperature_guard() -> void:
 	var flowing: Dictionary = model.control_snapshot()
 	_expect(is_equal_approx(flowing["source_volume_l"], 990.0) and is_equal_approx(flowing["actual_flow_lps"], 10.0), "live LS-201 telemetry follows actual source loss and flow")
 	_expect(is_equal_approx(flowing["light_volume_l"], 3.0) and is_equal_approx(flowing["diesel_volume_l"], 3.5) and is_equal_approx(flowing["heavy_volume_l"], 3.5), "live product instruments match the exact mass-conserving split")
-	_expect(model.remote_toggle_route_pump()["ok"] and not model.equipment["pump"]["running"] and is_equal_approx(model.actual_flow_lps, 0.0), "remote stop clears commanded and actual flow immediately")
+	_expect(model.remote_toggle_route_pump()["ok"] and not model.equipment["pump"]["running"] and is_equal_approx(model.actual_flow_lps, 0.0) and model.equipment["pump"]["trip_reason"].is_empty(), "remote manual stop clears commanded flow without inventing a trip")
 	model.register_unit("spare_heater_control", "heater", "H-299")
 	var spare_target: float = model.equipment["spare_heater_control"]["setpoint_c"]
 	var route_target_before: float = model.equipment["heater"]["setpoint_c"]
@@ -814,6 +818,7 @@ func _test_control_station_telemetry_and_temperature_guard() -> void:
 	model.tick(1.0)
 	var tripped: Dictionary = model.control_snapshot()
 	_expect(not tripped["pump_running"] and "PUMPE STOPPET AV TEMPERATURVERN" in tripped["temperature_trip_message"], "remote temperature guard trips the pump before unsafe processing")
+	_expect(model.equipment["pump"]["trip_reason"] == BuiltRefineryModelScript.PUMP_TRIP_TEMPERATURE and "TRIPPED" in tripped["pump_state"], "temperature guard exposes one canonical trip reason to LS-201")
 	_expect(is_equal_approx(_total_tank_volume(model), mass_before_trip), "temperature trip occurs before another material transfer")
 	model.network.disconnect_ports("valve", "output", "heater", "input")
 	var invalid_snapshot: Dictionary = model.control_snapshot()
@@ -1309,12 +1314,12 @@ func _test_atomic_vacuum_distillation() -> void:
 	var empty = _vacuum_model(0.0)
 	empty.equipment["vacuum_pump"]["running"] = true
 	empty.tick(1.0)
-	_expect(empty.network.filter_routes_by_process_type(empty.network.find_complete_routes(), empty.network.VACUUM_DISTILLATION).size() == 1 and is_equal_approx(_total_tank_volume(empty), 0.0), "empty planned VDU source remains valid but produces no material")
+	_expect(empty.network.filter_routes_by_process_type(empty.network.find_complete_routes(), empty.network.VACUUM_DISTILLATION).size() == 1 and empty.equipment["vacuum_pump"]["running"] and is_equal_approx(_total_tank_volume(empty), 0.0), "empty planned VDU source remains a RUNNING/NO FEED wait without producing material")
 	var wrong_material = _vacuum_model(10.0)
 	wrong_material.equipment["vacuum_source"]["contents"] = "diesel"
 	wrong_material.equipment["vacuum_pump"]["running"] = true
 	wrong_material.tick(1.0)
-	_expect(is_equal_approx(wrong_material.equipment["vacuum_source"]["volume_l"], 10.0) and is_equal_approx(_total_tank_volume(wrong_material), 10.0), "wrong actual VDU feed is rejected defensively without consumption or output")
+	_expect(not wrong_material.equipment["vacuum_pump"]["running"] and wrong_material.equipment["vacuum_pump"]["trip_reason"] == BuiltRefineryModelScript.PUMP_TRIP_PROCESS and is_equal_approx(wrong_material.equipment["vacuum_source"]["volume_l"], 10.0) and is_equal_approx(_total_tank_volume(wrong_material), 10.0), "wrong actual VDU feed causes a process-mismatch trip without consumption or output")
 	var saved: Dictionary = stopped.save_state()
 	var restored = _vacuum_model(0.0)
 	restored.apply_saved_state(saved)
@@ -1443,7 +1448,7 @@ func _test_secondary_pump_start_and_stop_guards() -> void:
 	blocked_vdu.equipment["vgo_tank"]["contents"] = "vacuum_gas_oil"
 	blocked_vdu.equipment["vgo_tank"]["volume_l"] = 1000.0
 	blocked_vdu.tick(1.0)
-	_expect(not blocked_vdu.equipment["vacuum_pump"]["running"] and is_equal_approx(blocked_vdu.equipment["vacuum_source"]["volume_l"], 10.0) and is_equal_approx(blocked_vdu.power_status()["demand_kw"], 0.0), "a VDU output becoming full during operation safely stops the pump without transfer")
+	_expect(blocked_vdu.equipment["vacuum_pump"]["running"] and is_equal_approx(blocked_vdu.equipment["vacuum_pump"]["actual_flow_lps"], 0.0) and is_equal_approx(blocked_vdu.equipment["vacuum_source"]["volume_l"], 10.0) and "BLOCKED" in blocked_vdu.pump_state_text("vacuum_pump"), "a VDU output becoming full keeps the RUN command but blocks flow without transfer")
 	var running_vdu = _vacuum_model(10.0)
 	_expect(running_vdu.interact("vacuum_pump")["ok"], "a valid VDU route can start normally")
 	running_vdu.tick(10.0)
