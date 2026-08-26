@@ -1,5 +1,62 @@
 # CrudeWorks Development Log
 
+## v0.28.2 — Process Foundation Gate
+
+- Completed the final process-foundation audit before Graybox World. Material
+  paths were classified as **needs small generalization**: transfers and unit
+  splits were already atomic/capacity-bounded, but conservation assertions were
+  bespoke. Pressure/restriction was also **needs small generalization**: pump
+  condition and blocked-filter factors already governed all pump-driven routes,
+  but their relationship was not exposed coherently. Heater/duty architecture
+  was classified as **already sufficient as an extension point**: every routed
+  heater already has canonical PV, SP, output and actual-flow context, while a
+  true energy-duty balance would be a gameplay rebalance and is deferred.
+- Added reusable `MaterialBalance` diagnostics for the invariant `before +
+  boundary input - boundary output - defined loss = after`, with finite,
+  non-negative inventory validation and a small floating-point tolerance. It is
+  test/diagnostic architecture and never crashes live play or creates another
+  persisted inventory.
+- Defined the current canonical hold-ups explicitly: Pilot crude/light/diesel/
+  heavy; every built tank; pending CI-101 delivery; and GF-101 generator fuel.
+  Pipes, headers, pumps, treatment and process units intentionally have zero
+  modeled hold-up. Reports, samples, processed totals, HUD text, tank meshes and
+  flow visuals remain derived state rather than duplicate material truth.
+- Audited all supported material mutations. No unexplained creation or
+  destruction was found in normal gameplay, and existing yields were unchanged.
+  Two boundary semantics were clarified: confirmed product disposal now reports
+  an explicit defined loss, and contract/PD/secondary dispatch reports all
+  physically removed material. In particular, a Heavy order removes and reports
+  both its diesel and ordered heavy product while preserving the existing
+  diesel-only `sold_volume_l` and economy behavior.
+- Generalized the existing restriction calculation into derived pump hydraulic
+  diagnostics: selected target × condition capability × filter restriction =
+  achievable flow. A blocked filter exposes `ΔP HIGH`, 65% restriction and the
+  resulting capacity in inspection/status feedback. Valve closure and unavailable
+  destinations remain explicit binary route restrictions with zero flow. No
+  pipe friction, head network, percentage valve, CFD or persisted pressure state
+  was introduced.
+- Left heater behavior unchanged after audit. The existing equipment-type loop,
+  route lookup, PV/SP/output, actual-flow signal, IA fail-close and CW permissive
+  provide a safe later insertion point for duty versus flow. Modeling inlet
+  temperature, heat capacity and energy balance now would change established
+  temperature/quality pacing and is post-graybox technical debt.
+- Expanded shared conservation coverage across Pilot processing/dispatch,
+  CI-101 partial transfer and save/load, tank-to-GF-101 transfer, deterministic
+  generator consumption as a defined loss, tank → pump → valve → CDU, partial
+  and fully blocked destinations, Product Routing Header, CDU/VDU/FCC atomic
+  splits, disposal, Heavy contract output, PD-101 dispatch and mid-process Main
+  save/load. Added deterministic restriction/repair diagnostics while retaining
+  STOPPED, RUNNING/FLOW, RUNNING/BLOCKED-or-NO-FEED and TRIPPED semantics.
+- Save format remains unchanged. Conservation totals and pump hydraulic
+  diagnostics are recalculated from canonical v0.27/v0.28-compatible state;
+  existing utility fuel, MCC, IA/CW, TIC fail-safe and deliberate trip recovery
+  behavior is preserved.
+- Established **PROCESS SCOPE FREEZE**. No new refinery process units, detailed
+  hydraulics or detailed thermal simulation should be added before Graybox World
+  and the existing loop receive physical, UX and progression depth.
+
+**PROCESS FOUNDATION READY FOR GRAYBOX.**
+
 ## v0.28.1 — Stability & Operator Experience
 
 - Fixed the playtest save failure `Materiale mangler en aktiv

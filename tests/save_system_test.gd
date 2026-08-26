@@ -3,6 +3,7 @@ extends SceneTree
 const MainScene = preload("res://scenes/main.tscn")
 const SaveSystemScript = preload("res://scripts/save_system.gd")
 const ProcessModelScript = preload("res://scripts/process_model.gd")
+const MaterialBalanceScript = preload("res://scripts/material_balance.gd")
 
 const TEST_PATH := "user://crudeworks_save_system_test.json"
 const LEGACY_PATH := "user://crudeworks_save_system_legacy_test.json"
@@ -640,7 +641,11 @@ func _test_main_round_trip(snapshot: Dictionary, source_main) -> void:
 	var source_before: float = snapshot["built_refinery"]["equipment"]["built_tank_1"]["volume_l"]
 	var restored_source: float = restored.built_refinery_model.equipment["built_tank_1"]["volume_l"]
 	_expect(is_equal_approx(restored_source, source_before), "partial source inventory restores without load-time transfer")
-	_expect(is_equal_approx(_total_tank_volume(restored), _total_tank_volume(source_main)), "mid-batch total mass is identical after load")
+	var load_balance: Dictionary = MaterialBalanceScript.evaluate(
+		source_main.built_refinery_model.material_inventory_snapshot(true, true),
+		restored.built_refinery_model.material_inventory_snapshot(true, true)
+	)
+	_expect(load_balance["conserved"], "mid-batch canonical inventory is identical after load")
 	var money_before_repeat: int = restored.process_model.money
 	var units_before_repeat: int = restored.build_controller.registered_units.size()
 	_expect(not restored._apply_snapshot(restored_snapshot)["ok"], "a save cannot be applied over a populated live refinery")
@@ -648,9 +653,13 @@ func _test_main_round_trip(snapshot: Dictionary, source_main) -> void:
 
 	var restored_pump = restored.build_controller.registered_unit_by_id("built_pump_2")
 	restored.built_refinery_model.interact(restored_pump.unit_id)
-	var mass_before_tick := _total_tank_volume(restored)
+	var inventory_before_tick: Dictionary = restored.built_refinery_model.material_inventory_snapshot(false, false)
 	restored.built_refinery_model.tick(35.0)
-	_expect(is_equal_approx(_total_tank_volume(restored), mass_before_tick), "continued processing after load remains mass conserving")
+	var continued_balance: Dictionary = MaterialBalanceScript.evaluate(
+		inventory_before_tick,
+		restored.built_refinery_model.material_inventory_snapshot(false, false)
+	)
+	_expect(continued_balance["conserved"], "continued processing after load remains mass conserving")
 	restored.built_refinery_model.interact(restored_pump.unit_id)
 	var restored_sale: Dictionary = restored.built_refinery_model.sell_diesel()
 	if restored_sale["ok"]:

@@ -3,6 +3,7 @@ extends SceneTree
 const BuiltRefineryModelScript = preload("res://scripts/built_refinery_model.gd")
 const CrudeCatalogScript = preload("res://scripts/crude_contract_catalog.gd")
 const FeedAllocationScript = preload("res://scripts/feed_allocation.gd")
+const MaterialBalanceScript = preload("res://scripts/material_balance.gd")
 
 var failures := 0
 
@@ -82,19 +83,20 @@ func _test_utility_expansion() -> void:
 	model.equipment["valve"]["open"] = true
 	_expect(model.interact("pump")["ok"], "CDU process starts only after electricity, IA and cooling water are available")
 	var expected_use_lpm: float = model.current_generator_fuel_use_lpm()
-	var fuel_before: float = model.generator_fuel_l
+	var before_fuel_use: Dictionary = model.material_inventory_snapshot(false, true)
 	model.tick(60.0)
-	_expect(expected_use_lpm > 0.1 and is_equal_approx(model.generator_fuel_l, fuel_before - expected_use_lpm), "generator diesel use is deterministic and rises with connected electrical load")
+	_expect(expected_use_lpm > 0.1 and MaterialBalanceScript.evaluate(before_fuel_use, model.material_inventory_snapshot(false, true), 0.0, 0.0, expected_use_lpm)["conserved"], "generator diesel use is one deterministic defined material loss")
 
 	var diesel_before: float = model.equipment["diesel_tank"]["volume_l"]
 	var inventory_revision_before: int = model.product_inventory_revision
+	var before_refuel: Dictionary = model.material_inventory_snapshot(false, true)
 	var refuel: Dictionary = model.refuel_generator_day_tank()
 	_expect(refuel["ok"] and is_equal_approx(refuel["transferred_l"], 25.0), "GF-101 transfers one bounded physical batch from stored diesel")
 	_expect(
 		is_equal_approx(model.equipment["diesel_tank"]["volume_l"], diesel_before - 25.0)
-		and is_equal_approx(model.equipment["diesel_tank"]["volume_l"] + model.generator_fuel_l, diesel_before + fuel_before - expected_use_lpm)
+		and MaterialBalanceScript.evaluate(before_refuel, model.material_inventory_snapshot(false, true))["conserved"]
 		and model.product_inventory_revision == inventory_revision_before + 1,
-		"fuel transfer conserves canonical diesel, creates no duplicate inventory and invalidates stale product authorization"
+		"tank-to-GF-101 transfer conserves canonical diesel and invalidates stale product authorization"
 	)
 
 	var valve_before := bool(model.equipment["valve"]["open"])
@@ -427,6 +429,14 @@ func _test_recoverable_pump_filter_fault() -> void:
 	model.interact("pump")
 	model.tick(30.0)
 	_expect(model.equipment["pump"]["fault_id"] == "blocked_filter", "sustained paid-batch production triggers one reusable pump restriction state")
+	var restricted_hydraulics: Dictionary = model.pump_hydraulic_diagnostics("pump")
+	_expect(
+		is_equal_approx(restricted_hydraulics["available_capability_lps"], 15.0)
+		and is_equal_approx(restricted_hydraulics["restriction_percent"], 65.0)
+		and is_equal_approx(restricted_hydraulics["achievable_flow_lps"], 5.25)
+		and restricted_hydraulics["filter_delta_p"] == "HIGH",
+		"blocked filter exposes deterministic pump capability, restriction and achievable flow diagnostics"
+	)
 	var saved_fault: Dictionary = model.save_state()
 	var restored = _complete_model()
 	restored.apply_saved_state(saved_fault)
@@ -436,7 +446,7 @@ func _test_recoverable_pump_filter_fault() -> void:
 	_expect("LOW FLOW" in model.alarm_text(), "restricted pump capacity appears as a diagnosable process symptom")
 	var mass_before_service := _total_tank_volume(model)
 	var diagnosis: Dictionary = model.inspect_or_service_pump("pump")
-	_expect(diagnosis["ok"] and "filterrestriksjon" in diagnosis["message"], "field inspection identifies the likely restriction instead of auto-repairing")
+	_expect(diagnosis["ok"] and "filterrestriksjon" in diagnosis["message"] and "ΔP HIGH" in diagnosis["message"], "field inspection identifies the high-delta-P restriction instead of auto-repairing")
 	var running_service: Dictionary = model.inspect_or_service_pump("pump")
 	_expect(not running_service["ok"] and "Stopp" in running_service["message"], "filter service is blocked while the pump is still commanded on")
 	model.interact("pump")
@@ -446,6 +456,8 @@ func _test_recoverable_pump_filter_fault() -> void:
 	model.interact("pump")
 	model.tick(1.0)
 	_expect(is_equal_approx(model.actual_flow_lps, 15.0), "repair restores the selected pump capacity without resetting the batch")
+	var restored_hydraulics: Dictionary = model.pump_hydraulic_diagnostics("pump")
+	_expect(restored_hydraulics["filter_delta_p"] == "NORMAL" and is_equal_approx(restored_hydraulics["restriction_percent"], 0.0), "repair clears the derived restriction diagnostics without adding persistent hydraulic state")
 
 
 func _test_sour_crude_requires_treatment() -> void:
@@ -510,10 +522,9 @@ func _test_mass_conserving_ideal_batch_and_sale() -> void:
 	model.interact("valve")
 	_expect(model.interact("pump")["ok"], "pump starts on a complete route")
 	_expect(not model.can_remove("pump")["ok"], "running built pump cannot be removed")
-	var before_mass := _total_tank_volume(model)
+	var before_inventory: Dictionary = model.material_inventory_snapshot(false, false)
 	model.tick(10.0)
-	var after_mass := _total_tank_volume(model)
-	_expect(is_equal_approx(before_mass, after_mass), "transfer conserves total liquid volume")
+	_expect(MaterialBalanceScript.evaluate(before_inventory, model.material_inventory_snapshot(false, false))["conserved"], "shared invariant verifies tank → pump → valve → CDU transfer")
 	_expect(is_equal_approx(model.equipment["source"]["volume_l"], 900.0), "100 L of processed crude leaves the source")
 	_expect(is_equal_approx(model.equipment["light_tank"]["volume_l"], 30.0), "ideal separation creates 30 percent light product")
 	_expect(is_equal_approx(model.equipment["diesel_tank"]["volume_l"], 35.0), "ideal separation creates 35 percent diesel")
@@ -524,8 +535,10 @@ func _test_mass_conserving_ideal_batch_and_sale() -> void:
 	_expect(model.diesel_is_approved(), "ideal built diesel is approved")
 	var approved_disposal_warning: Dictionary = model.discard_products()
 	_expect(approved_disposal_warning.get("requires_confirmation", false) and "Godkjent" in approved_disposal_warning["message"], "approved diesel cannot be destroyed by one accidental key press")
+	var before_sale: Dictionary = model.material_inventory_snapshot(false, false)
 	var sale: Dictionary = model.sell_diesel()
 	_expect(sale["ok"] and sale["revenue"] == 2800, "approved built diesel sells for the expected revenue")
+	_expect(MaterialBalanceScript.evaluate(before_sale, model.material_inventory_snapshot(false, false), 0.0, sale.get("material_output_l", 0.0))["conserved"], "Area 02 contract dispatch exposes all removed inventory as boundary output")
 	_expect(model.commissioning_contract_complete, "first approved built sale completes the Area 02 contract")
 	_expect(sale["contract_completed_now"], "first sale reports that commissioning completed now")
 	_expect(is_equal_approx(sale["report"]["crude_processed_l"], 1000.0), "batch report records actual processed crude")
@@ -547,6 +560,13 @@ func _test_mass_conserving_ideal_batch_and_sale() -> void:
 	_expect(paid_sale["report"]["net_profit"] == 2500, "paid batch report calculates exact net profit")
 	_expect(not paid_sale["contract_completed_now"] and model.successful_sales == 4, "later sales do not recomplete the commissioning contract")
 
+	var loss_model = _complete_model()
+	loss_model.equipment["light_tank"]["contents"] = "light"
+	loss_model.equipment["light_tank"]["volume_l"] = 100.0
+	var before_disposal: Dictionary = loss_model.material_inventory_snapshot(false, false)
+	var disposal: Dictionary = loss_model.discard_products(true)
+	_expect(disposal["ok"] and MaterialBalanceScript.evaluate(before_disposal, loss_model.material_inventory_snapshot(false, false), 0.0, 0.0, disposal.get("defined_loss_l", 0.0))["conserved"], "intentional product disposal is an explicit and testable defined loss")
+
 
 func _test_full_tank_backpressure() -> void:
 	var model = _complete_model()
@@ -559,16 +579,16 @@ func _test_full_tank_backpressure() -> void:
 	model.equipment["diesel_tank"]["quality_percent"] = 100.0
 	model.interact("valve")
 	model.interact("pump")
-	var before_mass := _total_tank_volume(model)
+	var before_inventory: Dictionary = model.material_inventory_snapshot(false, false)
 	var before_source: float = model.equipment["source"]["volume_l"]
 	model.tick(10.0)
 	var source_loss: float = before_source - model.equipment["source"]["volume_l"]
 	_expect(is_equal_approx(model.equipment["diesel_tank"]["volume_l"], 1000.0), "partial destination capacity is filled but never exceeded")
 	_expect(is_equal_approx(source_loss, 5.0 / 0.35), "all product fractions scale to the limiting destination")
-	_expect(is_equal_approx(before_mass, _total_tank_volume(model)), "capacity-limited transfer remains mass conserving")
-	var mass_before_blocked_tick := _total_tank_volume(model)
+	_expect(MaterialBalanceScript.evaluate(before_inventory, model.material_inventory_snapshot(false, false))["conserved"], "capacity-limited partial transfer remains mass conserving")
+	var inventory_before_blocked_tick: Dictionary = model.material_inventory_snapshot(false, false)
 	model.tick(1.0)
-	_expect(is_equal_approx(mass_before_blocked_tick, _total_tank_volume(model)), "a full product tank blocks the entire next transfer")
+	_expect(MaterialBalanceScript.evaluate(inventory_before_blocked_tick, model.material_inventory_snapshot(false, false))["conserved"], "a full product tank blocks the entire next transfer without material loss")
 	_expect(is_equal_approx(model.actual_flow_lps, 0.0), "full destination reports zero actual flow")
 	_expect("full" in model.last_status, "full destination identifies the blocking problem")
 
@@ -729,9 +749,17 @@ func _test_heavy_contract_temperature_tradeoff() -> void:
 	_expect(is_equal_approx(ideal.equipment["light_tank"]["volume_l"], 150.0) and is_equal_approx(ideal.equipment["diesel_tank"]["volume_l"], 220.0) and is_equal_approx(ideal.equipment["heavy_tank"]["volume_l"], 630.0), "ideal Heavy processing produces the declared 150/220/630 L outputs")
 	_expect(ideal.diesel_is_approved() and "HIGH TEMPERATURE" not in ideal.alarm_text(), "Heavy diesel is approved at 230 C without a false high-temperature alarm")
 	_take_and_analyze(ideal)
+	var inventory_before_sale: Dictionary = ideal.material_inventory_snapshot(false, false)
 	var ideal_sale: Dictionary = ideal.sell_diesel()
 	_expect(ideal_sale["ok"] and ideal_sale["report"]["product_revenue"] == 1760 and ideal_sale["report"]["delivery_bonus"] == 1000 and ideal_sale["revenue"] == 2760, "first approved Heavy delivery pays exact product revenue plus its one-time bonus")
 	_expect(ideal_sale["report"]["crude_cost"] == 180 and ideal_sale["report"]["net_profit"] == 2580, "Heavy report calculates exact cost and net profit")
+	var sale_balance: Dictionary = MaterialBalanceScript.evaluate(
+		inventory_before_sale,
+		ideal.material_inventory_snapshot(false, false),
+		0.0,
+		ideal_sale["material_output_l"]
+	)
+	_expect(sale_balance["conserved"] and is_equal_approx(ideal_sale["material_output_l"], 850.0), "Heavy contract reports diesel and ordered residue as one explicit material boundary output")
 	var repeated: Dictionary = ideal.sell_diesel()
 	_expect(not repeated["ok"] and repeated["revenue"] == 0 and not ideal.active_contract_bonus_available, "Heavy product and bonus cannot be sold repeatedly")
 
@@ -1199,6 +1227,7 @@ func _test_product_header_allocation_and_capacity() -> void:
 	model.equipment["heater"]["setpoint_c"] = 200.0
 	model.interact("valve")
 	_expect(model.interact("pump")["ok"], "selected product storage lets the upstream pump start")
+	var before_routed_processing: Dictionary = model.material_inventory_snapshot(false, false)
 	model.tick(10.0)
 	_expect(is_equal_approx(model.equipment["diesel_tank"]["volume_l"], 35.0) and is_equal_approx(model.equipment["diesel_backup"]["volume_l"], 0.0), "only selected diesel tank A receives new production")
 	_expect(not model.interact("diesel_header")["ok"], "running process cannot switch product ownership")
@@ -1207,7 +1236,7 @@ func _test_product_header_allocation_and_capacity() -> void:
 	model.interact("pump")
 	model.tick(10.0)
 	_expect(is_equal_approx(model.equipment["diesel_tank"]["volume_l"], 35.0) and is_equal_approx(model.equipment["diesel_backup"]["volume_l"], 35.0), "switching product route preserves tank A inventory and sends later diesel only to B")
-	_expect(is_equal_approx(_total_tank_volume(model), 1000.0), "product-header routing preserves total material mass")
+	_expect(MaterialBalanceScript.evaluate(before_routed_processing, model.material_inventory_snapshot(false, false))["conserved"], "product-header route changes preserve canonical material mass")
 	model.interact("pump")
 	_expect(model.interact("diesel_header")["ok"] and model.product_allocations["diesel_header"].selected_tank_id.is_empty(), "header supports an explicit NONE product route")
 	_expect(not model.interact("pump")["ok"], "pump cannot restart while a required product header has no selected storage")
@@ -1307,10 +1336,10 @@ func _test_atomic_vacuum_distillation() -> void:
 	stopped.tick(10.0)
 	_expect(is_equal_approx(stopped.equipment["vacuum_source"]["volume_l"], 100.0) and is_equal_approx(stopped.equipment["vgo_tank"]["volume_l"], 0.0), "stopped VDU feed pump consumes and produces nothing")
 	stopped.equipment["vacuum_pump"]["running"] = true
-	var mass_before := _total_tank_volume(stopped)
+	var before_inventory: Dictionary = stopped.material_inventory_snapshot(false, false)
 	stopped.tick(10.0)
 	_expect(is_equal_approx(stopped.equipment["vacuum_source"]["volume_l"], 0.0) and is_equal_approx(stopped.equipment["vgo_tank"]["volume_l"], 60.0) and is_equal_approx(stopped.equipment["vacuum_residue_tank"]["volume_l"], 40.0), "running VDU pump applies the fixed 60/40 VGO and Vacuum Residue split")
-	_expect(is_equal_approx(_total_tank_volume(stopped), mass_before) and stopped.equipment["vgo_tank"]["contents"] == "vacuum_gas_oil" and stopped.equipment["vacuum_residue_tank"]["contents"] == "vacuum_residue", "atomic VDU transfer conserves mass and preserves output identities")
+	_expect(MaterialBalanceScript.evaluate(before_inventory, stopped.material_inventory_snapshot(false, false))["conserved"] and stopped.equipment["vgo_tank"]["contents"] == "vacuum_gas_oil" and stopped.equipment["vacuum_residue_tank"]["contents"] == "vacuum_residue", "shared invariant verifies atomic VDU split and product identities")
 	var empty = _vacuum_model(0.0)
 	empty.equipment["vacuum_pump"]["running"] = true
 	empty.tick(1.0)
@@ -1412,10 +1441,10 @@ func _test_atomic_fcc_upgrading_and_dispatch() -> void:
 	var start: Dictionary = model.interact("fcc_pump")
 	_expect(start["ok"] and model.equipment["fcc_pump"]["running"], "a complete FCC route starts through its ordinary VGO feed-pump interaction")
 	_expect(is_equal_approx(model.power_status()["demand_kw"], 75.0), "a running FCC train adds its 40 kW auxiliary load, 25 kW pump and commissioned site services")
-	var mass_before := _total_tank_volume(model)
+	var before_inventory: Dictionary = model.material_inventory_snapshot(false, false)
 	model.tick(100.0)
 	_expect(is_equal_approx(model.equipment["fcc_source"]["volume_l"], 0.0) and is_equal_approx(model.equipment["gasoline_tank"]["volume_l"], 550.0) and is_equal_approx(model.equipment["lpg_tank"]["volume_l"], 250.0) and is_equal_approx(model.equipment["lco_tank"]["volume_l"], 200.0), "running FCC converts VGO with the fixed 55/25/20 Gasoline Blendstock, LPG and LCO yields")
-	_expect(is_equal_approx(_total_tank_volume(model), mass_before) and model.equipment["gasoline_tank"]["contents"] == "gasoline_blendstock" and model.equipment["lpg_tank"]["contents"] == "lpg" and model.equipment["lco_tank"]["contents"] == "light_cycle_oil", "FCC transfer conserves mass and preserves each upgraded product identity")
+	_expect(MaterialBalanceScript.evaluate(before_inventory, model.material_inventory_snapshot(false, false))["conserved"] and model.equipment["gasoline_tank"]["contents"] == "gasoline_blendstock" and model.equipment["lpg_tank"]["contents"] == "lpg" and model.equipment["lco_tank"]["contents"] == "light_cycle_oil", "shared invariant verifies atomic FCC split and each product identity")
 	var blocked = _fcc_model(20.0)
 	blocked.equipment["lpg_tank"]["contents"] = "lpg"
 	blocked.equipment["lpg_tank"]["volume_l"] = 1000.0

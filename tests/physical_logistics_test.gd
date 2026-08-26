@@ -2,6 +2,7 @@ extends SceneTree
 
 const BuiltRefineryModelScript = preload("res://scripts/built_refinery_model.gd")
 const ProcessNetworkScript = preload("res://scripts/process_network.gd")
+const MaterialBalanceScript = preload("res://scripts/material_balance.gd")
 
 var failures := 0
 
@@ -34,8 +35,10 @@ func _test_intake_route_and_persistence() -> void:
 	var delivery: Dictionary = model.receive_intake_delivery("standard", true)
 	_expect(delivery["ok"] and delivery["charge"] == 300, "paid Standard delivery uses canonical 300 kr contract charge")
 	_expect(model.interact("intake_pump")["ok"], "intake transfer pump starts with a pending delivery")
+	var before_transfer: Dictionary = model.material_inventory_snapshot(true, false)
 	model.tick(20.0)
 	_expect(is_equal_approx(model.equipment["crude_tank"]["volume_l"], 200.0) and is_equal_approx(float(model.pending_intake_delivery["volume_l"]), 800.0) and model.active_contract_id == "standard" and model.equipment["crude_tank"]["contract_id"] == "standard", "CI-101 transfer conserves material and establishes route-owned plus active contract state")
+	_expect(MaterialBalanceScript.evaluate(before_transfer, model.material_inventory_snapshot(true, false))["conserved"], "shared invariant verifies partial CI-101 transfer into canonical tank hold-up")
 	var saved: Dictionary = model.save_state()
 	var restored: Variant = _new_model()
 	_register(restored, "ci", "crude_intake")
@@ -45,10 +48,13 @@ func _test_intake_route_and_persistence() -> void:
 	restored.network.try_connect("intake_pump", "output", "crude_tank", "input")
 	restored.apply_saved_state(saved)
 	_expect(is_equal_approx(restored.equipment["crude_tank"]["volume_l"], 200.0) and is_equal_approx(float(restored.pending_intake_delivery["volume_l"]), 800.0), "intake inventory and pending CI-101 delivery persist exactly")
+	_expect(MaterialBalanceScript.evaluate(model.material_inventory_snapshot(true, false), restored.material_inventory_snapshot(true, false))["conserved"], "partially completed physical transfer round-trips without changing site material")
 	restored.equipment["crude_tank"]["volume_l"] = restored.equipment["crude_tank"]["capacity_l"]
 	restored.equipment["intake_pump"]["running"] = true
+	var before_full_block: Dictionary = restored.material_inventory_snapshot(true, false)
 	restored.tick(1.0)
 	_expect(restored.equipment["intake_pump"]["running"] and is_zero_approx(restored.equipment["intake_pump"]["actual_flow_lps"]) and "BLOCKED" in restored.pump_state_text("intake_pump") and float(restored.pending_intake_delivery["volume_l"]) > 0.001, "full crude storage blocks flow without erasing the intake-pump RUN command")
+	_expect(MaterialBalanceScript.evaluate(before_full_block, restored.material_inventory_snapshot(true, false))["conserved"], "full CI-101 destination destroys no pending or stored crude")
 	restored.equipment["crude_tank"]["volume_l"] = 900.0
 	var pending_before_resume: float = float(restored.pending_intake_delivery["volume_l"])
 	restored.tick(1.0)
@@ -67,8 +73,10 @@ func _test_product_dispatch_route() -> void:
 	_expect(model.available_physical_dispatch_orders("pd").size() == 1, "PD-101 discovers the compatible filled product line")
 	_expect(not model.dispatch_product_from_terminal("pd", "product_tank")["ok"], "PD-101 refuses dispatch until its sales pump is running")
 	_expect(model.interact("sales_pump")["ok"], "physical sales pump starts on a valid product line")
+	var before_dispatch: Dictionary = model.material_inventory_snapshot(false, false)
 	var dispatch: Dictionary = model.dispatch_product_from_terminal("pd", "product_tank")
 	_expect(dispatch["ok"] and dispatch["revenue"] == 400 and dispatch.get("first_physical_dispatch_now", false) and is_equal_approx(model.equipment["product_tank"]["volume_l"], 0.0), "PD-101 dispatch consumes exactly its connected VGO tank once and records the first physical dispatch")
+	_expect(MaterialBalanceScript.evaluate(before_dispatch, model.material_inventory_snapshot(false, false), 0.0, dispatch.get("material_output_l", 0.0))["conserved"], "PD-101 reports its physical product as an explicit boundary output")
 	_expect(not model.dispatch_product_from_terminal("pd", "product_tank")["ok"], "repeated physical dispatch cannot generate duplicate revenue")
 	model.equipment["sales_pump"]["running"] = true
 	model.tick(1.0)

@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.28.1 – Stability & Operator Experience**
+**Prototypeversjon: 0.28.2 – Process Foundation Gate**
 
 En liten 3D-prototype der spilleren driver et forenklet pilotraffineri. Første mål
 er å behandle 1 000 liter råolje og selge minst 200 liter diesel med 90 % eller
@@ -89,6 +89,11 @@ Den første komplette «vertical slice»-en inneholder:
   ugyldige enumverdier, NaN og infinity fortsatt avvises
 - Pilot-tanknivåer bygges direkte fra kanonisk råolje- og produktbeholdning;
   salg bruker opp dieselbeholdningen uten å skjule usolgt lett/tung fraksjon
+- én felles, toleransebasert massebalansediagnostikk verifiserer kanonisk
+  beholdning, eksplisitte systemgrenser og definerte tap på tvers av Pilot,
+  Area 02, CI/PD, CDU, VDU/FCC og generatorbrensel
+- filterrestriksjon uttrykkes som avledet pumpekapabilitet, restriksjon/ΔP og
+  oppnåelig flow; ingen avledet hydraulikk eller duplikatbeholdning lagres
 
 Alle objekter er foreløpig bygget av Godots primitive 3D-former. Det gjør at vi
 kan teste gameplay før vi bruker tid på modeller og grafikk.

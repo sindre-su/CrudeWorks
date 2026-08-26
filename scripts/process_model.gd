@@ -36,6 +36,17 @@ var batch_sold := false
 var objective_complete := false
 
 
+func material_inventory_snapshot() -> Dictionary:
+	# UI and liquid meshes read these same canonical fields. The snapshot is
+	# derived diagnostics only and is never persisted as another inventory.
+	return {
+		"pilot_crude": crude_volume_l,
+		"pilot_light": light_product_l,
+		"pilot_diesel": diesel_volume_l,
+		"pilot_heavy": heavy_product_l,
+	}
+
+
 func save_state() -> Dictionary:
 	return {
 		"crude_volume_l": crude_volume_l,

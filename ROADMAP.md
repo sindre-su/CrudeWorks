@@ -2,7 +2,7 @@
 
 ## Current baseline
 
-Version 0.28.1 has a tested pilot plant and a substantial Area 02 refinery
+Version 0.28.2 has a tested pilot plant and a substantial Area 02 refinery
 slice: free building, directed process networks, multiple independent trains,
 shared-feed/product routing, Standard/Heavy/Sour crude, diesel treatment,
 quality/LAB dispatch, VDU-301, FCC-401, electrical capacity, controls, alarms,
@@ -15,6 +15,10 @@ The stability pass also makes route-owned crude provenance authoritative for
 save validation, gives every product tank an explicit quality-analysis state,
 derives Pilot liquid visuals from canonical inventory, and separates pump RUN
 commands from normal blocked/no-feed conditions and genuine safety trips.
+The Process Foundation Gate adds one shared conservation invariant over the
+canonical site inventories and makes the existing filter restriction readable
+as derived pump capability, ΔP/restriction and achievable flow. It changes no
+yields, utility balance, save schema or process-unit scope.
 
 The core conclusion is deliberate: **process depth is no longer the primary
 bottleneck.** Further process-unit expansion is lower priority until existing
@@ -26,10 +30,13 @@ running sales pump before it can invoke the existing dispatch transaction.
 
 ## Current priority
 
-**Hands-on 1280 × 720 v0.28.1 acceptance and game-feel pass.** Validate port aiming,
-pipe/valve readability, equipment interaction, alarms, tank levels, LAB-101,
-LS-201, power feedback, VDU/FCC placement and pump-condition pacing in the
-running game. Headless tests protect logic; they cannot replace human play.
+**Graybox World: lay out the physical refinery experience around the proven
+systems.** Establish walking routes, equipment neighborhoods, visual hierarchy,
+expansion space and the Pilot → Area 02 journey before adding more simulation
+depth. The first graybox acceptance pass must still validate port aiming,
+pipe/valve readability, alarms, tank levels, LAB-101, LS-201, utilities,
+VDU/FCC placement and pump-condition pacing at 1280 × 720. Headless tests
+protect logic; they cannot replace human play.
 
 Utilities are now mechanically meaningful and have focused automated coverage:
 PG/GF/MCC/IA/CT/CWP field state, contextual interlocks, fail-safe behavior,
@@ -50,6 +57,21 @@ player to receive the free first Standard delivery at CI-101, build its
 physical intake, and establish the first atmospheric train. Advanced equipment
 is visible in the build menu but explains the refinery condition that unlocks
 it instead of using XP.
+
+## PROCESS SCOPE FREEZE
+
+**PROCESS FOUNDATION READY FOR GRAYBOX.** V1 process scope is frozen around
+the systems already implemented and approved: CDU, VDU, FCC, HT-201 treatment,
+flow/routing, heaters, tanks, LAB, physical dispatch, utilities, controls,
+alarms/interlocks and maintenance. During Graybox World work, improve their
+physicality, readability, progression and integration; do not casually add a
+new process-unit family.
+
+Explicitly deferred until the world and existing loop demonstrate a need are
+heat exchangers, blending, desalter, expanded naphtha processing, steam,
+hydrogen, hydrocracker, coker, detailed hydraulics, detailed thermal simulation,
+vehicle transport, major Control Room redesign and final art. Reconsidering one
+requires a post-graybox player-value decision, not process completeness alone.
 
 ### First-hour economy baseline
 
@@ -156,6 +178,6 @@ that bottleneck and preserves both short-session usefulness and long-form value.
 
 - Human playtesting at 1280 × 720, including expanded Area 02 layout.
 - Economy/load balancing for multi-train, PU-101, VDU/FCC, fuel consumption and maintenance.
-- Larger storage/manifolds, advanced automation, pressure/energy systems,
+- Larger storage/manifolds, advanced automation, detailed pressure/energy systems,
   logistics and additional process families only after a demonstrated gameplay
   need.

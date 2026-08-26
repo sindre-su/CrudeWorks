@@ -120,6 +120,25 @@ func _init(p_network = null) -> void:
 	network.topology_changed.connect(_on_topology_changed)
 
 
+func material_inventory_snapshot(
+	include_pending_intake := true,
+	include_generator_fuel := true
+) -> Dictionary:
+	# Tanks, CI-101 pending delivery and GF-101 are the only current physical
+	# material hold-ups. Reports, samples, UI and equipment processed totals are
+	# intentionally excluded because they are derived history, not inventory.
+	var snapshot := {}
+	for unit_id in equipment:
+		var state: Dictionary = equipment[unit_id]
+		if state["type"] == "tank":
+			snapshot["tank:" + unit_id] = float(state["volume_l"])
+	if include_pending_intake:
+		snapshot["site:ci_101_pending"] = float(pending_intake_delivery.get("volume_l", 0.0))
+	if include_generator_fuel:
+		snapshot["site:gf_101"] = generator_fuel_l
+	return snapshot
+
+
 func save_state() -> Dictionary:
 	var saved_equipment := {}
 	for unit_id in equipment:
@@ -815,7 +834,9 @@ func discard_products(confirmed := false) -> Dictionary:
 	if not commissioning_contract_complete and _material_volume_l() <= 0.001:
 		commissioning_batch_available = true
 	last_status = "%.0f L produkt sendt til sikker avfallshåndtering. Ingen betaling mottatt." % discarded_l
-	return _result(true, last_status)
+	var result := _result(true, last_status)
+	result["defined_loss_l"] = discarded_l
+	return result
 
 
 func can_choose_contract(unit_id: String) -> Dictionary:
@@ -1632,8 +1653,10 @@ func sell_diesel() -> Dictionary:
 	var consumed_products := {"diesel": true}
 	if delivery["product"] != "diesel":
 		consumed_products[delivery["product"]] = true
+	var material_output_l := 0.0
 	for product_name in consumed_products:
 		var state: Dictionary = equipment[route["products"][product_name]]
+		material_output_l += float(state["volume_l"])
 		state["volume_l"] = 0.0
 		state["contents"] = "empty"
 		state["temperature_c"] = AMBIENT_TEMPERATURE_C
@@ -1651,6 +1674,7 @@ func sell_diesel() -> Dictionary:
 		"message": last_status,
 		"revenue": revenue,
 		"sold_volume_l": total_volume,
+		"material_output_l": material_output_l,
 		"report": report,
 		"contract_completed_now": contract_completed_now,
 	}
@@ -1823,6 +1847,7 @@ func _dispatch_secondary_product(tank_id: String, product_id: String) -> Diction
 		"product_id": product_id,
 		"product_name": order["product_name"],
 		"sold_volume_l": volume_l,
+		"material_output_l": volume_l,
 	}
 
 
@@ -1862,6 +1887,7 @@ func _dispatch_route_product(route: Dictionary, product_id: String) -> Dictionar
 		"product_id": product_id,
 		"product_name": order["product_name"],
 		"sold_volume_l": volume_l,
+		"material_output_l": volume_l,
 	}
 
 
@@ -2059,7 +2085,13 @@ func inspect_unit(unit_id: String) -> String:
 					details += ", kvalitet %.1f %%" % state["quality_percent"]
 			return details + "."
 		"pump":
-			var fault_text := " Driftsavvik registrert." if not String(state["fault_id"]).is_empty() else ""
+			var hydraulics := pump_hydraulic_diagnostics(unit_id)
+			var fault_text := (
+				" Filter ΔP HIGH — kapasitet %.1f L/s."
+				% float(hydraulics["achievable_flow_lps"])
+				if hydraulics["filter_delta_p"] == "HIGH"
+				else ""
+			)
 			return "Pumpe %s, flowmål %.0f L/s, condition %.0f %% (%s).%s%s" % [
 				pump_state_text(unit_id),
 				state["flow_setpoint_lps"],
@@ -2157,12 +2189,13 @@ func unit_status(unit_id: String) -> String:
 					status += "  |  %.1f %%" % state["quality_percent"]
 			return status
 		"pump":
+			var hydraulics := pump_hydraulic_diagnostics(unit_id)
 			return "%s  |  mål %.0f  |  condition %.0f %% %s%s" % [
 				pump_state_text(unit_id),
 				state["flow_setpoint_lps"],
 				state.get("condition_percent", 100.0),
 				_pump_condition_label(state),
-				"  |  AVVIK" if not String(state["fault_id"]).is_empty() else "",
+				"  |  ΔP HIGH" if hydraulics["filter_delta_p"] == "HIGH" else "",
 			]
 		"valve":
 			return "ÅPEN" if state["open"] else "STENGT"
@@ -2658,7 +2691,7 @@ func inspect_or_service_pump(unit_id: String, can_pay_for_service := true) -> Di
 	var pump: Dictionary = equipment[unit_id]
 	if not String(pump["fault_id"]).is_empty() and not pump["fault_inspected"]:
 		pump["fault_inspected"] = true
-		last_status = "%s har lav kapasitet. Mulig filterrestriksjon — stopp pumpen før service." % pump["name"]
+		last_status = "%s har lav kapasitet. Filter ΔP HIGH — mulig filterrestriksjon; stopp pumpen før service." % pump["name"]
 		return _result(true, last_status)
 	if not String(pump["fault_id"]).is_empty():
 		if pump["running"]:
@@ -2690,17 +2723,40 @@ func flow_mode_text(flow_lps: float) -> String:
 
 
 func _effective_pump_flow_lps(pump: Dictionary) -> float:
+	return float(_pump_hydraulic_diagnostics(pump)["achievable_flow_lps"])
+
+
+func pump_hydraulic_diagnostics(unit_id: String) -> Dictionary:
+	if not equipment.has(unit_id) or equipment[unit_id]["type"] != "pump":
+		return {}
+	return _pump_hydraulic_diagnostics(equipment[unit_id])
+
+
+func _pump_hydraulic_diagnostics(pump: Dictionary) -> Dictionary:
 	var target_flow := float(pump["flow_setpoint_lps"])
 	var condition := float(pump.get("condition_percent", 100.0))
+	var capability_factor := 1.0
 	if condition <= 0.001:
-		return 0.0
-	if condition <= PUMP_POOR_THRESHOLD_PERCENT:
-		target_flow *= 0.55
+		capability_factor = 0.0
+	elif condition <= PUMP_POOR_THRESHOLD_PERCENT:
+		capability_factor = 0.55
 	elif condition <= PUMP_WORN_THRESHOLD_PERCENT:
-		target_flow *= 0.80
-	if String(pump.get("fault_id", "")) == "blocked_filter":
-		return target_flow * FILTER_RESTRICTION_FACTOR
-	return target_flow
+		capability_factor = 0.80
+	var restriction_factor := (
+		FILTER_RESTRICTION_FACTOR
+		if String(pump.get("fault_id", "")) == "blocked_filter"
+		else 1.0
+	)
+	var available_capability_lps := target_flow * capability_factor
+	return {
+		"target_flow_lps": target_flow,
+		"pump_capability_factor": capability_factor,
+		"available_capability_lps": available_capability_lps,
+		"restriction_factor": restriction_factor,
+		"restriction_percent": 100.0 * (1.0 - restriction_factor),
+		"filter_delta_p": "HIGH" if restriction_factor < 0.999 else "NORMAL",
+		"achievable_flow_lps": available_capability_lps * restriction_factor,
+	}
 
 
 func _intake_route_for_pump(pump_id: String) -> Dictionary:
