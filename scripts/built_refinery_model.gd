@@ -632,6 +632,9 @@ func interaction_prompt(unit_id: String) -> String:
 	if not equipment.has(unit_id):
 		return ""
 	var state: Dictionary = equipment[unit_id]
+	var power_prompt := _power_blocked_interaction_prompt(unit_id)
+	if not power_prompt.is_empty():
+		return power_prompt
 	match state["type"]:
 		"pump":
 			var prompt := (
@@ -3074,9 +3077,9 @@ func _can_start_electrical_load(unit_id: String) -> Dictionary:
 	var requested_kw := required_power_kw(unit_id)
 	var power := power_status()
 	if electrical_bus.tripped:
-		return _result(false, "%s START PERMISSIVE: BLOCKED — MCC-101 TRIPPED." % equipment[unit_id]["name"])
+		return _result(false, "%s START BLOCKED — MCC-101 TRIPPED. Reset MCC-101." % equipment[unit_id]["name"])
 	if power["capacity_kw"] <= 0.001:
-		return _result(false, "%s START PERMISSIVE: BLOCKED — NO POWER. Start PG-101." % equipment[unit_id]["name"])
+		return _result(false, "%s START BLOCKED — NO POWER. Start PG-101." % equipment[unit_id]["name"])
 	var projected_demand := float(power["demand_kw"]) + requested_kw
 	if projected_demand > float(power["capacity_kw"]) + 0.001:
 		_trip_electrical_bus(
@@ -3114,6 +3117,25 @@ func equipment_power_state(unit_id: String) -> Dictionary:
 	}
 
 
+func _power_blocked_interaction_prompt(unit_id: String) -> String:
+	if not equipment.has(unit_id):
+		return ""
+	var state: Dictionary = equipment[unit_id]
+	var can_start: bool = (
+		(state["type"] in ["pump", "treatment"] and not bool(state.get("running", false)))
+		or (state["type"] == "heater" and float(state.get("setpoint_c", 0.0)) <= 0.001)
+	)
+	if not can_start:
+		return ""
+	var power := equipment_power_state(unit_id)
+	if bool(power["available"]) or float(power["required_kw"]) <= 0.001:
+		return ""
+	var recovery := "reset MCC-101" if electrical_bus.tripped else "start PG-101"
+	return "%s — NO POWER | %.0f kW from MCC-101\nE — start blocked: %s" % [
+		state["name"], power["required_kw"], recovery,
+	]
+
+
 func can_use_site_consumer(consumer_id: String) -> Dictionary:
 	if consumer_id not in ["lab", "control_station"]:
 		return _result(false, "Ukjent elektrisk forbruker.")
@@ -3131,8 +3153,16 @@ func toggle_starter_generator() -> Dictionary:
 		var was_tripped: bool = bool(electrical_bus.tripped)
 		_trip_if_generation_is_insufficient(UtilityDistributionScript.TRIP_SUPPLY_LOSS)
 		if not was_tripped and electrical_bus.tripped:
-			return _result(true, last_status)
-	last_status = "PG-101 er %s." % ("RUNNING" if starter_generator_running else "STOPPED")
+			return _result(true, "PG-101 STOPPED — %s" % last_status)
+	var power := power_status()
+	if starter_generator_running:
+		last_status = "PG-101 STARTED — MCC-101 ENERGIZED.\nGeneration %.0f kW | Site load %.0f kW | Reserve %.0f kW." % [
+			power["capacity_kw"], power["demand_kw"], power["reserve_kw"],
+		]
+	else:
+		last_status = "PG-101 STOPPED — MCC-101 %s.\nSite load %.0f kW." % [
+			_mcc_bus_state_text(power), power["demand_kw"],
+		]
 	return _result(true, last_status)
 
 
@@ -3142,17 +3172,17 @@ func reset_electrical_bus() -> Dictionary:
 	var capacity := _electrical_generation_capacity_kw()
 	var demand := _current_requested_electrical_demand_kw()
 	if not electrical_bus.reset(capacity, demand):
-		return _result(false, "MCC-101 RESET BLOCKED — %.0f kW demand, %.0f kW generation." % [demand, capacity])
-	last_status = "MCC-101 RESET — electrical supply restored. Restart equipment deliberately."
+		return _result(false, "MCC-101 RESET BLOCKED — active demand %.0f kW exceeds generation %.0f kW." % [demand, capacity])
+	last_status = "MCC-101 RESET — BUS ENERGIZED. Restart equipment deliberately."
 	return _result(true, last_status)
 
 
 func generator_inspection_text() -> String:
 	var power := power_status()
-	return "PG-101 GENERATOR\nState: %s\nCapacity: %.0f kW\nMCC load: %.0f kW\nBus: %s" % [
+	return "PG-101 — PRIMARY GENERATOR\nState: %s\nGeneration: %.0f / %.0f kW\nSite load: %.0f kW\nMCC-101 bus: %s" % [
 		"RUNNING" if starter_generator_running else "STOPPED",
-		STARTER_GENERATOR_CAPACITY_KW,
-		power["demand_kw"], power["status"],
+		STARTER_GENERATOR_CAPACITY_KW if starter_generator_running else 0.0,
+		STARTER_GENERATOR_CAPACITY_KW, power["demand_kw"], _mcc_bus_state_text(power),
 	]
 
 
@@ -3162,17 +3192,81 @@ func mcc_inspection_text() -> String:
 	for consumer in power["connected_consumers"]:
 		consumer_lines.append("%s %.0f kW" % [consumer["name"], consumer["demand_kw"]])
 	if consumer_lines.is_empty():
-		consumer_lines.append("No active consumers")
-	var trip_line := ""
+		consumer_lines.append("No active loads")
 	if power["tripped"]:
-		trip_line = "\nLast trip: %s — %.0f kW demand / %.0f kW generation" % [
-			"OVERLOAD" if power["trip_id"] == UtilityDistributionScript.TRIP_OVERLOAD else "SUPPLY LOSS",
-			power["last_trip_demand_kw"], power["last_trip_capacity_kw"],
+		var trip_reason := "OVERLOAD" if power["trip_id"] == UtilityDistributionScript.TRIP_OVERLOAD else "SUPPLY LOSS"
+		var recovery := "reduce load or add PU-101, then reset" if power["trip_id"] == UtilityDistributionScript.TRIP_OVERLOAD else "start PG-101 or PU-101, then reset"
+		return "MCC-101 — BUS TRIPPED / %s\nTrip demand %.0f kW | Generation %.0f kW\nAction: %s." % [
+			trip_reason, power["last_trip_demand_kw"], power["last_trip_capacity_kw"], recovery,
 		]
-	return "MCC-101 — MAIN POWER DISTRIBUTION\nGeneration: %.0f kW\nLoad: %.0f kW\nReserve: %.0f kW\nStatus: %s%s\nConsumers: %s" % [
-		power["capacity_kw"], power["demand_kw"], power["reserve_kw"],
-		power["status"], trip_line, ", ".join(consumer_lines),
+	return "MCC-101 — BUS %s / %s\nGeneration %.0f kW | Load %.0f kW | Reserve %.0f kW\nActive loads: %s" % [
+		_mcc_bus_state_text(power), _mcc_status_text(power),
+		power["capacity_kw"], power["demand_kw"], power["reserve_kw"], ", ".join(consumer_lines),
 	]
+
+
+func generator_context_prompt() -> String:
+	var power := power_status()
+	return "PG-101 %s | GEN %.0f kW | LOAD %.0f kW | BUS %s\nE — %s generator" % [
+		"RUNNING" if starter_generator_running else "STOPPED",
+		STARTER_GENERATOR_CAPACITY_KW if starter_generator_running else 0.0,
+		power["demand_kw"], _mcc_bus_state_text(power),
+		"stop" if starter_generator_running else "start",
+	]
+
+
+func mcc_context_prompt() -> String:
+	var power := power_status()
+	if power["tripped"]:
+		var recovery := "reduce load or add PU-101" if power["trip_id"] == UtilityDistributionScript.TRIP_OVERLOAD else "start PG-101 or PU-101"
+		return "MCC-101 TRIPPED — %s | %.0f > %.0f kW\nE — %s, then reset" % [
+			"OVERLOAD" if power["trip_id"] == UtilityDistributionScript.TRIP_OVERLOAD else "SUPPLY LOSS",
+			power["last_trip_demand_kw"], power["last_trip_capacity_kw"], recovery,
+		]
+	return "MCC-101 | GEN %.0f | LOAD %.0f | RESERVE %.0f kW\nBUS %s — E inspect" % [
+		power["capacity_kw"], power["demand_kw"], power["reserve_kw"],
+		_mcc_bus_state_text(power),
+	]
+
+
+func power_overview_text() -> String:
+	var power := power_status()
+	return "POWER\nPG-101: %s | PU-101: %s\nGeneration: %.0f kW | Load: %.0f kW | Reserve: %.0f kW\nMCC-101: %s — %s" % [
+		"RUNNING" if starter_generator_running else "STOPPED",
+		_power_unit_overview_text(), power["capacity_kw"], power["demand_kw"], power["reserve_kw"],
+		_mcc_bus_state_text(power), _mcc_status_text(power),
+	]
+
+
+func _mcc_bus_state_text(power: Dictionary) -> String:
+	if power["tripped"]:
+		return "TRIPPED"
+	return "ENERGIZED" if power["bus_available"] else "OFFLINE"
+
+
+func _mcc_status_text(power: Dictionary) -> String:
+	if power["tripped"]:
+		return "OVERLOAD" if power["trip_id"] == UtilityDistributionScript.TRIP_OVERLOAD else "SUPPLY LOSS"
+	return String(power["status"])
+
+
+func _power_unit_overview_text() -> String:
+	var running := 0
+	var stopped := 0
+	for state in equipment.values():
+		if state["type"] != "power_unit":
+			continue
+		if state.get("running", false):
+			running += 1
+		else:
+			stopped += 1
+	if running == 0 and stopped == 0:
+		return "NOT INSTALLED"
+	if stopped == 0:
+		return "%d RUNNING" % running
+	if running == 0:
+		return "%d STOPPED" % stopped
+	return "%d RUNNING / %d STOPPED" % [running, stopped]
 
 
 func _toggle_power_unit(unit_id: String) -> Dictionary:
@@ -3182,8 +3276,12 @@ func _toggle_power_unit(unit_id: String) -> Dictionary:
 		var was_tripped: bool = bool(electrical_bus.tripped)
 		_trip_if_generation_is_insufficient(UtilityDistributionScript.TRIP_SUPPLY_LOSS)
 		if not was_tripped and electrical_bus.tripped:
-			return _result(true, last_status)
-	last_status = "%s er %s." % [unit["name"], "RUNNING" if unit["running"] else "STOPPED"]
+			return _result(true, "%s STOPPED — %s" % [unit["name"], last_status])
+	var power := power_status()
+	last_status = "%s %s — site generation %.0f kW, reserve %.0f kW." % [
+		unit["name"], "STARTED" if unit["running"] else "STOPPED",
+		power["capacity_kw"], power["reserve_kw"],
+	]
 	return _result(true, last_status)
 
 

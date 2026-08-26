@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.27.0 – Power & Utilities Foundation**
+**Prototypeversjon: 0.27.1 – Power UX & Balance Pass**
 
 En liten 3D-prototype der spilleren driver et forenklet pilotraffineri. Første mål
 er å behandle 1 000 liter råolje og selge minst 200 liter diesel med 90 % eller
@@ -63,6 +63,9 @@ Den første komplette «vertical slice»-en inneholder:
   sikkert; spilleren må gjenopprette generasjon og resette MCC før omstart
 - byggbare PU-101-enheter fungerer som av/på-ekspansjonsgeneratorer i stedet
   for passiv kapasitet, uten individuelle kabler til hvert prosessobjekt
+- kontekstuell strømfeedback: PG-101 viser generasjon, last og busstilstand;
+  MCC-101 viser energisert/trippet buss, reserve og aktive laster; LS-201 viser
+  PG/PU-status, generasjon, last, reserve og MCC-status uten et nytt panel
 - midlertidige CI-101- og PD-101-markører som gjør første fysiske inntak og
   dispatch enklere å finne uten å legge til et waypoint-system
 - byggemodus prioriterer eksplisitte prosessporter foran maskinkroppen når
@@ -184,13 +187,14 @@ direkte i 3D. Pumpens rotor og ventilhåndtak beveger seg når utstyret brukes.
    en konkret valideringsmelding. Feil rør kan fjernes med `G`.
 5. Trykk `B` for å avslutte bygging, motta råolje ved CI-101 og bygg fysisk
    inntak til kildetanken.
-6. Prøv pumpen med PG-101 av, start deretter generatoren og kontroller last og
-   reserve ved MCC-101.
+6. Prøv pumpen med PG-101 av. Den forklarer `START BLOCKED — NO POWER`; start
+   deretter PG-101 og kontroller `BUS ENERGIZED`, last og reserve ved MCC-101.
 7. Sett varmeenheten til 200 °C, vent til den er varm, og start pumpen. Ventilen
    er stengt som standard, så pumpen gir `LOW FLOW` til spilleren finner og
    åpner ventilen.
-8. Hvis MCC-101 tripper, reduser lasten eller start ekstra PU-101-generasjon,
-   reset MCC-101 og start prosessutstyret bevisst igjen.
+8. Hvis MCC-101 tripper, les tripplast og årsak ved MCC-101. Reduser lasten
+   eller start ekstra PU-101-generasjon, reset MCC-101 og start prosessutstyret
+   bevisst igjen.
 9. En subsidiert oppstartsbatch kan prøves igjen uten kostnad fram til første
    godkjente levering dersom produktet blir off-spec og tømmes sikkert.
 10. Følg væskenivå, flow og kvalitet. Ventilen kan stenge eller gjenopprette flow

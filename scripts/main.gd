@@ -448,8 +448,8 @@ func _build_user_interface() -> void:
 	prompt_label.anchor_bottom = 1.0
 	prompt_label.offset_left = -320.0
 	prompt_label.offset_right = 320.0
-	prompt_label.offset_top = -120.0
-	prompt_label.offset_bottom = -62.0
+	prompt_label.offset_top = -128.0
+	prompt_label.offset_bottom = -54.0
 	prompt_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	prompt_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	prompt_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -466,8 +466,8 @@ func _build_user_interface() -> void:
 	notification_label.anchor_bottom = 1.0
 	notification_label.offset_left = -400.0
 	notification_label.offset_right = 400.0
-	notification_label.offset_top = -195.0
-	notification_label.offset_bottom = -135.0
+	notification_label.offset_top = -218.0
+	notification_label.offset_bottom = -140.0
 	notification_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	notification_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	notification_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -648,7 +648,11 @@ func _update_user_interface() -> void:
 		and not lab_analysis_panel.visible
 		and startup_choice_state.is_empty()
 	):
-		if focused.unit_id.begins_with("built_"):
+		if focused.unit_id == "area02_generator":
+			prompt_label.text = built_refinery_model.generator_context_prompt()
+		elif focused.unit_id == "area02_mcc":
+			prompt_label.text = built_refinery_model.mcc_context_prompt()
+		elif focused.unit_id.begins_with("built_"):
 			prompt_label.text = built_refinery_model.interaction_prompt(focused.unit_id)
 		elif focused.unit_id == "sales_terminal" and built_refinery_model.commissioning_contract_complete:
 			var lab_status: Dictionary = built_refinery_model.lab_dispatch_status()
@@ -705,17 +709,24 @@ func _update_user_interface() -> void:
 func _update_unit_statuses() -> void:
 	var power: Dictionary = built_refinery_model.power_status()
 	units["area02_generator"].set_status(
-		"RUNNING  |  %.0f kW" % BuiltRefineryModelScript.STARTER_GENERATOR_CAPACITY_KW
+		"RUNNING | %.0f kW\nBUS ENERGIZED" % BuiltRefineryModelScript.STARTER_GENERATOR_CAPACITY_KW
 		if built_refinery_model.starter_generator_running
-		else "STOPPED"
+		else "STOPPED | 0 kW\nBUS OFFLINE"
 	)
 	units["area02_generator"].set_active(
 		built_refinery_model.starter_generator_running, Color("f6cf63")
 	)
 	units["area02_mcc"].set_status(
-		"TRIPPED  |  %.0f > %.0f kW" % [power["last_trip_demand_kw"], power["last_trip_capacity_kw"]]
+		"TRIPPED — %s\n%.0f > %.0f kW" % [
+			"OVERLOAD" if power["trip_id"] == "overload" else "SUPPLY LOSS",
+			power["last_trip_demand_kw"], power["last_trip_capacity_kw"],
+		]
 		if power["tripped"]
-		else "%.0f / %.0f kW  |  %s" % [power["demand_kw"], power["capacity_kw"], power["status"]]
+		else "GEN %.0f | LOAD %.0f\n%s | RESERVE %.0f" % [
+			power["capacity_kw"], power["demand_kw"],
+			"ENERGIZED — %s" % power["status"] if power["bus_available"] else "BUS OFFLINE",
+			power["reserve_kw"],
+		]
 	)
 	units["area02_mcc"].set_active(
 		power["tripped"] or not power["bus_available"],
@@ -1491,11 +1502,7 @@ func _update_control_station_text() -> void:
 	if not trains.is_empty():
 		control_station_train_index = clampi(control_station_train_index, 0, trains.size() - 1)
 		var selected: Dictionary = trains[control_station_train_index]
-		var power: Dictionary = overview.get("power", {})
-		var power_line := "POWER: GEN %.0f kW | LOAD %.0f kW | RESERVE %.0f kW — %s\n" % [
-			float(power.get("capacity_kw", 0.0)), float(power.get("demand_kw", 0.0)),
-			float(power.get("reserve_kw", 0.0)), String(power.get("status", "NORMAL")),
-		]
+		var power_line: String = built_refinery_model.power_overview_text() + "\n"
 		var overview_lines := ""
 		for train in trains:
 			overview_lines += "%s  %s  %d ALARMER\n" % [train["name"], train["status"], train["alarms"].size()]
@@ -1517,9 +1524,11 @@ func _update_control_station_text() -> void:
 		)
 		return
 	var snapshot: Dictionary = built_refinery_model.control_snapshot()
+	var power_overview: String = built_refinery_model.power_overview_text()
 	if not snapshot.get("valid", false):
 		control_station_label.text = (
 			"LS-201 — LOKALSTASJON\n\n"
+			+ power_overview + "\n\n"
 			+ "NETTVERK UFULLSTENDIG\n%s\n\n" % snapshot.get("message", "Ingen gyldig prosesslinje.")
 			+ "Esc — lukk"
 		)

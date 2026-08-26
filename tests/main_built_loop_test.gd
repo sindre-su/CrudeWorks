@@ -23,8 +23,10 @@ func _run_test() -> void:
 	)
 	_expect(
 		main.notification_label.autowrap_mode == TextServer.AUTOWRAP_WORD_SMART
-		and main.notification_label.offset_bottom <= main.prompt_label.offset_top,
-		"1280x720 notifications and contextual prompts use separate wrapping bottom bands"
+		and main.notification_label.offset_bottom <= main.prompt_label.offset_top
+		and main.prompt_label.offset_bottom <= -54.0
+		and main.notification_label.offset_top <= -218.0,
+		"1280x720 notifications and two-line contextual power prompts use separate bottom bands"
 	)
 	_expect(
 		main.objective_label.offset_left >= -320.0
@@ -79,9 +81,12 @@ func _run_test() -> void:
 	_expect(load_result["ok"] and load_result["charge"] == 0, "first Main-integrated crude load uses the commissioning batch")
 	var no_power_start: Dictionary = main.built_refinery_model.interact(pump.unit_id)
 	_expect(not no_power_start["ok"] and "NO POWER" in no_power_start["message"], "new Area 02 pump clearly refuses its first start while PG-101 is off")
+	_expect("NO POWER" in main.built_refinery_model.interaction_prompt(pump.unit_id) and "start PG-101" in main.built_refinery_model.interaction_prompt(pump.unit_id), "focused unpowered pump exposes its recovery action before a repeated failed start")
 	main._on_unit_interacted("area02_generator")
 	main._update_unit_statuses()
-	_expect(main.built_refinery_model.starter_generator_running and "RUNNING" in main.units["area02_generator"].status_label.text and "NORMAL" in main.units["area02_mcc"].status_label.text, "physical PG-101 energizes MCC-101 before process startup")
+	_expect(main.built_refinery_model.starter_generator_running and "BUS ENERGIZED" in main.units["area02_generator"].status_label.text and "NORMAL" in main.units["area02_mcc"].status_label.text and "RESERVE" in main.units["area02_mcc"].status_label.text, "physical PG-101 and MCC-101 world labels expose bus state and reserve before process startup")
+	main._on_unit_interacted("area02_mcc")
+	_expect("MCC-101 — BUS ENERGIZED" in main.notification_label.text and "Reserve" in main.notification_label.text, "MCC inspection uses the temporary feedback band for a concise load diagnosis")
 	main.built_refinery_model.interact(heater.unit_id)
 	main.built_refinery_model.interact(heater.unit_id)
 	main.built_refinery_model.tick(10.0)
@@ -145,7 +150,7 @@ func _run_test() -> void:
 	main._on_unit_interacted("area02_control")
 	_expect(main.control_station_visible and main.player.input_blocked and main.build_controller.input_blocked, "unlocked LS-201 opens a live modal and blocks field/build controls")
 	main._update_user_interface()
-	_expect("REFINERY OPERATIONS" in main.control_station_label.text and "POWER:" in main.control_station_label.text and "Pumpe:" in main.control_station_label.text and "TIC:" in main.control_station_label.text, "operations console presents centralized power, flow and temperature instruments")
+	_expect("REFINERY OPERATIONS" in main.control_station_label.text and "POWER" in main.control_station_label.text and "PG-101: RUNNING" in main.control_station_label.text and "PU-101: NOT INSTALLED" in main.control_station_label.text and "MCC-101: ENERGIZED — NORMAL" in main.control_station_label.text and "Pumpe:" in main.control_station_label.text and "TIC:" in main.control_station_label.text, "operations console presents a concise source, MCC, flow and temperature overview")
 	_expect("Feed: INGEN" in main.control_station_label.text and "STOPPED" in main.control_station_label.text, "idle operations console clearly shows an unloaded stopped train")
 	main._update_unit_statuses()
 	_expect("VENTER — RÅOLJE" in main.units["area02_control"].status_label.text, "idle LS-201 world status points the player toward the next delivery")

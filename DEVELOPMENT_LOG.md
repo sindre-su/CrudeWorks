@@ -1,5 +1,34 @@
 # CrudeWorks Development Log
 
+## v0.27.1 — Power UX & Balance Pass
+
+- Kept the v0.27 electricity architecture and power values intact after audit:
+  one starter atmospheric train is 35 kW (45 kW after LAB-101/LS-201), below
+  PG-101's 100 kW; a running PU-101 raises site generation to 200 kW.
+- Added focused PG-101 context showing running/stopped state, current generator
+  output, site load, bus state and direct start/stop action.
+- Made MCC-101 the concise diagnostic point: normal inspection presents bus,
+  generation, load, reserve and active loads; a trip presents cause, exact trip
+  demand/generation and the recovery action.
+- Reworded electrical interlocks as direct `START BLOCKED — NO POWER` or
+  `MCC-101 TRIPPED` feedback. Looking at an unpowered pump, heater or treatment
+  unit now explains its kW demand and whether to start PG-101 or reset MCC-101.
+- Improved generator/trip/reset notifications and ensured reset feedback says
+  that equipment remains stopped and must be restarted deliberately.
+- Added a compact LS-201 POWER block with PG-101, PU-101, generation, load,
+  reserve, bus and MCC status; no new electrical screen or utility type was
+  added.
+- Increased only the existing temporary bottom feedback bands so two-line power
+  prompts and three-line MCC diagnostics remain separated at the 1280 × 720
+  reference layout.
+- Expanded regression coverage for contextual feedback, MCC diagnostics,
+  no-bypass reset, no automatic equipment restart, PU-101 overview and the
+  1280 × 720 UI bands. v0.26.2 and v0.27.0 save compatibility remains unchanged.
+
+Human QA finding: automated layout and integration checks confirm the fixed
+1280 × 720 geometry and copy paths, but a by-eye first-person pass remains
+necessary for distance readability, aiming and subjective overload/reset pace.
+
 ## v0.27.0 — Power & Utilities Foundation
 
 - Replaced passive starter capacity with a physical 100 kW PG-101 generator

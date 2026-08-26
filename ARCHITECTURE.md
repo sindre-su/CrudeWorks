@@ -2,8 +2,9 @@
 
 ## Runtime ownership
 
-- `scenes/main.tscn` / `scripts/main.gd`: world assembly, UI, progression and
-  integration. It coordinates systems but does not own built-refinery physics.
+- `scenes/main.tscn` / `scripts/main.gd`: world assembly, contextual field/UI
+  feedback, progression and integration. It coordinates systems but does not
+  own built-refinery physics.
 - `scripts/process_model.gd`: fixed pilot-plant process, economy and original
   training progression.
 - `scripts/built_refinery_model.gd`: Area 02 material, operating state,
@@ -56,6 +57,8 @@ choice -> sample -> powered lab -> conditional dispatch.
 - Electrical demand metadata lives in `EquipmentCatalog`; active demand and
   generation are derived from canonical equipment state. MCC trip state is
   persisted, while totals and UI strings are recalculated.
+- `BuiltRefineryModel` owns power diagnostics/copy; `Main` only places that
+  contextual feedback in PG-101, MCC-101, LS-201 and the temporary UI bands.
 - Material transfer is capacity-bounded and mass-conserving.
 - Each heater owns exactly one PV/SP/output state. AUTO adjusts that existing
   state, while field LOW FLOW safety can block AUTO output without routing or
