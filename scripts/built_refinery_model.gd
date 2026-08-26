@@ -924,6 +924,12 @@ func can_purchase_intake_delivery(contract_id: String) -> Dictionary:
 	return _result(true, "Råoljeleveranse kan mottas ved CI-101.")
 
 
+func effective_contract_cost(contract_id: String) -> int:
+	if commissioning_batch_available and contract_id == CrudeCatalog.DEFAULT_ID:
+		return 0
+	return contract_cost(contract_id)
+
+
 func receive_intake_delivery(contract_id: String, paid_batch := false) -> Dictionary:
 	var check := can_purchase_intake_delivery(contract_id)
 	if not check["ok"]:

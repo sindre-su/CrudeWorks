@@ -1,5 +1,15 @@
 # CrudeWorks Development Log
 
+## v0.27.2 — Free First Crude Batch Progression Fix
+
+- CI-101 now applies the free Standard first-batch entitlement before the
+  affordability check, so it can be claimed at 0 kr.
+- The intake order UI clearly shows `FIRST BATCH FREE / 0 kr` while the
+  entitlement is active.
+- The entitlement is still consumed only by a successful order; later Standard
+  batches retain the normal 300 kr price and affordability check.
+- No process, economy or progression values changed.
+
 ## v0.27.1 — Power UX & Balance Pass
 
 - Kept the v0.27 electricity architecture and power values intact after audit:

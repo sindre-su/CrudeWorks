@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.27.1 – Power UX & Balance Pass**
+**Prototypeversjon: 0.27.2 – Free first crude batch progression fix**
 
 En liten 3D-prototype der spilleren driver et forenklet pilotraffineri. Første mål
 er å behandle 1 000 liter råolje og selge minst 200 liter diesel med 90 % eller

@@ -314,6 +314,7 @@ func _test_heavy_contract_through_main() -> void:
 	main.queue_free()
 	await _test_offspec_lab_through_main()
 	await _test_product_header_save_round_trip()
+	await _test_ci_first_batch_entitlement()
 
 
 func _test_offspec_lab_through_main() -> void:
@@ -393,6 +394,90 @@ func _test_product_header_save_round_trip() -> void:
 	_expect(restored.built_refinery_model.product_allocations[header.unit_id].selected_tank_id == diesel_b.unit_id, "save/load preserves the explicitly selected B storage without auto-switching")
 	main.queue_free()
 	restored.queue_free()
+
+
+func _test_ci_first_batch_entitlement() -> void:
+	var zero_money_main = MainScene.instantiate()
+	zero_money_main.persistence_enabled = false
+	root.add_child(zero_money_main)
+	await process_frame
+	zero_money_main.process_model.objective_complete = true
+	zero_money_main._process(0.0)
+	var before_claim: Dictionary = zero_money_main._build_snapshot()
+	var before_restored = MainScene.instantiate()
+	before_restored.persistence_enabled = false
+	root.add_child(before_restored)
+	await process_frame
+	var before_restore: Dictionary = before_restored._apply_snapshot(before_claim)
+	_expect(
+		before_restore["ok"] and before_restored.built_refinery_model.commissioning_batch_available,
+		"save/load before CI-101 claim preserves the free-first-batch entitlement"
+	)
+	zero_money_main._open_contract_selection("built_crude_intake_0")
+	_expect(
+		"FIRST BATCH FREE / 0 kr" in zero_money_main.contract_selection_label.text,
+		"CI-101 clearly displays the free first Standard batch price"
+	)
+	zero_money_main._select_contract("standard")
+	_expect(
+		zero_money_main.process_model.money == 0
+		and is_equal_approx(float(zero_money_main.built_refinery_model.pending_intake_delivery["volume_l"]), 1000.0)
+		and not zero_money_main.built_refinery_model.commissioning_batch_available,
+		"0 kr player can claim the first free CI-101 batch without a deduction"
+	)
+	var after_claim: Dictionary = zero_money_main._build_snapshot()
+	var after_restored = MainScene.instantiate()
+	after_restored.persistence_enabled = false
+	root.add_child(after_restored)
+	await process_frame
+	var after_restore: Dictionary = after_restored._apply_snapshot(after_claim)
+	_expect(
+		after_restore["ok"]
+		and not after_restored.built_refinery_model.commissioning_batch_available
+		and is_equal_approx(float(after_restored.built_refinery_model.pending_intake_delivery["volume_l"]), 1000.0),
+		"save/load after CI-101 claim preserves the consumed entitlement and delivery"
+	)
+	var duplicate: Dictionary = zero_money_main.built_refinery_model.receive_intake_delivery("standard", true)
+	_expect(
+		not duplicate["ok"] and not zero_money_main.built_refinery_model.commissioning_batch_available,
+		"the free CI-101 batch cannot be claimed twice while its delivery is pending"
+	)
+
+	zero_money_main.built_refinery_model.pending_intake_delivery = {"contract_id": "", "volume_l": 0.0}
+	zero_money_main._open_contract_selection("built_crude_intake_0")
+	zero_money_main._select_contract("standard")
+	_expect(
+		is_zero_approx(float(zero_money_main.built_refinery_model.pending_intake_delivery["volume_l"]))
+		and "mangler 300 kr" in zero_money_main.contract_selection_label.text,
+		"second Standard batch requires the normal 300 kr affordability check"
+	)
+	zero_money_main.process_model.money = 300
+	zero_money_main._select_contract("standard")
+	_expect(
+		zero_money_main.process_model.money == 0
+		and is_equal_approx(float(zero_money_main.built_refinery_model.pending_intake_delivery["volume_l"]), 1000.0),
+		"second Standard CI-101 batch deducts the normal 300 kr price"
+	)
+
+	var two_hundred_main = MainScene.instantiate()
+	two_hundred_main.persistence_enabled = false
+	root.add_child(two_hundred_main)
+	await process_frame
+	two_hundred_main.process_model.objective_complete = true
+	two_hundred_main.process_model.money = 200
+	two_hundred_main._process(0.0)
+	two_hundred_main._open_contract_selection("built_crude_intake_0")
+	two_hundred_main._select_contract("standard")
+	_expect(
+		two_hundred_main.process_model.money == 200
+		and is_equal_approx(float(two_hundred_main.built_refinery_model.pending_intake_delivery["volume_l"]), 1000.0)
+		and not two_hundred_main.built_refinery_model.commissioning_batch_available,
+		"200 kr player can claim the first free CI-101 batch without a deduction"
+	)
+	zero_money_main.queue_free()
+	before_restored.queue_free()
+	after_restored.queue_free()
+	two_hundred_main.queue_free()
 
 
 func _place_full_refinery(main) -> void:

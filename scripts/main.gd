@@ -1283,10 +1283,15 @@ func _update_contract_selection_text(error_text := "") -> void:
 	var heavy := CrudeCatalogScript.definition("heavy")
 	var sour := CrudeCatalogScript.definition("sour")
 	var intake_mode := contract_selection_source_id == "built_crude_intake_0"
+	var standard_price := (
+		"FIRST BATCH FREE / 0 kr"
+		if built_refinery_model.commissioning_batch_available
+		else "%d kr" % standard["purchase_cost"]
+	)
 	contract_selection_label.text = (
 		("RÅOLJEINNTAK CI-101 — VELG 1 000 L\nPenger: %d kr\n\n" if intake_mode else "LEVERINGSORDRE — VELG 1 000 L\nPenger: %d kr\n\n") % process_model.money
-		+ "1 %s / %s — %d kr\n  %s\n\n" % [
-			standard["order_name"], standard["short_name"], standard["purchase_cost"], standard["description"],
+		+ "1 %s / %s — %s\n  %s\n\n" % [
+			standard["order_name"], standard["short_name"], standard_price, standard["description"],
 		]
 		+ "2 %s / %s — %d kr\n  %s • bonus +%d kr\n\n" % [
 			heavy["order_name"], heavy["short_name"], heavy["purchase_cost"], heavy["description"], heavy["delivery_bonus"],
@@ -1312,7 +1317,7 @@ func _handle_contract_selection_input(event: InputEventKey) -> void:
 
 
 func _select_contract(contract_id: String) -> void:
-	var cost: int = built_refinery_model.contract_cost(contract_id)
+	var cost: int = built_refinery_model.effective_contract_cost(contract_id)
 	if not process_model.can_afford(cost):
 		_update_contract_selection_text("Ikke nok penger — mangler %d kr." % (cost - process_model.money))
 		return
