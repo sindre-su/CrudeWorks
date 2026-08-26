@@ -29,7 +29,7 @@ func show_analysis(result: Dictionary) -> void:
 	analysis = result.duplicate(true)
 	visible = true
 	var approved: bool = bool(analysis.get("approved", false))
-	var footer := "Enter — send batch (%s kr)\nEsc — behold produktet" % _money_text(int(analysis["revenue_preview"]))
+	var footer := "Esc — behold produktet\nGodkjent produkt sendes fra PD-101"
 	if not approved:
 		footer = (
 			"Esc — fortsett produksjonen; ny prøve kreves"
@@ -61,17 +61,3 @@ func show_analysis(result: Dictionary) -> void:
 func close_panel() -> void:
 	visible = false
 	analysis = {}
-
-
-func can_dispatch() -> bool:
-	return visible and bool(analysis.get("approved", false))
-
-
-func _money_text(amount: int) -> String:
-	var digits := str(absi(amount))
-	var formatted := ""
-	while digits.length() > 3:
-		formatted = " " + digits.right(3) + formatted
-		digits = digits.left(digits.length() - 3)
-	formatted = digits + formatted
-	return ("-" if amount < 0 else "") + formatted

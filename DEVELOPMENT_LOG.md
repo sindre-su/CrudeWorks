@@ -1,5 +1,25 @@
 # CrudeWorks Development Log
 
+## v0.27.3 — Gameplay Integrity & Dispatch Cleanup
+
+- Kept tank liquid visuals derived from canonical stored volume and synchronised
+  them immediately after a successful PD-101 transaction; no separate visual
+  fill state is saved.
+- Removed normal Area 02 sales from LAB-101 and tank interaction. LAB-101 now
+  only analyzes diesel samples; product tanks only inspect/connect; PD-101 is
+  the sole gameplay dispatch point through a tank → sales pump → typed PD route.
+- Added the missing canonical diesel contract order to PD-101, including the
+  active contract's target, price and bonus preview. The existing atomic sale
+  transaction remains the authority for inventory, payment and commissioning.
+- Restored the existing diesel batch report after a physical PD-101 dispatch.
+- Added safe automatic player recovery below the level boundary, including
+  position/orientation reset, velocity reset and a short cooldown. It does not
+  mutate economy, inventory or progression.
+- Expanded Main integration coverage for PD-only dispatch, LAB/tank no-sale,
+  volume-driven tank fill, exact-once dispatch, existing free CI-101 batch flow,
+  save/load and out-of-bounds recovery. No new gameplay units or utility systems
+  were added.
+
 ## v0.27.2 — Free First Crude Batch Progression Fix
 
 - CI-101 now applies the free Standard first-batch entitlement before the

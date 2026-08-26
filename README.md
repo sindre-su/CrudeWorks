@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.27.2 – Free first crude batch progression fix**
+**Prototypeversjon: 0.27.3 – Gameplay integrity & dispatch cleanup**
 
 En liten 3D-prototype der spilleren driver et forenklet pilotraffineri. Første mål
 er å behandle 1 000 liter råolje og selge minst 200 liter diesel med 90 % eller
@@ -166,7 +166,7 @@ symptom og utstyrstag; feltinspeksjon brukes fortsatt til å finne årsaken.
 4. Start pumpen.
 5. Følg med på dieselvolum og kvalitet.
 6. Stopp pumpen når du ønsker, eller behandle hele batchen.
-7. Gå til LAB / SALG og trykk `E` når minst 200 liter diesel er godkjent.
+7. Gå til pilottankens salgsterminal og trykk `E` når minst 200 liter diesel er godkjent.
 
 Hvis man starter flowen før anlegget er varmt, blandes dårlig diesel inn i
 tanken. Det er tilsiktet: spilleren lærer sammenhengen mellom temperatur,
@@ -198,9 +198,9 @@ direkte i 3D. Pumpens rotor og ventilhåndtak beveger seg når utstyret brukes.
 9. En subsidiert oppstartsbatch kan prøves igjen uten kostnad fram til første
    godkjente levering dersom produktet blir off-spec og tømmes sikkert.
 10. Følg væskenivå, flow og kvalitet. Ventilen kan stenge eller gjenopprette flow
-   uten at væske skapes eller forsvinner. Stopp pumpen og selg godkjent diesel ved
-   `LAB / SALG`; bruk produkttank → salgspumpe → PD-101 for fysisk dispatch.
-   Salget sender produktbatchen ut og viser en batchrapport med
+   uten at væske skapes eller forsvinner. Stopp pumpen, ta dieselprøve ved tanken,
+   analyser den ved `LAB-101`, og bruk produkttank → salgspumpe → PD-101 for fysisk
+   dispatch. Salget sender produktbatchen ut og viser en batchrapport med
    faktisk råolje behandlet, fraksjoner, kvalitet, inntekt, kostnad og resultat.
 
 Etter godkjent oppstart åpner `E` på en tom kildetank leveransevalget. Valget
@@ -216,18 +216,18 @@ Råoljetypen låses til batchen. En ny type kan først velges når alle bygde ta
 er tomme og pumpen er stoppet. Batchrapporten viser valgt råolje, faktisk
 snittemperatur, temperaturmål, dieselsalg, eventuell bonus, kostnad og resultat.
 
-Den første Område 02-oppstarten bruker fortsatt den enkle direktekontrollen ved
-`LAB / SALG`. For senere betalte batcher må spilleren stoppe pumpen og trykke
-`E` på dieseltanken i den aktive linjen for å ta en prøve. Før analyse vises
+Alle Område 02-leveranser går fysisk via `PD-101`; LAB-101 brukes kun til
+analyse. Spilleren må stoppe pumpen og trykke `E` på dieseltanken i den aktive
+linjen for å ta en prøve. Før analyse vises
 produktkvaliteten som `IKKE ANALYSERT`; en prøve fra en frakoblet tank kan ikke
-brukes. Ved `LAB / SALG` viser LAB-101 faktisk dieselvolum og kvalitet mot
+brukes. Ved `LAB-101` vises faktisk dieselvolum og kvalitet mot
 kontraktskravet, samt gjennomsnittlig prosesstemperatur og pumpeflow.
 For Tung viser analysen dieselkvaliteten og tungfraksjonsmålet som to separate
 krav. En god dieselprøve kan derfor være godkjent selv om ordren ennå trenger
 mer tungfraksjon; videre produksjon krever deretter en ny prøve.
 
-En godkjent, fortsatt gyldig prøve kan sendes med `Enter`. OFF-SPEC-produkt
-beholdes og gir ingen inntekt. Ny produksjon, endret rørnett, tømming, salg eller
+`Enter` lukker kun analyseresultatet; den godkjente tanken sendes fra `PD-101`.
+OFF-SPEC-produkt beholdes og gir ingen inntekt. Ny produksjon, endret rørnett, tømming, salg eller
 lasting gjør prøven ugyldig, og save/load krever alltid en ny fysisk prøve.
 
 Etter den første godkjente Område 02-leveransen låses **LS-201** opp på

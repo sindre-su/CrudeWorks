@@ -399,14 +399,20 @@ func _test_area02_autosave_stress() -> void:
 		main.autosave_time_left = 0.0
 		main._process(10.0)
 		_expect(SaveSystemScript.read_snapshot(AUTOSAVE_STRESS_PATH)["ok"], "continued first-batch autosave %d remains valid" % [checkpoint + 5])
-	main._on_unit_interacted("sales_terminal")
-	var dismiss_event := InputEventKey.new()
-	dismiss_event.keycode = KEY_ENTER
-	dismiss_event.pressed = true
-	main._unhandled_input(dismiss_event)
-	main._on_unit_interacted("built_tank_8")
+	var heavy_tank = main.build_controller.registered_unit_by_id("built_tank_8")
+	var sales_pump_result: Dictionary = main._create_built_unit("pump", Vector3(14.0, 0.86, 23.0), 0, 10, false)
+	var sales_pump = sales_pump_result.get("unit")
+	var dispatch_terminal = main.build_controller.registered_unit_by_id("built_product_dispatch_0")
+	main.build_controller._connect_ports(heavy_tank.get_port("output"), sales_pump.get_port("input"))
+	main.build_controller._connect_ports(sales_pump.get_port("output"), dispatch_terminal.get_port("heavy"))
+	main.built_refinery_model.interact(sales_pump.unit_id)
+	main._on_unit_interacted(dispatch_terminal.unit_id)
+	var dispatch_event := InputEventKey.new()
+	dispatch_event.keycode = KEY_1
+	dispatch_event.pressed = true
+	main._unhandled_input(dispatch_event)
 	var final_save: Dictionary = main._write_save(false)
-	_expect(final_save["ok"], "post-dispatch Area 02 save succeeds after the Heavy Residue tank interaction: %s" % final_save.get("message", ""))
+	_expect(final_save["ok"], "post-dispatch Area 02 save succeeds after physical Heavy Residue dispatch: %s" % final_save.get("message", ""))
 	var final_read: Dictionary = SaveSystemScript.read_snapshot(AUTOSAVE_STRESS_PATH)
 	_expect(final_read["ok"] and final_read["data"]["built_refinery"]["equipment"]["built_tank_8"]["volume_l"] <= 0.001, "saved post-dispatch state preserves consumed Heavy Residue without duplicating it")
 	var restored = MainScene.instantiate()
@@ -529,7 +535,9 @@ func _test_main_round_trip(snapshot: Dictionary, source_main) -> void:
 	restored.built_refinery_model.tick(35.0)
 	_expect(is_equal_approx(_total_tank_volume(restored), mass_before_tick), "continued processing after load remains mass conserving")
 	restored.built_refinery_model.interact(restored_pump.unit_id)
-	restored._on_unit_interacted("sales_terminal")
+	var restored_sale: Dictionary = restored.built_refinery_model.sell_diesel()
+	if restored_sale["ok"]:
+		restored.process_model.credit(restored_sale["revenue"])
 	var report: Dictionary = restored.built_refinery_model.last_batch_report
 	_expect(report["crude_processed_l"] > 760.0 and report["crude_processed_l"] < 765.0, "report tracking continues from the pre-save partial batch at the restored 15 L/s target")
 	_expect(report["crude_cost"] == int(round(report["crude_processed_l"] * 0.3)), "paid crude cost accumulator survives the round trip")

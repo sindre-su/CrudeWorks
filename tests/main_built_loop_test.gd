@@ -65,11 +65,11 @@ func _run_test() -> void:
 	_expect("VENTER" in main.units["sales_terminal"].status_label.text, "terminal readiness switches from sold pilot inventory to built diesel")
 
 	_place_full_refinery(main)
-	_expect(main.process_model.money == 400, "pilot contract preserves one recovery batch after the 2 600 kr starter refinery")
+	_expect(main.process_model.money == 400, "pilot contract preserves one recovery batch after the starter refinery")
 	_connect_full_refinery(main)
 	var validation: Dictionary = main.built_refinery_model.network.validate_configuration()
 	_expect(validation["valid"], "Main placement and connection hooks create a valid refinery route")
-	_expect(main.build_controller.connections.size() == 7, "Main route creates seven logical and visual connections")
+	_expect(main.build_controller.connections.size() == 13, "Main route creates process and PD-101 dispatch connections")
 	main._on_unit_interacted("area02_control")
 	_expect(not main.control_station_visible and "låses opp" in main.notification_label.text, "LS-201 remains locked until the built refinery is commissioned manually")
 
@@ -111,9 +111,28 @@ func _run_test() -> void:
 	main._update_unit_statuses()
 	_expect(pump.alarm_severity.is_empty() and heater.alarm_severity.is_empty(), "restored route conditions clear derived pump and heater beacons automatically")
 	_expect("KLAR" in main.units["sales_terminal"].status_label.text, "terminal becomes ready for approved built diesel")
+	var diesel_visual = _unit(main, "built_tank_7")
+	_expect(
+		diesel_visual.liquid_level.visible
+		and is_equal_approx(
+			diesel_visual.liquid_level.scale.y / diesel_visual.liquid_max_height,
+			main.built_refinery_model.equipment["built_tank_7"]["volume_l"] / main.built_refinery_model.equipment["built_tank_7"]["capacity_l"]
+		),
+		"built tank fill is derived from canonical stored volume before dispatch"
+	)
 
+	var money_before_lab: int = main.process_model.money
+	var diesel_before_lab: float = main.built_refinery_model.equipment["built_tank_7"]["volume_l"]
 	main._on_unit_interacted("sales_terminal")
-	_expect(main.process_model.money == 3200, "built sale credits 2 800 kr through the shared economy")
+	_expect(
+		main.process_model.money == money_before_lab
+		and is_equal_approx(main.built_refinery_model.equipment["built_tank_7"]["volume_l"], diesel_before_lab)
+		and "PD-101" in main.notification_label.text,
+		"LAB-101 does not sell the commissioning batch directly"
+	)
+	_dispatch_main_product(main, "diesel")
+	_expect(main.process_model.money == 3200, "PD-101 credits the commissioning diesel sale through the shared economy")
+	_expect(not diesel_visual.liquid_level.visible, "PD-101 sale immediately clears the sold tank visual from canonical inventory")
 	_expect(main.built_refinery_model.commissioning_contract_complete, "first built sale persistently completes Area 02 commissioning")
 	_expect(main.batch_report_visible, "successful built sale opens a persistent batch report")
 	_expect(main.player.input_blocked and main.build_controller.input_blocked, "batch report blocks movement, interaction and build controls")
@@ -124,29 +143,26 @@ func _run_test() -> void:
 	main._update_unit_statuses()
 	_expect("PRØVE KREVES" in main.units["sales_terminal"].status_label.text, "terminal keeps diesel LAB state distinct while product inventory remains")
 	main._on_unit_interacted("sales_terminal")
-	_expect(main.process_model.money == 3200, "repeated terminal interaction cannot duplicate built-sale revenue")
+	_expect(main.process_model.money == 3200, "repeated LAB-101 interaction cannot duplicate PD-101 sale revenue")
 	var dismiss_event := InputEventKey.new()
 	dismiss_event.keycode = KEY_ENTER
 	dismiss_event.pressed = true
 	main._unhandled_input(dismiss_event)
 	_expect(not main.batch_report_visible and not main.player.input_blocked and not main.build_controller.input_blocked, "Enter dismisses the report and restores gameplay controls")
 	var heavy_tank = _unit(main, "built_tank_8")
+	var heavy_before_direct_interaction: float = main.built_refinery_model.equipment[heavy_tank.unit_id]["volume_l"]
 	main._on_unit_interacted(heavy_tank.unit_id)
 	_expect(
-		is_equal_approx(main.built_refinery_model.equipment[heavy_tank.unit_id]["volume_l"], 0.0)
-		and main.process_model.money == 3900
-		and "Tung rest sendt" in main.notification_label.text,
-		"E on a Heavy Residue tank dispatches that tank once without assuming a crude-purchase charge"
+		is_equal_approx(main.built_refinery_model.equipment[heavy_tank.unit_id]["volume_l"], heavy_before_direct_interaction)
+		and main.process_model.money == 3200,
+		"product-tank interaction is inspect/connect only and cannot sell inventory"
 	)
+	_dispatch_main_product(main, "heavy")
+	_expect(main.process_model.money == 3900 and is_zero_approx(main.built_refinery_model.equipment[heavy_tank.unit_id]["volume_l"]), "PD-101 dispatches Heavy Residue once at canonical pricing")
 	main._on_secondary_unit_interacted(heater.unit_id)
 	_expect(main.built_refinery_model.equipment[heater.unit_id]["control_mode"] == "auto" and "TIC-201 AUTO" in main.notification_label.text, "commissioned player can enable physical TIC-201 AUTO on the existing heater")
-	main._on_unit_interacted("sales_terminal")
-	_expect(main.product_dispatch_visible and "NAPHTHALEVERANSE" in main.product_dispatch_label.text and is_equal_approx(main.built_refinery_model.equipment[heavy_tank.unit_id]["volume_l"], 0.0), "terminal remains usable for the remaining Naphtha after direct Heavy Residue dispatch")
-	var naphtha_event := InputEventKey.new()
-	naphtha_event.keycode = KEY_1
-	naphtha_event.pressed = true
-	main._unhandled_input(naphtha_event)
-	_expect(is_equal_approx(main.built_refinery_model.product_volume_l(), 0.0) and main.process_model.money == 5400, "Naphtha terminal dispatch plus direct Heavy Residue dispatch clear only their stored products and credit distinct revenue")
+	_dispatch_main_product(main, "light")
+	_expect(is_equal_approx(main.built_refinery_model.product_volume_l(), 0.0) and main.process_model.money == 5400, "PD-101 dispatches the remaining Naphtha and credits its canonical revenue")
 	main._on_unit_interacted("area02_control")
 	_expect(main.control_station_visible and main.player.input_blocked and main.build_controller.input_blocked, "unlocked LS-201 opens a live modal and blocks field/build controls")
 	main._update_user_interface()
@@ -202,6 +218,7 @@ func _run_test() -> void:
 	main._on_build_removal_requested(removable_tank)
 	_expect(main.process_model.money == money_before_removal + removable_tank.purchase_cost, "same equipment can only be refunded once")
 	await _test_heavy_contract_through_main()
+	await _test_out_of_bounds_recovery()
 
 	if failures == 0:
 		print("PASS: full Main-integrated CrudeWorks built loop passed")
@@ -283,7 +300,7 @@ func _test_heavy_contract_through_main() -> void:
 	main._update_unit_statuses()
 	_expect("PRØVE KREVES" in main.units["sales_terminal"].status_label.text and not main.units["sales_terminal"].material.emission_enabled, "paid Heavy delivery stays unsellable until a physical diesel sample is analyzed")
 	main._on_unit_interacted("sales_terminal")
-	_expect(not main.lab_analysis_panel.visible and "dieselprøve" in main.notification_label.text, "LAB / SALG directs the player to the active diesel tank when no sample exists")
+	_expect(not main.lab_analysis_panel.visible and "dieselprøve" in main.notification_label.text, "LAB-101 directs the player to the active diesel tank when no sample exists")
 	main._on_reset_requested()
 	_expect(main.discard_confirmation_time_left > 0.0, "paid product can arm the existing two-step disposal warning before sampling")
 	main._on_unit_interacted("built_tank_7")
@@ -293,16 +310,18 @@ func _test_heavy_contract_through_main() -> void:
 	main._on_unit_interacted("sales_terminal")
 	_expect(main.lab_analysis_panel.visible and main.player.input_blocked and main.build_controller.input_blocked, "LAB analysis opens a modal and blocks field/build controls")
 	_expect(main.discard_confirmation_time_left <= 0.0, "opening a lab analysis also cancels stale disposal intent")
-	_expect("P-001 — TUNG" in main.lab_analysis_panel.result_label.text and "TUNG LEVERANSE" in main.lab_analysis_panel.result_label.text and "Tung fraksjon" in main.lab_analysis_panel.result_label.text and "630 L / krav 600 L" in main.lab_analysis_panel.result_label.text and "flow 10.0 L/s" in main.lab_analysis_panel.result_label.text and "GODKJENT" in main.lab_analysis_panel.result_label.text and "2 760 kr" in main.lab_analysis_panel.result_label.text, "Heavy lab separates diesel QC and average flow from the ordered heavy-fraction target")
+	_expect("P-001 — TUNG" in main.lab_analysis_panel.result_label.text and "TUNG LEVERANSE" in main.lab_analysis_panel.result_label.text and "Tung fraksjon" in main.lab_analysis_panel.result_label.text and "630 L / krav 600 L" in main.lab_analysis_panel.result_label.text and "flow 10.0 L/s" in main.lab_analysis_panel.result_label.text and "GODKJENT" in main.lab_analysis_panel.result_label.text and "sendes fra PD-101" in main.lab_analysis_panel.result_label.text, "Heavy lab separates diesel QC and average flow from the ordered heavy-fraction target")
+	var heavy_money_before_lab_enter: int = main.process_model.money
 	var dispatch_event := InputEventKey.new()
 	dispatch_event.keycode = KEY_ENTER
 	dispatch_event.pressed = true
 	main._unhandled_input(dispatch_event)
-	_expect(not main.lab_analysis_panel.visible and main.batch_report_visible, "approved lab Enter transitions directly to the existing batch report")
-	_expect(main.process_model.money == 3580, "Main Heavy sample dispatch credits 1 760 kr product revenue and one 1 000 kr bonus")
+	_expect(not main.lab_analysis_panel.visible and not main.batch_report_visible and main.process_model.money == heavy_money_before_lab_enter, "approved LAB-101 Enter closes analysis without selling product")
+	_dispatch_main_product(main, "diesel")
+	_expect(main.batch_report_visible and main.process_model.money == 3580, "PD-101 Heavy dispatch credits 1 760 kr product revenue and one 1 000 kr bonus")
 	_expect("BATCH GODKJENT — TUNG LEVERANSE" in main.batch_report_label.text and "Tung fraksjon 630 / 600 L" in main.batch_report_label.text and "flow 10.0 L/s" in main.batch_report_label.text and "Kontraktbonus" in main.batch_report_label.text, "Heavy batch report records the fulfilled order, average flow and its bonus")
 	main._on_unit_interacted("sales_terminal")
-	_expect(main.process_model.money == 3580, "repeated Main terminal use cannot duplicate the Heavy bonus")
+	_expect(main.process_model.money == 3580, "repeated LAB-101 use cannot duplicate the Heavy bonus")
 	main.built_refinery_model.equipment[pump.unit_id]["condition_percent"] = 42.0
 	var money_before_pump_service: int = main.process_model.money
 	main._on_maintenance_unit_interacted(pump.unit_id)
@@ -347,7 +366,7 @@ func _test_offspec_lab_through_main() -> void:
 	blocked_enter.keycode = KEY_ENTER
 	blocked_enter.pressed = true
 	main._unhandled_input(blocked_enter)
-	_expect(main.lab_analysis_panel.visible and main.process_model.money == money_before and is_equal_approx(main.built_refinery_model.product_volume_l(), products_before), "Enter cannot dispatch or mutate an OFF-SPEC analysis")
+	_expect(not main.lab_analysis_panel.visible and main.process_model.money == money_before and is_equal_approx(main.built_refinery_model.product_volume_l(), products_before), "LAB-101 Enter closes an OFF-SPEC analysis without dispatching or mutating inventory")
 	var close_event := InputEventKey.new()
 	close_event.keycode = KEY_ESCAPE
 	close_event.pressed = true
@@ -370,8 +389,8 @@ func _test_product_header_save_round_trip() -> void:
 	main._on_build_placement_requested("tank", Vector3(10.0, 1.96, 28.0), 0)
 	var column = _unit(main, "built_column_5")
 	var diesel_a = _unit(main, "built_tank_7")
-	var header = _unit(main, "built_product_header_9")
-	var diesel_b = _unit(main, "built_tank_10")
+	var header = _unit(main, "built_product_header_12")
+	var diesel_b = _unit(main, "built_tank_13")
 	main.build_controller._disconnect_port(column.get_port("diesel"))
 	main.build_controller._connect_ports(column.get_port("diesel"), header.get_port("input"))
 	main.build_controller._connect_ports(header.get_port("out_a"), diesel_a.get_port("input"))
@@ -390,7 +409,7 @@ func _test_product_header_save_round_trip() -> void:
 		main.queue_free()
 		restored.queue_free()
 		return
-	_expect(restored.build_controller.connections.size() == 9 and restored.build_controller.registered_unit_by_id(header.unit_id) != null, "product-header pipes and placed equipment restore with the refinery")
+	_expect(restored.build_controller.connections.size() == 15 and restored.build_controller.registered_unit_by_id(header.unit_id) != null, "product-header pipes and placed equipment restore with the refinery")
 	_expect(restored.built_refinery_model.product_allocations[header.unit_id].selected_tank_id == diesel_b.unit_id, "save/load preserves the explicitly selected B storage without auto-switching")
 	main.queue_free()
 	restored.queue_free()
@@ -480,6 +499,26 @@ func _test_ci_first_batch_entitlement() -> void:
 	two_hundred_main.queue_free()
 
 
+func _test_out_of_bounds_recovery() -> void:
+	var main = MainScene.instantiate()
+	main.persistence_enabled = false
+	root.add_child(main)
+	await process_frame
+	main.process_model.money = 1234
+	main.built_refinery_model.commissioning_contract_complete = true
+	main.player.global_position = Vector3(0.0, -25.0, 0.0)
+	main.player.velocity = Vector3(3.0, -8.0, 2.0)
+	main._process(0.0)
+	_expect(
+		main.player.global_position.is_equal_approx(main.PLAYER_SAFE_SPAWN_POSITION)
+		and main.player.velocity.is_zero_approx()
+		and main.process_model.money == 1234
+		and main.built_refinery_model.commissioning_contract_complete,
+		"out-of-bounds recovery respawns safely without changing economy or progression"
+	)
+	main.queue_free()
+
+
 func _place_full_refinery(main) -> void:
 	main._on_build_placement_requested("tank", Vector3(-10.0, 1.96, 14.0), 0)
 	main._on_build_placement_requested("pump", Vector3(-6.0, 0.86, 14.0), 0)
@@ -489,6 +528,9 @@ func _place_full_refinery(main) -> void:
 	main._on_build_placement_requested("tank", Vector3(9.0, 1.96, 13.0), 0)
 	main._on_build_placement_requested("tank", Vector3(9.0, 1.96, 18.0), 0)
 	main._on_build_placement_requested("tank", Vector3(9.0, 1.96, 23.0), 0)
+	main._create_built_unit("pump", Vector3(14.0, 0.86, 13.0), 0, 9, false)
+	main._create_built_unit("pump", Vector3(14.0, 0.86, 18.0), 0, 10, false)
+	main._create_built_unit("pump", Vector3(14.0, 0.86, 23.0), 0, 11, false)
 
 
 func _connect_full_refinery(main) -> void:
@@ -500,6 +542,10 @@ func _connect_full_refinery(main) -> void:
 	var light_tank = _unit(main, "built_tank_6")
 	var diesel_tank = _unit(main, "built_tank_7")
 	var heavy_tank = _unit(main, "built_tank_8")
+	var light_sales_pump = _unit(main, "built_pump_9")
+	var diesel_sales_pump = _unit(main, "built_pump_10")
+	var heavy_sales_pump = _unit(main, "built_pump_11")
+	var dispatch = _unit(main, "built_product_dispatch_0")
 	main.build_controller._connect_ports(source.get_port("output"), pump.get_port("input"))
 	main.build_controller._connect_ports(pump.get_port("output"), valve.get_port("input"))
 	main.build_controller._connect_ports(valve.get_port("output"), heater.get_port("input"))
@@ -507,6 +553,28 @@ func _connect_full_refinery(main) -> void:
 	main.build_controller._connect_ports(column.get_port("light"), light_tank.get_port("input"))
 	main.build_controller._connect_ports(column.get_port("diesel"), diesel_tank.get_port("input"))
 	main.build_controller._connect_ports(column.get_port("heavy"), heavy_tank.get_port("input"))
+	main.build_controller._connect_ports(light_tank.get_port("output"), light_sales_pump.get_port("input"))
+	main.build_controller._connect_ports(light_sales_pump.get_port("output"), dispatch.get_port("light"))
+	main.build_controller._connect_ports(diesel_tank.get_port("output"), diesel_sales_pump.get_port("input"))
+	main.build_controller._connect_ports(diesel_sales_pump.get_port("output"), dispatch.get_port("diesel"))
+	main.build_controller._connect_ports(heavy_tank.get_port("output"), heavy_sales_pump.get_port("input"))
+	main.build_controller._connect_ports(heavy_sales_pump.get_port("output"), dispatch.get_port("heavy"))
+
+
+func _dispatch_main_product(main, product_id: String) -> void:
+	var orders: Array[Dictionary] = main.built_refinery_model.available_physical_dispatch_orders("built_product_dispatch_0")
+	for index in orders.size():
+		var order: Dictionary = orders[index]
+		if String(order["product"]) != product_id:
+			continue
+		main.built_refinery_model.interact(String(order["pump_id"]))
+		main._on_unit_interacted("built_product_dispatch_0")
+		var event := InputEventKey.new()
+		event.keycode = KEY_1 + index
+		event.pressed = true
+		main._unhandled_input(event)
+		return
+	_expect(false, "PD-101 exposes a physical route for %s" % product_id)
 
 
 func _unit(main, unit_id: String):

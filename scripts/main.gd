@@ -14,6 +14,10 @@ const LabAnalysisPanelScript = preload("res://scripts/lab_analysis_panel.gd")
 
 const AUTOSAVE_INTERVAL_SECONDS := 12.0
 const SAVE_DEBOUNCE_SECONDS := 1.0
+const PLAYER_SAFE_SPAWN_POSITION := Vector3(-10.0, 0.1, 8.0)
+const PLAYER_SAFE_SPAWN_YAW := deg_to_rad(-18.0)
+const PLAYER_RECOVERY_MIN_Y := -20.0
+const PLAYER_RECOVERY_COOLDOWN_SECONDS := 1.0
 
 @export var persistence_enabled := true
 @export var save_path := SaveSystemScript.DEFAULT_PATH
@@ -69,6 +73,7 @@ var save_debounce_time_left := -1.0
 var autosave_time_left := AUTOSAVE_INTERVAL_SECONDS
 var save_feedback_requested := false
 var suppress_save_requests := false
+var player_recovery_cooldown := 0.0
 
 
 func _ready() -> void:
@@ -123,6 +128,9 @@ func _unhandled_input(event: InputEvent) -> void:
 func _process(delta: float) -> void:
 	process_model.tick(delta)
 	built_refinery_model.tick(delta)
+	player_recovery_cooldown = maxf(player_recovery_cooldown - delta, 0.0)
+	if player_recovery_cooldown <= 0.0 and player.global_position.y < PLAYER_RECOVERY_MIN_Y:
+		_recover_player_from_out_of_bounds()
 	notification_time_left = maxf(notification_time_left - delta, 0.0)
 	discard_confirmation_time_left = maxf(discard_confirmation_time_left - delta, 0.0)
 	if discard_confirmation_time_left <= 0.0:
@@ -302,7 +310,7 @@ func _build_process_area() -> void:
 	_create_liquid_level(heavy_tank, "heavy_tank", 1.30, 3.15, Color("241c20"))
 
 	var terminal = _create_box_unit(
-		"sales_terminal", "LAB / SALG", Vector3(13.0, 1.1, -4.6),
+		"sales_terminal", "LAB-101", Vector3(13.0, 1.1, -4.6),
 		Vector3(1.5, 2.2, 1.4), Color("295c7a")
 	)
 	units[terminal.unit_id] = terminal
@@ -324,13 +332,21 @@ func _build_process_area() -> void:
 
 func _build_player() -> void:
 	player = PlayerScript.new()
-	player.position = Vector3(-10.0, 0.1, 8.0)
-	player.rotation_degrees.y = -18.0
+	player.position = PLAYER_SAFE_SPAWN_POSITION
+	player.rotation.y = PLAYER_SAFE_SPAWN_YAW
 	add_child(player)
 	player.interacted.connect(_on_unit_interacted)
 	player.secondary_interacted.connect(_on_secondary_unit_interacted)
 	player.maintenance_interacted.connect(_on_maintenance_unit_interacted)
 	player.reset_requested.connect(_on_reset_requested)
+
+
+func _recover_player_from_out_of_bounds() -> void:
+	player.global_position = PLAYER_SAFE_SPAWN_POSITION
+	player.rotation.y = PLAYER_SAFE_SPAWN_YAW
+	player.velocity = Vector3.ZERO
+	player_recovery_cooldown = PLAYER_RECOVERY_COOLDOWN_SECONDS
+	_show_notification("Du falt utenfor anlegget og ble flyttet til et trygt sted.", 4.0)
 
 
 func _build_build_system() -> void:
@@ -662,18 +678,16 @@ func _update_user_interface() -> void:
 				var sample_id: String = String(lab_status.get("sample_id", "dieselprøve"))
 				if lab_status.get("analyzed", false):
 					if lab_status.get("dispatch_ready", false):
-						prompt_label.text = "E — vis analyseresultat / send %s" % sample_id
+						prompt_label.text = "E — vis analyseresultat; send ved PD-101"
 					elif lab_status.get("approved", false):
 						prompt_label.text = "E — vis resultat — stopp pumpen"
 					else:
 						prompt_label.text = "E — vis analyseresultat %s" % sample_id
 				else:
 					prompt_label.text = "E — analyser %s" % sample_id
-			elif _has_dispatchable_product_order() and not _active_diesel_available():
-				prompt_label.text = "E — åpne produktleveranser"
 			else:
 				prompt_label.text = (
-					"LAB / SALG — venter på diesel"
+					"LAB-101 — venter på diesel"
 					if built_refinery_model.product_volume_l() <= 0.001
 					else "LAB — ta prøve ved den aktive dieseltanken"
 				)
@@ -955,19 +969,10 @@ func _on_unit_interacted(unit_id: String) -> void:
 								_open_lab_analysis(analysis)
 								return
 							message = analysis["message"]
-					elif _has_dispatchable_product_order() and not _active_diesel_available():
-						_open_product_dispatch()
-						return
 					else:
 						message = lab_status["message"]
 				else:
-					var sale: Dictionary = built_refinery_model.sell_diesel()
-					if sale["ok"]:
-						process_model.credit(sale["revenue"])
-						discard_confirmation_time_left = 0.0
-						discard_confirmation_revision = -1
-						_show_batch_report(sale["report"], sale["contract_completed_now"])
-					message = sale["message"]
+					message = "Første Område 02-produkt sendes fra PD-101. Koble en produkttank via salgspumpe."
 			else:
 				message = process_model.sell_diesel()
 		"area02_control":
@@ -1254,19 +1259,9 @@ func _handle_lab_analysis_input(event: InputEventKey) -> void:
 	if event.keycode == KEY_ESCAPE:
 		_close_lab_analysis()
 		return
-	if event.keycode not in [KEY_ENTER, KEY_KP_ENTER] or not lab_analysis_panel.can_dispatch():
-		return
-	var sale: Dictionary = built_refinery_model.sell_diesel()
-	if not sale["ok"]:
+	if event.keycode in [KEY_ENTER, KEY_KP_ENTER]:
 		_close_lab_analysis()
-		_show_notification(sale["message"], 6.0)
-		return
-	process_model.credit(sale["revenue"])
-	discard_confirmation_time_left = 0.0
-	discard_confirmation_revision = -1
-	_close_lab_analysis()
-	_show_batch_report(sale["report"], sale["contract_completed_now"])
-	_schedule_save()
+		_show_notification("LAB-101 analyserer produktet. Send godkjent produkt fra PD-101.", 6.0)
 
 
 func _open_contract_selection(source_id: String) -> void:
@@ -1344,30 +1339,6 @@ func _close_contract_selection() -> void:
 	build_controller.set_input_blocked(false)
 
 
-func _has_dispatchable_product_order() -> bool:
-	for order in built_refinery_model.available_product_orders():
-		if order.get("ready", false):
-			return true
-	return false
-
-
-func _active_diesel_available() -> bool:
-	var route: Dictionary = built_refinery_model.active_route()
-	if route.is_empty():
-		return false
-	var tank: Dictionary = built_refinery_model.equipment[route["products"]["diesel"]]
-	return tank["contents"] == "diesel" and float(tank["volume_l"]) > 0.001
-
-
-func _open_product_dispatch() -> void:
-	physical_dispatch_terminal_id = ""
-	product_dispatch_visible = true
-	notification_time_left = 0.0
-	_update_product_dispatch_text()
-	player.set_input_blocked(true)
-	build_controller.set_input_blocked(true)
-
-
 func _open_physical_product_dispatch(terminal_id: String) -> void:
 	physical_dispatch_terminal_id = terminal_id
 	product_dispatch_visible = true
@@ -1378,11 +1349,7 @@ func _open_physical_product_dispatch(terminal_id: String) -> void:
 
 
 func _update_product_dispatch_text(error_text := "") -> void:
-	var orders: Array[Dictionary] = (
-		built_refinery_model.available_physical_dispatch_orders(physical_dispatch_terminal_id)
-		if not physical_dispatch_terminal_id.is_empty()
-		else built_refinery_model.available_product_orders()
-	)
+	var orders: Array[Dictionary] = built_refinery_model.available_physical_dispatch_orders(physical_dispatch_terminal_id)
 	var rows: Array[String] = []
 	for index in orders.size():
 		var order: Dictionary = orders[index]
@@ -1391,11 +1358,13 @@ func _update_product_dispatch_text(error_text := "") -> void:
 			index + 1, order["order_name"], order["volume_l"], order["target_l"],
 			order["revenue_preview"], state,
 		])
+	if rows.is_empty():
+		rows.append("Ingen produktlinje er koblet til PD-101.\nKoble tank → salgspumpe → riktig PD-101-inngang.")
 	product_dispatch_label.text = (
-		("PD-101 — PRODUKTDISPATCH\n\n" if not physical_dispatch_terminal_id.is_empty() else "PRODUKTLEVERANSER\n\n")
+		"PD-101 — PRODUKTDISPATCH\n\n"
 		+ "\n\n".join(rows)
 		+ ("\n\n" + error_text if not error_text.is_empty() else "")
-		+ "\n\n1–%d — send produkt    Esc — avbryt" % orders.size()
+		+ ("\n\n1–%d — send produkt    Esc — avbryt" % orders.size() if not orders.is_empty() else "\n\nEsc — avbryt")
 	)
 
 
@@ -1407,23 +1376,24 @@ func _handle_product_dispatch_input(event: InputEventKey) -> void:
 	var index := -1
 	if event.keycode >= KEY_1 and event.keycode <= KEY_9:
 		index = int(event.keycode) - int(KEY_1)
-	var orders: Array[Dictionary] = (
-		built_refinery_model.available_physical_dispatch_orders(physical_dispatch_terminal_id)
-		if not physical_dispatch_terminal_id.is_empty()
-		else built_refinery_model.available_product_orders()
-	)
+	var orders: Array[Dictionary] = built_refinery_model.available_physical_dispatch_orders(physical_dispatch_terminal_id)
 	if index < 0 or index >= orders.size():
 		return
-	var result: Dictionary = (
-		built_refinery_model.dispatch_product_from_terminal(physical_dispatch_terminal_id, String(orders[index]["tank_id"]))
-		if not physical_dispatch_terminal_id.is_empty()
-		else built_refinery_model.dispatch_product_from_tank(String(orders[index]["tank_id"]))
+	var result: Dictionary = built_refinery_model.dispatch_product_from_terminal(
+		physical_dispatch_terminal_id, String(orders[index]["tank_id"])
 	)
 	if not result["ok"]:
 		_update_product_dispatch_text(result["message"])
 		return
 	process_model.credit(result["revenue"])
+	_sync_built_tank_fill_levels()
 	_close_product_dispatch()
+	if result.has("report"):
+		discard_confirmation_time_left = 0.0
+		discard_confirmation_revision = -1
+		_show_batch_report(result["report"], bool(result.get("contract_completed_now", false)))
+		_schedule_save()
+		return
 	_show_notification(
 		"FØRSTE OMRÅDE 02-LEVERANSE FULLFØRT — +%d kr. Refinery operations established." % result["revenue"]
 		if result.get("first_physical_dispatch_now", false)
@@ -1438,6 +1408,19 @@ func _close_product_dispatch() -> void:
 	physical_dispatch_terminal_id = ""
 	player.set_input_blocked(false)
 	build_controller.set_input_blocked(false)
+
+
+func _sync_built_tank_fill_levels() -> void:
+	for entry in build_controller.registered_units:
+		var built_unit = entry["node"]
+		if not is_instance_valid(built_unit):
+			continue
+		var state: Dictionary = built_refinery_model.equipment.get(built_unit.unit_id, {})
+		if state.get("type", "") == "tank":
+			built_unit.set_tank_fill(
+				float(state["volume_l"]) / float(state["capacity_l"]),
+				String(state["contents"])
+			)
 
 
 func _open_control_station() -> void:
