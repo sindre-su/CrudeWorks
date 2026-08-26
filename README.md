@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.26.1 – Førstepersons brukbarhet og starterflyt**
+**Prototypeversjon: 0.26.2 – Pilot diesel-quality save bugfix**
 
 En liten 3D-prototype der spilleren driver et forenklet pilotraffineri. Første mål
 er å behandle 1 000 liter råolje og selge minst 200 liter diesel med 90 % eller

@@ -591,8 +591,13 @@ func _update_user_interface() -> void:
 	if process_model.heater_setpoint_c > 0.0:
 		heater_state = "%d °C mål" % int(process_model.heater_setpoint_c)
 	var quality_status := "VENTER"
-	if process_model.diesel_volume_l > 0.0:
-		quality_status = "GODKJENT" if process_model.diesel_is_approved() else "OFF-SPEC"
+	match process_model.diesel_spec_status:
+		ProcessModelScript.DIESEL_SPEC_UNKNOWN:
+			quality_status = "IKKE ANALYSERT"
+		ProcessModelScript.DIESEL_SPEC_ON_SPEC:
+			quality_status = "GODKJENT"
+		ProcessModelScript.DIESEL_SPEC_OFF_SPEC:
+			quality_status = "OFF-SPEC"
 
 	if build_mode_unlocked:
 		hud_label.text = built_refinery_model.summary_text() + "\nPenger        %d kr" % process_model.money

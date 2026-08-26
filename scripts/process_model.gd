@@ -8,12 +8,23 @@ const DIESEL_TARGET_L := 200.0
 const APPROVED_QUALITY_PERCENT := 90.0
 const PRODUCT_TANK_CAPACITY_L := 600.0
 const PILOT_CONTRACT_MINIMUM_REVENUE := 3000
+const DIESEL_SPEC_NO_DIESEL := "NO_DIESEL"
+const DIESEL_SPEC_UNKNOWN := "UNKNOWN"
+const DIESEL_SPEC_ON_SPEC := "ON_SPEC"
+const DIESEL_SPEC_OFF_SPEC := "OFF_SPEC"
+const VALID_DIESEL_SPEC_STATUSES := [
+	DIESEL_SPEC_NO_DIESEL,
+	DIESEL_SPEC_UNKNOWN,
+	DIESEL_SPEC_ON_SPEC,
+	DIESEL_SPEC_OFF_SPEC,
+]
 
 var crude_volume_l := BATCH_VOLUME_L
 var light_product_l := 0.0
 var diesel_volume_l := 0.0
 var heavy_product_l := 0.0
 var diesel_quality_percent := 0.0
+var diesel_spec_status := DIESEL_SPEC_NO_DIESEL
 
 var pump_running := false
 var feed_valve_open := false
@@ -32,6 +43,7 @@ func save_state() -> Dictionary:
 		"diesel_volume_l": diesel_volume_l,
 		"heavy_product_l": heavy_product_l,
 		"diesel_quality_percent": diesel_quality_percent,
+		"diesel_spec_status": diesel_spec_status,
 		"feed_valve_open": feed_valve_open,
 		"heater_setpoint_c": heater_setpoint_c,
 		"heater_temperature_c": heater_temperature_c,
@@ -47,6 +59,10 @@ func apply_saved_state(state: Dictionary) -> void:
 	diesel_volume_l = float(state["diesel_volume_l"])
 	heavy_product_l = float(state["heavy_product_l"])
 	diesel_quality_percent = float(state["diesel_quality_percent"])
+	diesel_spec_status = String(state.get(
+		"diesel_spec_status",
+		_derive_diesel_spec_status(diesel_volume_l, diesel_quality_percent)
+	))
 	feed_valve_open = bool(state["feed_valve_open"])
 	heater_setpoint_c = float(state["heater_setpoint_c"])
 	heater_temperature_c = float(state["heater_temperature_c"])
@@ -64,6 +80,7 @@ func reset_batch() -> void:
 	diesel_volume_l = 0.0
 	heavy_product_l = 0.0
 	diesel_quality_percent = 0.0
+	diesel_spec_status = DIESEL_SPEC_NO_DIESEL
 	pump_running = false
 	feed_valve_open = false
 	heater_setpoint_c = 0.0
@@ -155,7 +172,16 @@ func _separate(processed_l: float) -> void:
 	if new_diesel_l > 0.0:
 		var quality_total := diesel_quality_percent * diesel_volume_l
 		quality_total += new_quality * new_diesel_l
-		diesel_quality_percent = quality_total / (diesel_volume_l + new_diesel_l)
+		# Keep the persisted percentage canonical despite floating-point accumulation.
+		diesel_quality_percent = clampf(
+			quality_total / (diesel_volume_l + new_diesel_l),
+			0.0,
+			100.0
+		)
+		diesel_spec_status = _derive_diesel_spec_status(
+			diesel_volume_l + new_diesel_l,
+			diesel_quality_percent
+		)
 
 	light_product_l += new_light_l
 	diesel_volume_l += new_diesel_l
@@ -178,6 +204,16 @@ func _diesel_quality(temperature_c: float, current_flow_lps: float) -> float:
 	var temperature_penalty := absf(temperature_c - 200.0) * 1.15
 	var flow_penalty := maxf(current_flow_lps - PUMP_CAPACITY_LPS, 0.0) * 2.0
 	return clampf(100.0 - temperature_penalty - flow_penalty, 0.0, 100.0)
+
+
+func _derive_diesel_spec_status(volume_l: float, quality_percent: float) -> String:
+	if volume_l <= 0.001:
+		return DIESEL_SPEC_NO_DIESEL
+	return (
+		DIESEL_SPEC_ON_SPEC
+		if quality_percent >= APPROVED_QUALITY_PERCENT
+		else DIESEL_SPEC_OFF_SPEC
+	)
 
 
 func _smallest_remaining_product_capacity() -> float:

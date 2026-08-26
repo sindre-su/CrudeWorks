@@ -1,5 +1,16 @@
 # CrudeWorks Development Log
 
+## v0.26.2 — Pilot Diesel Quality Save Bugfix
+
+- Separated Pilot diesel quality (`diesel_quality_percent`) from its canonical
+  spec status (`NO_DIESEL`, `UNKNOWN`, `ON_SPEC` or `OFF_SPEC`) in save data.
+- Kept older format-v2 saves compatible by deriving the missing status on load.
+- Clamped the running weighted-quality calculation to its canonical 0–100 %
+  range and kept formatted Norwegian HUD labels out of persisted state.
+- Added save regressions for pre-production, unknown, off-spec, on-spec and
+  active mid-batch Pilot states.
+- Kept gameplay, pacing and economy unchanged.
+
 ## v0.26.1 — First-person usability and starter-flow hardening
 
 - Kept the v0.26 economy, process model and equipment roster unchanged.

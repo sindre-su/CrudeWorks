@@ -2,10 +2,12 @@ extends SceneTree
 
 const MainScene = preload("res://scenes/main.tscn")
 const SaveSystemScript = preload("res://scripts/save_system.gd")
+const ProcessModelScript = preload("res://scripts/process_model.gd")
 
 const TEST_PATH := "user://crudeworks_save_system_test.json"
 const LEGACY_PATH := "user://crudeworks_save_system_legacy_test.json"
 const AUTOSAVE_STRESS_PATH := "user://crudeworks_area02_autosave_stress_test.json"
+const PILOT_SAVE_PATH := "user://crudeworks_pilot_quality_save_test.json"
 
 var failures := 0
 
@@ -16,6 +18,7 @@ func _init() -> void:
 
 func _run_tests() -> void:
 	_cleanup_test_files()
+	await _test_pilot_quality_save_states()
 	var source_main = await _create_partial_paid_refinery()
 	var snapshot: Dictionary = source_main._build_snapshot()
 	_test_schema_validation(snapshot, source_main)
@@ -36,6 +39,150 @@ func _run_tests() -> void:
 	else:
 		printerr("FAIL: %d CrudeWorks save-system check(s) failed" % failures)
 		quit(1)
+
+
+func _test_pilot_quality_save_states() -> void:
+	var main = MainScene.instantiate()
+	main.persistence_enabled = false
+	main.save_path = PILOT_SAVE_PATH
+	root.add_child(main)
+	await process_frame
+	main.persistence_enabled = true
+	main.persistence_ready = true
+
+	main.autosave_time_left = 0.0
+	main._update_autosave(0.0)
+	var empty_read: Dictionary = SaveSystemScript.read_snapshot(PILOT_SAVE_PATH)
+	_expect(
+		empty_read["ok"]
+		and is_zero_approx(float(empty_read["data"]["pilot"]["diesel_volume_l"]))
+		and empty_read["data"]["pilot"]["diesel_spec_status"] == ProcessModelScript.DIESEL_SPEC_NO_DIESEL,
+		"new game autosaves before Pilot diesel production"
+	)
+
+	var legacy_snapshot: Dictionary = empty_read["data"].duplicate(true)
+	legacy_snapshot["pilot"].erase("diesel_spec_status")
+	_expect(
+		SaveSystemScript.validate_snapshot(legacy_snapshot)["ok"],
+		"older format-v2 Pilot saves remain valid without a diesel spec status"
+	)
+	var legacy_model = ProcessModelScript.new()
+	legacy_model.apply_saved_state(legacy_snapshot["pilot"])
+	_expect(
+		legacy_model.diesel_spec_status == ProcessModelScript.DIESEL_SPEC_NO_DIESEL,
+		"legacy Pilot status is derived from its numeric state on load"
+	)
+
+	main.process_model.cycle_heater()
+	main.process_model.cycle_heater()
+	main.process_model.toggle_feed_valve()
+	main.process_model.toggle_pump()
+	_simulate_pilot(main.process_model, 20.0)
+	_expect(
+		main.process_model.diesel_spec_status == ProcessModelScript.DIESEL_SPEC_OFF_SPEC,
+		"opening Pilot processing produces a canonical OFF_SPEC state"
+	)
+	main.autosave_time_left = 0.0
+	main._update_autosave(0.0)
+	var off_spec_read: Dictionary = SaveSystemScript.read_snapshot(PILOT_SAVE_PATH)
+	_expect(
+		off_spec_read["ok"]
+		and typeof(off_spec_read["data"]["pilot"]["diesel_quality_percent"]) in [TYPE_INT, TYPE_FLOAT]
+		and off_spec_read["data"]["pilot"]["diesel_spec_status"] == ProcessModelScript.DIESEL_SPEC_OFF_SPEC,
+		"autosave accepts OFF_SPEC Pilot diesel with separate numeric quality"
+	)
+
+	var unknown_snapshot: Dictionary = off_spec_read["data"].duplicate(true)
+	unknown_snapshot["pilot"]["diesel_spec_status"] = ProcessModelScript.DIESEL_SPEC_UNKNOWN
+	var unknown_quality: float = float(unknown_snapshot["pilot"]["diesel_quality_percent"])
+	_expect(
+		SaveSystemScript.write_snapshot(PILOT_SAVE_PATH, unknown_snapshot)["ok"],
+		"not-sampled Pilot diesel saves with canonical UNKNOWN status"
+	)
+	var unknown_read: Dictionary = SaveSystemScript.read_snapshot(PILOT_SAVE_PATH)
+	var unknown_model = ProcessModelScript.new()
+	unknown_model.apply_saved_state(unknown_read["data"]["pilot"])
+	_expect(
+		unknown_read["ok"]
+		and unknown_model.diesel_spec_status == ProcessModelScript.DIESEL_SPEC_UNKNOWN
+		and is_equal_approx(unknown_model.diesel_quality_percent, unknown_quality),
+		"UNKNOWN status round-trips without replacing the numeric quality"
+	)
+
+	var invalid_status: Dictionary = unknown_snapshot.duplicate(true)
+	invalid_status["pilot"]["diesel_spec_status"] = "OFF-SPEC"
+	_expect(
+		not SaveSystemScript.validate_snapshot(invalid_status)["ok"],
+		"formatted HUD quality labels are rejected as canonical Pilot status"
+	)
+	var nan_quality: Dictionary = unknown_snapshot.duplicate(true)
+	nan_quality["pilot"]["diesel_quality_percent"] = NAN
+	_expect(
+		not SaveSystemScript.validate_snapshot(nan_quality)["ok"],
+		"NaN Pilot quality is rejected as corrupted"
+	)
+	var infinite_quality: Dictionary = unknown_snapshot.duplicate(true)
+	infinite_quality["pilot"]["diesel_quality_percent"] = INF
+	_expect(
+		not SaveSystemScript.validate_snapshot(infinite_quality)["ok"],
+		"infinite Pilot quality is rejected as corrupted"
+	)
+
+	main.process_model.reset_batch()
+	main.process_model.cycle_heater()
+	main.process_model.cycle_heater()
+	_simulate_pilot(main.process_model, 11.0)
+	main.process_model.toggle_feed_valve()
+	main.process_model.toggle_pump()
+	_simulate_pilot(main.process_model, 20.0)
+	_expect(
+		main.process_model.pump_running
+		and main.process_model.diesel_spec_status == ProcessModelScript.DIESEL_SPEC_ON_SPEC,
+		"preheated active Pilot batch reaches canonical ON_SPEC state"
+	)
+	main.autosave_time_left = 0.0
+	main._update_autosave(0.0)
+	var active_read: Dictionary = SaveSystemScript.read_snapshot(PILOT_SAVE_PATH)
+	_expect(
+		active_read["ok"]
+		and active_read["data"]["pilot"]["diesel_spec_status"] == ProcessModelScript.DIESEL_SPEC_ON_SPEC,
+		"autosave accepts ON_SPEC Pilot diesel during active processing"
+	)
+
+	var restored = MainScene.instantiate()
+	restored.persistence_enabled = false
+	root.add_child(restored)
+	await process_frame
+	var restore_result: Dictionary = restored._apply_snapshot(active_read["data"])
+	var crude_before_resume: float = restored.process_model.crude_volume_l
+	var saved_pilot: Dictionary = active_read["data"]["pilot"]
+	_expect(
+		restore_result["ok"]
+		and is_equal_approx(restored.process_model.crude_volume_l, float(saved_pilot["crude_volume_l"]))
+		and is_equal_approx(restored.process_model.diesel_volume_l, float(saved_pilot["diesel_volume_l"]))
+		and is_equal_approx(restored.process_model.diesel_quality_percent, float(saved_pilot["diesel_quality_percent"]))
+		and restored.process_model.diesel_spec_status == ProcessModelScript.DIESEL_SPEC_ON_SPEC
+		and restored.process_model.feed_valve_open
+		and is_equal_approx(restored.process_model.heater_setpoint_c, 200.0)
+		and not restored.process_model.pump_running,
+		"active Pilot save/load restores batch state and applies the safe stopped-pump policy"
+	)
+	restored.process_model.toggle_pump()
+	restored.process_model.tick(0.1)
+	_expect(
+		restored.process_model.crude_volume_l < crude_before_resume,
+		"restored active Pilot batch resumes processing after deliberate pump restart"
+	)
+	main.persistence_enabled = false
+	main.queue_free()
+	restored.queue_free()
+
+
+func _simulate_pilot(model, duration_seconds: float) -> void:
+	var timestep := 0.1
+	var steps := int(ceil(duration_seconds / timestep))
+	for step in steps:
+		model.tick(timestep)
 
 
 func _create_partial_paid_refinery():
@@ -557,7 +704,7 @@ func _player_equipment_count(main) -> int:
 
 
 func _cleanup_test_files() -> void:
-	for base_path in [TEST_PATH, LEGACY_PATH, AUTOSAVE_STRESS_PATH]:
+	for base_path in [TEST_PATH, LEGACY_PATH, AUTOSAVE_STRESS_PATH, PILOT_SAVE_PATH]:
 		for suffix in ["", ".tmp", ".bak", ".corrupt", ".previous", ".bak.previous", ".corrupt.previous"]:
 			var path: String = base_path + String(suffix)
 			if FileAccess.file_exists(path):

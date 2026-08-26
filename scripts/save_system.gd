@@ -5,6 +5,7 @@ const EquipmentCatalogScript = preload("res://scripts/equipment_catalog.gd")
 const ProcessNetworkScript = preload("res://scripts/process_network.gd")
 const CrudeCatalogScript = preload("res://scripts/crude_contract_catalog.gd")
 const BuiltRefineryModelScript = preload("res://scripts/built_refinery_model.gd")
+const ProcessModelScript = preload("res://scripts/process_model.gd")
 
 const FORMAT_VERSION := 2
 const DEFAULT_PATH := "user://crudeworks_save.json"
@@ -227,6 +228,15 @@ static func _validate_pilot(state: Dictionary) -> Dictionary:
 	for field in ["feed_valve_open", "batch_sold", "objective_complete"]:
 		if typeof(state.get(field)) != TYPE_BOOL:
 			return _result(false, "Ugyldig pilotstatus: %s." % field)
+	# v2 saves created before v0.26.2 do not contain this field. Their status is
+	# derived from the preserved numeric quality when ProcessModel loads them.
+	if state.has("diesel_spec_status"):
+		var diesel_spec_status = state["diesel_spec_status"]
+		if (
+			typeof(diesel_spec_status) != TYPE_STRING
+			or diesel_spec_status not in ProcessModelScript.VALID_DIESEL_SPEC_STATUSES
+		):
+			return _result(false, "Pilotens dieselstatus er ugyldig.")
 	if not _in_range(state["crude_volume_l"], 0.0, 1000.0):
 		return _result(false, "Pilotens råoljevolum er ugyldig.")
 	for field in ["light_product_l", "diesel_volume_l", "heavy_product_l"]:
