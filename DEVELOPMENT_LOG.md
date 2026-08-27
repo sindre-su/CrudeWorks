@@ -1,5 +1,25 @@
 # CrudeWorks Development Log
 
+## v0.28.2 — Vision & Repository Documentation Sync
+
+- Recorded the completed Process Foundation Gate as the boundary before world
+  development: **PROCESS FOUNDATION READY FOR GRAYBOX**. The v0.28.2 gameplay
+  version and process simulation were not changed.
+- Synchronized the long-term vision, current roadmap, architecture map, README
+  and Codex guidance with the implemented Pilot/Area 02, PD-101, LAB, utilities,
+  canonical-state, material-balance, operator-state and simplified ΔP systems.
+- Added a dedicated Graybox World spatial brief. The next primary phase is now
+  permanent broad geography, human-scale navigation, roads/service access,
+  functional-area migration, expansion pads and a full existing-loop playtest;
+  it is not more process-unit expansion or final art production.
+- Clarified the long-term Field versus Control Room division: field work keeps
+  building, inspection, maintenance, repair and physical intervention, while
+  earned central control grows from LS-201 only when world scale justifies it.
+- Preserved the process-scope freeze. CDU, VDU, FCC, HT-201, routing/storage,
+  LAB, PD-101, utilities, controls, alarms/interlocks and maintenance remain the
+  approved V1 process family; additional process families and detailed
+  hydraulic/thermal simulation are deferred until post-Graybox value is proven.
+
 ## v0.28.2 — Process Foundation Gate
 
 - Completed the final process-foundation audit before Graybox World. Material

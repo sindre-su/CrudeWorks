@@ -1,5 +1,9 @@
 # CrudeWorks – byggesystem 0.3
 
+> Historical implementation record. The directed process network and functional
+> Area 02 simulation are now implemented; use `ARCHITECTURE.md`, `ROADMAP.md`
+> and `AGENTS.md` for current behavior and Graybox priorities.
+
 **Status: implementert og klar for spilltest**
 
 ## Mål

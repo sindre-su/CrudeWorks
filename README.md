@@ -2,9 +2,31 @@
 
 **Prototypeversjon: 0.28.2 – Process Foundation Gate**
 
-En liten 3D-prototype der spilleren driver et forenklet pilotraffineri. Første mål
-er å behandle 1 000 liter råolje og selge minst 200 liter diesel med 90 % eller
-bedre kvalitet.
+CrudeWorks is a first-person refinery-builder prototype. The player starts with
+a manual Pilot process, unlocks Area 02, builds directed refinery routes,
+operates and diagnoses them physically, then dispatches real stored product.
+The initial goal is still to process 1,000 L crude and sell at least 200 L of
+approved diesel.
+
+## Current phase
+
+**v0.28.2 — PROCESS FOUNDATION READY FOR GRAYBOX.** The simulation foundation
+is frozen while the next phase creates the permanent broad world layout, scale,
+navigation and functional refinery areas. This is not the phase for another
+process unit, detailed simulation, vehicle gameplay, a full Control Room or
+final art.
+
+Quick orientation:
+
+- [Long-term vision](CRUDEWORKS_VISION.md) — refinery-builder fantasy, world
+  scale, field/control-room philosophy and scope boundaries.
+- [Graybox World brief](WORLD_DESIGN.md) — practical site geography, roads,
+  accessibility, expansion and migration constraints.
+- [Roadmap](ROADMAP.md) — current milestones and order.
+- [Architecture](ARCHITECTURE.md) — current ownership, canonical state,
+  utilities, dispatch and save rules.
+- [Agent rules](AGENTS.md) — instructions for future Codex work.
+- [Development log](DEVELOPMENT_LOG.md) — historical record.
 
 ## Status
 

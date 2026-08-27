@@ -100,11 +100,28 @@ CrudeWorks should **not** copy Hydroneer's mechanics directly. The important ins
 
 ---
 
-# Final scale
+# Final scale and industrial geography
 
-The endgame refinery should feel comparable to the scale of a late-game Hydroneer operation.
+The endgame refinery should feel comparable to the scale of a late-game
+Hydroneer operation: a real industrial site scaled for good gameplay.
 
-It does not need to reproduce a real refinery such as Mongstad at 1:1 scale. Instead, the endgame should be a compressed but visually impressive industrial complex containing enough equipment, piping, storage and logistics that the player's starting area feels tiny by comparison.
+It does not need to reproduce Mongstad or another refinery at 1:1 scale. It
+must, however, avoid the prototype's miniature test-layout feeling. Equipment
+should feel correctly sized next to the player; roads, service space, tank farms
+and utility yards should occupy meaningful room; and process blocks need access
+and expansion space. The player's starting area should feel tiny by comparison.
+
+Major areas should form readable industrial geography: crude intake and storage,
+main process, product storage, dispatch, utilities, maintenance and a future
+Control Room. They need not form a perfectly straight line, but the material
+story should remain legible: **Crude In -> Storage -> Process -> Product Storage
+-> Dispatch / Money Out**.
+
+Walking remains important around equipment. At mature site scale, some journeys
+should be far enough that a future bicycle or small utility vehicle feels useful.
+That transport is a world-design assumption, not a current feature. The Graybox
+brief in `WORLD_DESIGN.md` reserves roads, service access and stopping space so
+it can fit naturally later.
 
 A mature refinery may eventually contain:
 
@@ -262,10 +279,10 @@ Examples:
 - process instability
 
 ### Equipment trip
-- unsafe operating condition
-- full destination
-- high pressure
-- process fault
+- power/MCC or required-utility loss
+- temperature protection
+- broken process route or material mismatch
+- equipment failure or protected dry run
 
 The game should usually give the player enough information to diagnose the problem without simply revealing the answer.
 
@@ -285,6 +302,20 @@ Failures should be:
 Avoid random failures that provide no useful gameplay. Randomized events are acceptable when the underlying problem can still be investigated.
 
 Early versions should keep failure systems simple.
+
+## Operator ownership: STOPPED, RUNNING and TRIPPED
+
+Equipment command and process movement must remain distinct. `STOPPED` means the
+operator deliberately stopped equipment. `RUNNING` means the operator commands
+it to run; a normal temporary condition such as no feed, a closed valve, a
+blocked route or an unavailable destination may therefore show `RUNNING | FLOW`,
+`RUNNING | NO FEED` or `RUNNING | BLOCKED` without silently erasing that command.
+
+`TRIPPED` means a genuine protective event stopped the equipment. Current
+examples include power/MCC loss, applicable utility loss, temperature guard,
+route failure, equipment failure and protected dry run. Once the root cause is
+corrected, the player must deliberately restart it. This preserves operator
+ownership, makes diagnosis legible and prevents surprise restarts.
 
 ---
 
@@ -318,6 +349,52 @@ Good:
 `The pump outlet is not connected to a valid downstream machine.`
 
 The process network is a gameplay system, not an engineering simulation.
+
+## Material and canonical-state principles
+
+CrudeWorks has one canonical source of truth for material and operational state.
+Tank fill meshes, HUD text, reports, samples, power totals and ΔP diagnostics are
+derived views; they must not become duplicate saved truth. Numeric quality and
+analysis/specification status are intentionally separate state.
+
+Material is governed internally by the invariant:
+
+**before + input - output - defined loss = after**
+
+The player need not calculate this. The game must not create or destroy
+unexplained material. A loss is acceptable only when it is an intentional,
+explicit gameplay boundary such as controlled disposal or generator fuel use.
+Save validation must reject corrupt data without rejecting legitimate states
+such as an empty tank, unanalyzed product, a normal blocked route or no active
+contract when no contract is required.
+
+## Utilities and understandable dependencies
+
+Utilities are gameplay infrastructure, not decoration. Their long-term design
+principle is visible sources, consumers and understandable consequences. The
+implemented foundation is:
+
+**Diesel -> generator -> MCC / electricity -> Instrument Air + Cooling Water ->
+process availability**
+
+Dependencies must be deterministic, diagnosable, recoverable and visible. A
+missing generator fuel source should explain power loss; power loss should stop
+powered utilities; Instrument Air should make relevant automated controls fail
+safely; and Cooling Water should block affected process cooling/condensation.
+Avoid arbitrary failure chains and alarm spam that hides the root cause.
+
+## Simplified pressure, resistance and thermal scope
+
+Pressure exists only as a gameplay-level troubleshooting abstraction. The
+current relationship is broadly **flow target × pump capability × restriction =
+achievable flow**. A filter can expose restricted capacity, `ΔP HIGH` and reduced
+flow. This is deliberately not CFD, pipe-friction engineering, Reynolds-number
+simulation, transient pressure modeling or a full hydraulic network.
+
+Heater architecture has a future extension point through heater type, route,
+PV, SP, output and actual flow. A flow-dependent energy/duty balance is
+deliberately deferred until it creates a worthwhile player decision; the vision
+does not authorize a detailed thermal simulator now.
 
 ---
 
@@ -588,7 +665,20 @@ Automation should not turn CrudeWorks into an idle game. Even an automated refin
 
 A control room is an important long-term progression reward.
 
-The player should eventually be able to see major process values remotely:
+The field/control-room relationship is intentional:
+
+**Field = build, inspect, maintain, repair and physically intervene.**
+
+**Control Room = operate, supervise, regulate and coordinate.**
+
+Field work remains meaningful throughout the game. The player should physically
+place and connect equipment, service a filter, investigate a fault, take an
+appropriate sample, reset field equipment and modify the plant. The late game
+must not require walking to every pump merely to repeat a simple command, but a
+remote interface must never become god mode that erases field gameplay.
+
+The player should eventually be able to see and appropriately control major
+process values remotely:
 
 - tank levels
 - pump status
@@ -598,8 +688,17 @@ The player should eventually be able to see major process values remotely:
 - alarms
 - product routing
 - process status
+- utility and process-unit status
+- suitable setpoints, automated/control-valve states and remote commands
 
 The control room should not initially provide perfect control over everything. Its capability should grow through progression.
+
+LS-201 is the small, current foundation for this concept, not disposable
+prototype UI. Early play remains strongly local/manual; as the refinery grows,
+LS-201-style diagnostics and carefully earned remote capability should expand
+into a physical Control Room. Manual field equipment can remain field-only.
+Full Control Room development is deferred until Graybox world scale makes
+central coordination genuinely valuable.
 
 The player should still need to visit the physical plant when appropriate.
 
@@ -766,6 +865,13 @@ Visual realism should support gameplay readability. The player should quickly re
 
 Avoid visual complexity that makes important process information hard to read.
 
+The intended art direction is stylized low-poly industrial: compatible with the
+visual grammar of Kenney City Kit Industrial and extended by custom CrudeWorks
+refinery equipment. Use strong silhouettes, limited visual noise, consistent
+industrial forms, clear functional ports and distinct interaction accents. The
+Graybox phase protects scale, navigation and readability with primitive forms;
+it is not final asset production.
+
 ---
 
 # UI philosophy
@@ -915,6 +1021,21 @@ CrudeWorks should **not** become:
 - a game that requires professional refinery knowledge to begin
 - a collection of disconnected educational minigames
 
+## Process scope freeze
+
+**PROCESS FOUNDATION READY FOR GRAYBOX.** The approved V1 process family is
+currently centered on CDU, VDU, FCC, HT-201 treatment, pumps/valves/piping and
+routing, heaters, tanks/storage, LAB, PD-101 dispatch, utilities,
+instrumentation/control, alarms/interlocks and maintenance. This is a scope
+boundary, not a claim that every future depth layer is complete.
+
+During Graybox World, do not casually add another major refinery process unit.
+Heat-exchanger depth, blending, desalter, expanded Naphtha processing, Steam,
+Hydrogen, hydrocracker, coker and other process-family expansion are deferred
+until the existing world, field gameplay and progression demonstrate a specific
+need. Detailed hydraulics and thermal simulation remain deferred for the same
+reason.
+
 ---
 
 # Feature decision test
@@ -961,6 +1082,11 @@ Development should remain incremental:
 **repeat**
 
 The current implementation may be far from the final vision. That is expected.
+
+The current project phase is **Graybox World** following the v0.28.2 process
+foundation gate. For immediate milestone order and practical constraints, follow
+`ROADMAP.md`, `WORLD_DESIGN.md` and `AGENTS.md`; do not use this long-term vision
+as permission to add the deferred systems above.
 
 Every milestone should leave the game more playable than before.
 

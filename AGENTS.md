@@ -2,17 +2,38 @@
 
 ## Project overview
 
-CrudeWorks is a 3D educational refinery game built in Godot.
+CrudeWorks is a first-person refinery-builder game built in Godot. Education is
+an outcome of normal play, not a separate simulator genre.
 
 The game is inspired by games such as Hydroneer: the player starts with a small, simple industrial setup and gradually unlocks more advanced equipment, larger areas, better crude oil inputs, automation, laboratory systems and more complex refinery processes.
 
-The target audience is students in Norwegian upper-secondary education, especially Kjemi, prosess og laboratoriefag (VG2).
+One important use case is Norwegian upper-secondary education, especially
+Kjemi, prosess og laboratoriefag (VG2), alongside a satisfying standalone
+refinery-builder sandbox.
 
 The game must be:
 1. Fun enough that students actually want to play it.
 2. Simple enough that a beginner developer can maintain it with AI assistance.
 3. Educational through gameplay rather than long quizzes or walls of text.
 4. Technically modular enough to expand over time.
+
+## Current project phase — authoritative
+
+**PROCESS FOUNDATION READY FOR GRAYBOX** at version `0.28.2`, clean checkpoint
+`11b1b77`. The immediate priority is **Graybox World**, not another process
+unit or simulation-depth pass.
+
+Use the documents for their distinct roles:
+
+- `CRUDEWORKS_VISION.md`: long-term player fantasy and design philosophy.
+- `WORLD_DESIGN.md`: practical world scale, geography and Graybox constraints.
+- `ROADMAP.md`: next milestone order and scope freeze.
+- `ARCHITECTURE.md`: current technical ownership and invariants.
+- `DEVELOPMENT_LOG.md`: historical record, not a current task list.
+
+When they conflict with an older document, the current phase, roadmap and live
+code/tests take precedence. Do not treat historical `docs/MVP.md`,
+`docs/BUILDING_SYSTEM.md` or `NIGHTLY_LOG.md` as current implementation plans.
 
 ---
 
@@ -86,6 +107,28 @@ sake.
   expansion, optimisation, maintenance or automation rather than become obsolete.
 - Do not follow a feature treadmill. A real refinery component is worthwhile
   only when it strengthens building, operation, diagnosis, economy or ownership.
+
+## Current simulation guardrails
+
+- Keep `ProcessNetwork` as the sole material-topology authority and
+  `BuiltRefineryModel` as the sole Area 02 material/operations authority.
+- Preserve one canonical source of truth. Tank visuals, UI text, reports,
+  samples, power totals and ΔP diagnostics are derived; never save or mutate a
+  duplicate visual inventory.
+- Preserve the material invariant: `before + input - output - defined loss =
+  after`, with small float tolerance. Defined losses must be explicit and
+  testable; never silently delete material to make a route work.
+- Preserve operator ownership: normal no-feed/blocked conditions keep a RUN
+  command, while genuine safety events become `TRIPPED` and require deliberate
+  restart after recovery. Do not reintroduce automatic restart after a trip.
+- Preserve the utility dependency chain: Diesel -> GF-101 -> generation -> MCC
+  -> Instrument Air/Cooling Water -> process availability. Keep root causes
+  visible and avoid redundant alarm cascades.
+- Keep LAB-101 analytical. PD-101 is the normal Area 02 dispatch/sales boundary;
+  tanks and LAB must not acquire duplicate sale paths.
+- The current ΔP model is diagnostic only. Do not add CFD, pipe-friction
+  networks, Reynolds-number calculations, transient pressure models or detailed
+  thermal/energy balance without explicit approval and a proven player decision.
 
 ---
 
@@ -609,11 +652,13 @@ Examples:
 - Distillation conserves total input volume within the simplified model.
 - Product tanks receive the correct fractions.
 
-Whenever possible, ensure:
+Whenever a test crosses a material boundary, prefer the shared invariant:
 
-input volume ~= total output volume
+`before + input - output - defined loss = after`
 
-Small simplifications are acceptable, but unexplained creation or disappearance of large amounts of fluid should not occur.
+Use canonical inventory snapshots and a small float tolerance. Small
+simplifications are acceptable, but unexplained creation or disappearance of
+material is not.
 
 ---
 
@@ -724,23 +769,46 @@ Expand later.
 
 ---
 
-# Current project priority
+# Current project priority — Graybox World
 
 Until explicitly changed, prioritize:
 
-1. Core refinery gameplay loop
-2. Reliable fluid transfer between equipment
-3. Tank / pump / valve interaction
-4. Heating
-5. Simple distillation
-6. Product storage and selling
-7. Clear UI
-8. Progression
-9. Basic lab / quality
-10. Automation
-11. Polish
+1. Graybox World layout, believable human scale and permanent broad geography.
+2. Preservation of functioning v0.28.2 simulation while equipment moves into
+   spatially meaningful areas.
+3. Navigation, field accessibility, roads/service access and world safety.
+4. Clear functional zones: Pilot, CI-101, crude storage, Area 02, Utilities,
+   product tank farm, LAB, PD-101, Workshop, LS-201/future Control Room and
+   locked expansion pads.
+5. Human playtesting of the existing loop at real gameplay scale.
+6. Graybox lock: correct broad scale/navigation issues before final assets.
+7. Only then, systematic final asset replacement and the next reassessment.
 
-Do not skip ahead to advanced refinery systems before the basic loop is solid.
+## During Graybox
+
+Codex must not casually:
+
+- add new refinery process units or redesign established simulation ownership;
+- add CFD, detailed hydraulic/thermal simulation or a major new economy system;
+- implement vehicle gameplay, the full Control Room or broad automation early;
+- replace all placeholder art, build final decorative clutter or perform
+  unrelated refactors.
+
+Use primitive meshes, simple materials, labels, block buildings, roads, fences,
+collision and landmarks to answer where systems are, how large the site is and
+how the player moves through it. Follow `WORLD_DESIGN.md` for spatial rules.
+
+## World migration rule
+
+When moving existing functional equipment into the Graybox world:
+
+1. Preserve canonical IDs/semantics where saves or model registration require it.
+2. Preserve process-network ports, interaction reachability and intended routes.
+3. Do not duplicate functional equipment merely to populate the scene visually.
+4. Preserve save behavior where practical; explicitly document any unavoidable
+   migration decision before changing it.
+5. Re-run affected gameplay, integration and save tests after each meaningful
+   migration slice.
 
 ---
 

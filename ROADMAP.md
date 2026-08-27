@@ -95,58 +95,60 @@ of placed equipment already avoid an obvious early financial soft-lock. The
 next playtest should verify that the three required pumps are legible at
 1280×720 and that this provisional pace feels satisfying.
 
-## Development phases
+## Graybox World roadmap
 
-### Phase A — Foundation
+The following phase is the highest-priority path to a more physical, scalable
+refinery-builder. Detailed spatial constraints live in `WORLD_DESIGN.md`.
 
-Mostly complete: pilot loop, free building, directed topology, atmospheric
-distillation, material conservation, economy, progression gate and save/load.
+### 1. Graybox Master Layout & Scale
 
-### Phase B — Refinery depth
+Establish the total site footprint, human-scale convention, major zones,
+approximate travel distances, sightlines and deliberately empty expansion pads.
+The compact prototype layout is not the target world.
 
-Largely established: multiple trains, feed/product routing, Sour treatment,
-quality/LAB, storage choices, VDU/FCC secondary processing and electrical
-generation/distribution. Add another major unit only when it unlocks a clear new player
-decision rather than extending a machine checklist.
+### 2. Roads, Paths & Boundaries
 
-### Phase C — Make the refinery feel alive
+Establish a main site road, service roads, short field walking paths,
+maintenance/parking approaches, entrances, fences/gates, safe edges and
+reliable out-of-bounds recovery. Reserve routes that can support future simple
+site transport without implementing transport now.
 
-High priority now. Choose small, tested improvements such as:
+### 3. Functional Area Migration
 
-- physical process animation, readable tank level and local status cues;
-- clearer pipe, port, valve, pump and alarm feedback;
-- sound/status feedback that makes operation legible and satisfying;
-- hands-on building and interaction improvements;
-- condition/maintenance pacing and visible recovery.
+Move the working Pilot, CI-101, crude storage, Area 02, Utilities Yard, Product
+Tank Farm, LAB-101 and PD-101 into their intended zones. Preserve IDs,
+interactions, ports, process topology and saves where practical. Do not place
+visual duplicates of functional equipment.
 
-### Phase D — Progression and game loop
+### 4. Control Room & Expansion Graybox
 
-High priority. Strengthen the first 20 minutes, the first 45–90 minute session,
-and the reasons to keep expanding:
+Create the physical shell/location for the future Control Room, retain LS-201 as
+the current local-control seed, and reserve accessible pads for VDU, FCC,
+future Naphtha work and utility/Steam expansion. Do not implement a full Control
+Room or new process systems in this step.
 
-- compelling pilot-to-Area-02 transition;
-- equipment/economy unlock pacing and reinvestment choices;
-- storage, power, maintenance and layout as expansion decisions;
-- clearer medium-term goals that are not simply "buy the next machine";
-- scenario/save-preset foundations only when they reuse normal sandbox systems.
+### 5. Full Graybox Gameplay Pass
 
-### Phase E — Quality and operations
+Start a fresh game and play the current loop at real site scale: Pilot ->
+CI-101 -> crude storage -> Area 02 -> utilities -> LAB -> PD-101. Test field
+access, discovery, road/path readability, alarms, ports, build pads, tank
+levels, utility recovery and the meaningful travel between major areas.
 
-Later depth: broader specifications, quality-dependent value, blending, richer
-operator diagnosis and carefully expanded maintenance. Each addition must
-produce a visible process decision or recovery path.
+### 6. Graybox Lock
 
-### Phase F — Automation and scale
+Correct scale, navigation, access and world-safety issues, then freeze broad
+geography before systematic final asset replacement. Reassess progression,
+automation and art only after this lock.
 
-Later progression: additional instruments, earned remote control, controlled
-routing, scalable monitoring and simple automation. Automation must reduce a
-manual task the player already understands; it must not turn CrudeWorks into an
-idle game.
+## Later progression after Graybox
 
-### Phase G — Large integrated refinery
-
-Long-term focus: integration, reliability, throughput, quality, profitability,
-utilities, tank farms and player-designed layouts—not the raw number of units.
+- Make existing equipment feel alive through visual/audio/readability passes.
+- Strengthen the first 20 minutes, the 45–90 minute arc and reinvestment choices.
+- Add richer operations, maintenance and automation only where manual gameplay
+  already creates a clear task to improve.
+- Grow toward a large integrated refinery through reliability, throughput,
+  utilities, tank farms, player layouts and earned control-room capability—not
+  raw process-unit count.
 
 ## Play-scale guardrails
 
@@ -169,10 +171,10 @@ that bottleneck and preserves both short-session usefulness and long-form value.
 - `ProcessNetwork` remains the sole topology authority.
 - `BuiltRefineryModel` remains the Area 02 material/operation authority.
 - Keep material transfers capacity-bounded, product identity-preserving and
-  mass-conserving.
+  governed by the shared mass-balance invariant.
 - Reuse manual interaction before adding remote/automatic control.
-- Do not introduce process physics, utilities or new units without a clear
-  player-facing decision.
+- Do not introduce new process physics, utility families or process units
+  without an explicit player-facing decision after Graybox.
 
 ## Deferred work
 

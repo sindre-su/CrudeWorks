@@ -49,12 +49,13 @@ focused normal-game scenarios; sandbox systems remain authoritative.
   product-header storage routing with explicit player-owned destinations.
 - Visible IN/OUT ports, logical process order, pipe direction, blocked reverse
   connections and incomplete-line feedback.
-- Tank capacity, bounded transfer, product backpressure and simplified mass
-  conservation.
+- Tank capacity, bounded transfer, product backpressure and a shared canonical
+  material-balance invariant.
 - Temperature-dependent fractions and diesel quality; Standard, Heavy and Sour
   crude have different targets, yields, treatment needs and delivery choices.
 - Field operation of pumps, manual valves and heater targets; 5/10/15 L/s pump
-  targets, pump condition and a recoverable blocked-filter restriction.
+  targets, pump condition and a recoverable blocked-filter restriction with
+  derived `ΔP HIGH` diagnostics.
 - Troubleshooting feedback including LOW FLOW, HIGH TEMPERATURE and full product
   storage. A closed valve, restricted filter or worn pump can leave a commanded
   pump below normal flow.
@@ -70,7 +71,8 @@ focused normal-game scenarios; sandbox systems remain authoritative.
 - Start/stop behavior is meaningful, but there is no explicit procedure,
   checklist or safe shutdown lesson.
 - Instrumentation is readable and actionable, but has no calibration, error,
-  uncertainty or pressure measurement.
+  uncertainty or general numeric pressure measurement; the current filter ΔP is
+  a qualitative troubleshooting diagnostic.
 - Automation is limited to remote commands and a temperature permissive/trip;
   there is no closed-loop regulation or configurable interlock logic.
 - Laboratory work uses a real sample/action/result loop, but the analysis is a
@@ -85,8 +87,8 @@ focused normal-game scenarios; sandbox systems remain authoritative.
 
 - More expressive physical feedback, visual/audio cues and hands-on usability.
 - Better short-session scenario setup and medium-term progression pacing.
-- Pressure, pressure loss, energy balances, P&ID views, broader control loops,
-  calibration and broader safety systems.
+- Detailed pressure/pressure-loss systems, energy balances, P&ID views, broader
+  control loops, calibration and broader safety systems.
 - Additional quality/operations depth only where it improves the refinery game.
 
 ## Strong Curriculum Connections
@@ -116,7 +118,7 @@ relationship by operating or repairing it, not by answering a question.
 | Optimisation and throughput | STRONG OPTIONAL FIT | 5/10/15 L/s affects time and temperature margin; Standard/Heavy affect economy | Bottlenecks, energy/capacity tradeoffs | Choose lower flow for tolerance or high flow for throughput | A meaningful production decision, not spreadsheet work | B |
 | Measurement equipment faults | INCIDENTAL FIT | Process faults are diagnosed; measurements themselves are assumed correct | Sensor drift, failed transmitter, calibration | Compare a faulty level/temperature display with physical symptoms | Worth adding only with maintenance gameplay | B |
 | Energy and heat balance | INCIDENTAL FIT | Heating has a target and time response, but no energy accounting | Simple energy cost/heat-loss choice | Compare warm-up time or heating demand | Use teacher calculation outside game first | B |
-| Pipe pressure loss | INCIDENTAL FIT | Pipes have direction/connectivity but no pressure model | One clear restriction/fouling scenario | Reduced flow due to a blocked filter, not generic pipe physics | Only useful if it creates good diagnosis | B |
+| Pipe pressure loss | INCIDENTAL FIT | Simplified filter restriction exposes `ΔP HIGH`; pipes still have no hydraulic network | More restriction/fouling only when diagnostically useful | Reduced flow due to a blocked filter, not generic pipe physics | Only useful if it creates good diagnosis | B |
 | Sustainable production and waste | STRONG OPTIONAL FIT | Mass conservation, reuse of equipment economy and safe product disposal exist | Emissions/waste/value tradeoffs | Choose a delivery/process that avoids off-spec disposal | Natural only when tied to player decisions | B |
 | Documentation and reporting | INCIDENTAL FIT | Batch report and lab result communicate process data | Exportable teacher worksheet or run summary | Use report values in a short classroom calculation | Good classroom bridge; not a core in-game task | B |
 | Technical terminology | INCIDENTAL FIT | Norwegian industrial names/tags and labels appear in context | Optional English/technical terminology toggle | Identify P-201, V-201, TT-201 and LT-201 after use | Best reinforced in teacher discussion | B |
@@ -183,7 +185,7 @@ relationship by operating or repairing it, not by answering a question.
 | Distillation appears to depend only on temperature | NEEDS CLARIFICATION | A short optional teacher note or inspection text should say that real separation also depends on pressure, composition, column design and reflux |
 | “Crude” behaves like one named material | NEEDS CLARIFICATION | Keep Standard/Heavy framing as simplified feed profiles, not pure substances |
 | Pump target and actual flow may be confused | NEEDS CLARIFICATION | Continue displaying both, especially at closed valve/full tank |
-| Pressure is named in the vision but absent from play | NEEDS CLARIFICATION | Do not show a fictitious pressure value; add pressure only with a useful decision/fault |
+| Filter ΔP may be mistaken for a full pressure model | NEEDS CLARIFICATION | Explain it as a simplified restriction diagnostic; do not show fictitious plant pressure values |
 | Pilot can be run too hot/cold with primarily quality/economic consequences | NEEDS CLARIFICATION | Future safety feedback should distinguish product quality from operating safety without making early play punitive |
 | LAB result is deterministic and has no method, calibration or uncertainty | NEEDS CLARIFICATION | Present LAB-101 as a simplified quality check; classroom work can add method/uncertainty |
 | Product disposal is “safe” by a button without a waste system | NEEDS CLARIFICATION | Call it controlled/simplified disposal and avoid implying this models real waste handling |
@@ -292,8 +294,8 @@ reasons to broaden the core refinery loop.
 
 ### Already aligned
 
-- The current hands-on usability pass protects the clarity needed for physical
-  process learning.
+- Graybox World now protects the physical scale, navigation and area readability
+  needed for process learning before new simulation depth is considered.
 - Recoverable pump filter faults and pump condition directly support troubleshooting,
   instrumentation, procedures and maintenance without changing the game genre.
 - Sour crude with HT-201 treatment supports unit-operation relationships,

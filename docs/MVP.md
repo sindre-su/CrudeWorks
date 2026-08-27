@@ -1,5 +1,9 @@
 # CrudeWorks – MVP 0.1
 
+> Historical MVP record. It describes the early Pilot hypothesis, not the
+> current v0.28.2 implementation or priority. Use `README.md`, `ROADMAP.md` and
+> `AGENTS.md` for current guidance.
+
 ## Hypotesen vi tester
 
 Det er morsomt og forståelig å betjene en synlig prosesslinje når hver handling
@@ -43,4 +47,3 @@ raffineri.
 
 Hvis løkken fungerer, bygger vi modulær plassering og kobling av utstyr. Hvis den
 ikke fungerer, forbedrer vi tempo, respons og feilsøking før prosjektet vokser.
-

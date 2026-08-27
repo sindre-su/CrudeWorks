@@ -1,5 +1,10 @@
 # CrudeWorks Nightly Development Log
 
+> Historical nightly record for the v0.3/v0.4 build-out. It is preserved for
+> context, not current planning; v0.28.2 is **PROCESS FOUNDATION READY FOR
+> GRAYBOX**. See `DEVELOPMENT_LOG.md`, `ROADMAP.md` and `AGENTS.md` for current
+> direction.
+
 ## Starting State
 
 - Version 0.3 has a confirmed working pilot loop:
