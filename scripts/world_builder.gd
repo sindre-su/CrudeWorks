@@ -9,7 +9,7 @@ const COLOR_SEA := Color("#214d61")
 const COLOR_FOREST := Color("#1e3228")
 const COLOR_ROAD := Color("#293038")
 const COLOR_MAIN_ROAD := Color("#343d46")
-const COLOR_PATH := Color("#7a817a")
+const COLOR_PATH := Color("#4b5752")
 const COLOR_PLATFORM := Color("#687079")
 const COLOR_RESERVED := Color("#535968")
 const COLOR_LOGISTICS := Color("#596b63")
@@ -21,6 +21,7 @@ var prototype_build_area_label: Label3D
 var area_nodes: Dictionary = {}
 var road_nodes: Dictionary = {}
 var path_nodes: Dictionary = {}
+var orientation_nodes: Dictionary = {}
 
 
 func build_world() -> void:
@@ -31,6 +32,7 @@ func build_world() -> void:
 	_build_roads()
 	_build_paths()
 	_build_prototype_pads()
+	_build_starter_orientation()
 
 
 func _build_environment() -> void:
@@ -237,6 +239,101 @@ func _build_prototype_pads() -> void:
 		0.42
 	)
 	prototype_build_area_label.visible = true
+
+
+func _build_starter_orientation() -> void:
+	_create_physical_sign(
+		"starter_site",
+		Vector3(-3.0, 0.0, 8.2),
+		90.0,
+		"STARTER SITE\nPILOT PROCESS  ←\nCRUDE INTAKE  ↓ SOUTH"
+	)
+	_create_physical_sign(
+		"pilot_process_chain",
+		Vector3(14.5, 0.0, 6.8),
+		0.0,
+		"PILOT P-01\nTANK > PUMP > VALVE\n> HEATER > SEPARATION > TANKS"
+	)
+	_create_starter_access_gate()
+
+
+func _create_starter_access_gate() -> void:
+	var gate_root := Node3D.new()
+	gate_root.name = "StarterMainRefineryGate"
+	gate_root.position = Vector3(34.0, 0.0, -10.0)
+	add_child(gate_root)
+	orientation_nodes["main_refinery_gate"] = gate_root
+	_create_static_box(
+		"NorthBollard",
+		Vector3(0.0, 0.65, -1.75),
+		Vector3(0.45, 1.3, 1.35),
+		Color("#b58a36"),
+		gate_root
+	)
+	_create_static_box(
+		"SouthBollard",
+		Vector3(0.0, 0.65, 1.75),
+		Vector3(0.45, 1.3, 1.35),
+		Color("#b58a36"),
+		gate_root
+	)
+	_create_static_box(
+		"ClearanceBeam",
+		Vector3(0.0, 2.35, 0.0),
+		Vector3(0.35, 0.3, 4.8),
+		Color("#535f61"),
+		gate_root
+	)
+	var gate_label := Label3D.new()
+	gate_label.name = "GateLabel"
+	gate_label.text = "MAIN REFINERY  →\nAFTER PILOT SALE"
+	gate_label.position = Vector3(0.0, 2.35, 0.0)
+	gate_label.font_size = 42
+	gate_label.pixel_size = 0.009
+	gate_label.modulate = Color("#f3e4b8")
+	gate_label.outline_size = 8
+	gate_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	gate_label.no_depth_test = false
+	gate_root.add_child(gate_label)
+
+
+func _create_physical_sign(
+	sign_id: String,
+	position_3d: Vector3,
+	yaw_degrees: float,
+	text: String
+) -> void:
+	var sign_root := Node3D.new()
+	sign_root.name = "Orientation_%s" % sign_id
+	sign_root.position = position_3d
+	sign_root.rotation_degrees.y = yaw_degrees
+	add_child(sign_root)
+	orientation_nodes[sign_id] = sign_root
+	_create_static_box(
+		"Post",
+		Vector3(0.0, 0.72, 0.0),
+		Vector3(0.16, 1.44, 0.16),
+		Color("#3d4647"),
+		sign_root
+	)
+	_create_static_box(
+		"Board",
+		Vector3(0.0, 1.65, 0.0),
+		Vector3(4.6, 1.45, 0.14),
+		Color("#34464b"),
+		sign_root
+	)
+	var label := Label3D.new()
+	label.name = "SignLabel"
+	label.text = text
+	label.position = Vector3(0.0, 1.65, -0.08)
+	label.font_size = 40
+	label.pixel_size = 0.008
+	label.modulate = Color("#f2e3b5")
+	label.outline_size = 7
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	label.no_depth_test = false
+	sign_root.add_child(label)
 
 
 func _create_access_ramp(area: Dictionary, side: String, parent: Node3D) -> void:

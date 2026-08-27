@@ -19,11 +19,13 @@ The game must be:
 
 ## Current project phase — authoritative
 
-**GRAYBOX WORLD WP1 COMPLETE** at version `0.29.0`. The v0.28.2 process
-foundation remains frozen and tested inside the canonical world skeleton. The
-immediate priority is **functional Pilot/start-area integration**, not another
-process unit, simulation-depth pass or broad functional-area migration in one
-step.
+**FUNCTIONAL PILOT INTEGRATION COMPLETE** at version `0.30.0`. The fixed Pilot
+loop is proven inside the canonical Graybox World with physical starter
+orientation, full production/sale, post-sale building and save/load/resume.
+Main Refinery equipment and areas have not been migrated. The immediate
+priority is a human v0.30 Pilot playtest, followed by the smallest approved
+Main Refinery entry/feed migration—not another process unit or a broad area
+migration in one step.
 
 Use the documents for their distinct roles:
 

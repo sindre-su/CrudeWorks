@@ -14,8 +14,8 @@ For long-term design, Graybox direction and scope, see `CRUDEWORKS_VISION.md`,
   area/road specifications, active placement bounds, spawn and player/save
   bounds.
 - `scripts/world_builder.gd`: primitive macro terrain, platforms, roads,
-  boundaries, labels, collision and retained prototype pads. It consumes
-  `WorldLayout` and owns no gameplay or persisted process state.
+  paths, boundaries, starter wayfinding, collision and retained prototype pads.
+  It consumes `WorldLayout` and owns no gameplay or persisted process state.
 - `scripts/process_model.gd`: fixed Pilot training process, economy and original
   progression loop.
 - `scripts/built_refinery_model.gd`: Area 02 material, operations, contracts,
@@ -138,11 +138,13 @@ placing visual duplicate equipment that looks functional but has no model state.
 
 ## Scope boundary
 
-The v0.28.2 process foundation remains frozen in v0.29.0 while Graybox World is
-built around it. The architecture is ready to support physical migration of
-CDU, VDU, FCC, HT-201, routing, storage, LAB, PD-101, utilities, controls,
-alarms and maintenance. New major process families, detailed hydraulics and
-detailed thermal simulation require an explicit post-Graybox gameplay decision.
+The v0.28.2 process foundation remains frozen in v0.30.0. The existing fixed
+Pilot is now verified as one complete fresh-save world loop without relocating
+its stable IDs or absolute coordinates. Main CDU, VDU, FCC, HT-201, routing,
+storage, LAB, PD-101, utilities, controls, alarms and maintenance are still
+functionally located in the compact prototype neighborhood and await deliberate
+migration. New major process families, detailed hydraulics and detailed thermal
+simulation require an explicit post-Graybox gameplay decision.
 
 ## Test map
 
@@ -157,3 +159,6 @@ detailed thermal simulation require an explicit post-Graybox gameplay decision.
 - `tests/save_system_test.gd`: persistence, validation and migrations.
 - `tests/world_layout_test.gd`: canonical bounds, target footprints, legacy
   coordinates, world-builder output, ramps and non-duplicated bounds authority.
+- `tests/pilot_world_integration_test.gd`: fresh southwest spawn, physical
+  starter context, Pilot troubleshooting/production/sale, post-sale building,
+  disk persistence and deliberate resume after reload.

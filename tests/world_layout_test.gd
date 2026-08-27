@@ -109,7 +109,7 @@ func _test_road_configuration() -> void:
 		var dimensions: Vector2 = path_spec["dimensions"]
 		_expect(not path_ids.has(path_id), "pedestrian path ID %s is unique" % path_id)
 		path_ids[path_id] = true
-		_expect(minf(dimensions.x, dimensions.y) >= 3.0, "%s keeps human-scale walking clearance" % path_id)
+		_expect(minf(dimensions.x, dimensions.y) >= 2.0, "%s keeps human-scale walking clearance" % path_id)
 
 
 func _test_spawn_and_legacy_coordinates() -> void:
@@ -226,6 +226,18 @@ func _test_platform_walkability() -> void:
 			WorldLayoutScript.world_contains_xz(Vector2(walker.global_position.x, walker.global_position.z)),
 			"site boundary collision contains a player-sized body at %s" % boundary_check["start"]
 		)
+
+	walker.global_position = Vector3(29.0, 0.1, -10.0)
+	walker.velocity = Vector3.ZERO
+	await physics_frame
+	for frame_index in 100:
+		walker.velocity = Vector3(6.0, -0.5, 0.0)
+		walker.move_and_slide()
+		await physics_frame
+	_expect(
+		walker.global_position.x > 38.0,
+		"open starter transition gate preserves player-sized access toward the Main Refinery"
+	)
 
 	walker.queue_free()
 	builder.queue_free()

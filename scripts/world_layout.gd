@@ -230,6 +230,11 @@ const ROAD_SPECS := [
 
 const PATH_SPECS := [
 	{
+		"id": "starter_pilot_path",
+		"center": Vector2(-10.0, 3.0),
+		"dimensions": Vector2(2.0, 6.0),
+	},
+	{
 		"id": "operations_storage_path_x",
 		"center": Vector2(172.5, -10.0),
 		"dimensions": Vector2(15.0, 3.0),

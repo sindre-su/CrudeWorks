@@ -2,13 +2,13 @@
 
 ## Current baseline
 
-Version 0.29.0 retains the tested v0.28.2 process foundation and adds the first
-permanent Graybox World foundation: one canonical 600 x 400 m site layout,
-Nordic coastal terrain/sea/borders, deterministic area footprints, raised
-platforms and access ramps, road hierarchy, safe boundaries, southwest spawn,
-debug markers and legacy-coordinate-safe persistence. Functional equipment is
-still in the compact prototype neighborhood and has not been duplicated or
-migrated.
+Version 0.30.0 retains the tested v0.28.2 process foundation and v0.29.0
+canonical 600 x 400 m Graybox World. It proves the complete fixed Pilot loop at
+the southwest spawn with a restrained physical starter path, mounted
+orientation/process signs, an open Main Refinery transition gate, existing
+troubleshooting, approved production/sale, post-sale building and disk-based
+save/load/resume. Pilot equipment keeps its stable IDs and legacy absolute
+coordinates. Main Refinery functional areas have not been migrated.
 
 The underlying foundation has a tested pilot plant and a substantial Area 02 refinery
 slice: free building, directed process networks, multiple independent trains,
@@ -38,12 +38,14 @@ running sales pump before it can invoke the existing dispatch transaction.
 
 ## Current priority
 
-**Graybox World: integrate the proven systems into the physical refinery.** The
-macro layout and world skeleton are complete. The next package should migrate
-and validate the functional Pilot/start experience before moving the rest of
-the process plant. The first graybox acceptance pass must still validate port aiming,
-pipe/valve readability, alarms, tank levels, LAB-101, LS-201, utilities,
-VDU/FCC placement and pump-condition pacing at 1280 × 720. Headless tests
+**Human-test the functional Pilot, then integrate the Main Refinery in small
+slices.** The macro layout and automated Pilot acceptance gate are complete.
+Before moving more systems, a real 1280 × 720 WASD playtest must assess starter
+orientation, equipment spacing, interaction convenience and whether the full
+demonstration naturally lands near 10–20 minutes. The next implementation slice
+should be defined only after that check. Later graybox acceptance must still
+validate port aiming, pipe/valve readability, alarms, tank levels, LAB-101,
+LS-201, utilities, VDU/FCC placement and pump-condition pacing. Headless tests
 protect logic; they cannot replace human play.
 
 Utilities are now mechanically meaningful and have focused automated coverage:
@@ -92,7 +94,7 @@ requires a post-graybox player-value decision, not process completeness alone.
 | Standard gross output | ~5,000 kr | 300 L Naphtha, 350 L Diesel, 350 L Heavy Residue at target |
 | HT-201 / PU-101 / VDU-301 / FCC-401 | 800 / 700 / 1,200 / 2,200 kr | Reachable after a successful first physical delivery; exact feel still needs human QA |
 
-v0.29 retains the existing equipment prices and fixed Utilities Yard at
+v0.30 retains the existing equipment prices and fixed Utilities Yard at
 no purchase cost. IA-101 and CWP-101 add 35 kW, so one first atmospheric train
 uses 70 kW before commissioning, 80 kW with LAB/LS, and 100 kW with Sour
 treatment. PU-101 still doubles generation to 200 kW for concurrent trains and
@@ -134,6 +136,11 @@ Move the working Pilot, CI-101, crude storage, Area 02, Utilities Yard, Product
 Tank Farm, LAB-101 and PD-101 into their intended zones. Preserve IDs,
 interactions, ports, process topology and saves where practical. Do not place
 visual duplicates of functional equipment.
+
+**Status: Pilot slice complete in v0.30.0.** Starter gameplay is integrated
+without relocation. CI-101, crude/main storage, CDU/HT, Utilities, LAB, PD-101,
+VDU and FCC migration remains pending and must proceed in smaller validated
+slices.
 
 ### 4. Control Room & Expansion Graybox
 

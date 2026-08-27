@@ -1,5 +1,39 @@
 # CrudeWorks Development Log
 
+## v0.30.0 — Functional Pilot Integration
+
+- Proved the existing fixed Pilot as one complete fresh-save gameplay slice in
+  the canonical v0.29 Graybox World. No process logic, material definition,
+  stable equipment ID, topology rule, yield, economy value or save schema was
+  replaced.
+- Added a restrained physical starter treatment: one short 2 m approach strip,
+  a mounted Starter Site direction board, a mounted Pilot process-chain board
+  and an open pedestrian-width Main Refinery transition gate. The signs establish
+  Pilot, southern Crude Intake and distant Main Refinery direction without a
+  waypoint system or giant floating tutorial marker.
+- Retained the fixed ground-level Pilot platform and every legacy absolute
+  equipment coordinate. Starter crude remains canonical preloaded `raw_tank`
+  inventory; no duplicate CI-101 or competing crude architecture was created.
+- Added a deterministic full-world Pilot acceptance suite. It starts grounded
+  at the southwest spawn, verifies all stable Pilot IDs inside the canonical
+  footprint, diagnoses pump-against-closed-valve LOW FLOW, heats to 200 °C,
+  produces approved light/diesel/heavy inventory, sells through the existing
+  terminal and unlocks the established post-Pilot build state.
+- The same acceptance route places and rotates a tank and pump, creates one
+  real OUT-to-IN connection, validates overlap/bounds feedback, writes through
+  `SaveSystem`, restores into a fresh Main instance and verifies player state,
+  equipment IDs/positions/rotations, connection identity, canonical inventory,
+  economy and progression. Pump motion resumes only after a deliberate restart,
+  then continues processing and remains save-valid.
+- Render-inspected the normal 1280 × 720 spawn, Starter Site board and Main
+  transition gate. Corrected the gate label's viewing orientation before lock.
+- Preserved all prior process, network, building, refinery, logistics,
+  progression, Main, save and world-layout tests. Main CDU, HT, VDU, FCC,
+  Utilities, Storage, LAB and PD-101 migration remains explicitly out of scope.
+- Main-world travel scale remains provisional. A real human WASD session must
+  evaluate Pilot pacing, sign discovery, spacing and the 10–20 minute feel
+  before v0.31 moves another functional area.
+
 ## v0.29.0 — Graybox World Program WP1: World Skeleton
 
 - Completed the repository and process-readiness audit. The tested v0.28.2

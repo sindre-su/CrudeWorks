@@ -13,10 +13,12 @@ whether field work is accessible and where the refinery can grow. It does not
 add new process families, detailed assets, vehicle gameplay or a complete
 Control Room.
 
-**Implementation status:** Graybox World Program Work Package 1 is complete.
-The macro world, canonical coordinates, area footprints, roads, boundaries,
-labels and collision skeleton are implemented. Functional equipment remains in
-the compact prototype neighborhood until the later area-migration packages.
+**Implementation status:** Graybox World Program Work Package 1 and v0.30.0
+Functional Pilot Integration are complete. The macro world, canonical
+coordinates, area footprints, roads, boundaries, labels and collision skeleton
+are implemented. The fixed Pilot is proven in its canonical southwest
+footprint; broader Main Refinery equipment remains in the compact prototype
+neighborhood until later area-migration packages.
 
 ## Scale and navigation convention
 
@@ -105,6 +107,34 @@ Storage have paired approaches so the Control/LAB-to-tank-farm route does not
 require a long perimeter detour. Yellow perimeter lines, billboard labels,
 canonical IDs, dimensions and elevation make the planned areas inspectable
 without implying final signage or art.
+
+## v0.30 functional starter integration
+
+The new-game player still spawns at `(-10, 0.1, 8)` facing the existing fixed
+Pilot equipment. A short 2 m primitive approach strip reinforces the process
+entry without becoming a navigation system. Three mounted graybox structures
+provide restrained physical orientation:
+
+- a Starter Site board points toward the Pilot and south toward Crude Intake;
+- a Pilot board shows `Tank > Pump > Valve > Heater > Separation > Tanks`;
+- an open pedestrian-width transition gate points east toward the future Main
+  Refinery and states that it follows the Pilot sale.
+
+These are collidable physical signs/structures, not giant floating UI markers.
+The larger refinery remains visible and traversable but is not operationally
+migrated by v0.30.
+
+Starter crude remains preloaded in the fixed `raw_tank`; this communicates the
+minimum Pilot feed relationship without creating another CI-101 architecture.
+The verified physical loop uses the established stable IDs and interactions:
+`raw_tank -> pump -> feed_valve -> heater -> column -> product tanks ->
+sales_terminal`. Existing LOW FLOW, temperature, storage, quality, sale,
+economy and progression behavior is unchanged.
+
+The Pilot platform remains ground-level as an explicit compatibility exception.
+Raising it now would bury or relocate functional equipment and invalidate the
+safe absolute-coordinate strategy. Main-world scale and the measured long
+routes remain provisional pending the human v0.30 playtest.
 
 ## Implemented road skeleton
 
