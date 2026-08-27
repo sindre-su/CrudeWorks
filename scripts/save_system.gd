@@ -7,10 +7,10 @@ const CrudeCatalogScript = preload("res://scripts/crude_contract_catalog.gd")
 const BuiltRefineryModelScript = preload("res://scripts/built_refinery_model.gd")
 const ProcessModelScript = preload("res://scripts/process_model.gd")
 const UtilityDistributionScript = preload("res://scripts/utility_distribution.gd")
+const WorldLayoutScript = preload("res://scripts/world_layout.gd")
 
 const FORMAT_VERSION := 2
 const DEFAULT_PATH := "user://crudeworks_save.json"
-const BUILD_BOUNDS := Rect2(-20.0, 10.5, 40.0, 28.0)
 const MAX_UNITS := 128
 const MAX_CONNECTIONS := 256
 const MAX_BUILD_SERIAL := 1000000
@@ -18,6 +18,10 @@ const SITE_UNIT_TYPES := {
 	"built_crude_intake_0": "crude_intake",
 	"built_product_dispatch_0": "product_dispatch",
 }
+
+
+static func build_bounds() -> Rect2:
+	return WorldLayoutScript.build_bounds()
 
 
 static func write_snapshot(path: String, snapshot: Dictionary) -> Dictionary:
@@ -680,7 +684,8 @@ static func _validate_player(state: Dictionary) -> Dictionary:
 	if not _valid_vector(state.get("position"), 3) or not _finite_number(state.get("rotation_y")):
 		return _result(false, "Spillerposisjonen er ugyldig.")
 	var position: Array = state["position"]
-	if not _in_range(position[0], -28.0, 28.0) or not _in_range(position[1], -5.0, 20.0) or not _in_range(position[2], -20.0, 46.0):
+	var player_position := Vector3(float(position[0]), float(position[1]), float(position[2]))
+	if not WorldLayoutScript.player_position_is_valid(player_position):
 		return _result(false, "Spillerposisjonen er utenfor spillområdet.")
 	return _result(true, "Spillerposisjonen er gyldig.")
 
@@ -689,14 +694,10 @@ static func _placement_inside_build_area(equipment_type: String, rotation: int, 
 	var size: Vector3 = EquipmentCatalogScript.definition(equipment_type)["size"]
 	var footprint := Vector2(size.x, size.z) if rotation % 2 == 0 else Vector2(size.z, size.x)
 	var center := Vector2(float(position[0]), float(position[2]))
-	var half := footprint * 0.5
 	var expected_y := 0.16 + size.y * 0.5
 	return (
 		absf(float(position[1]) - expected_y) <= 0.1
-		and center.x - half.x >= BUILD_BOUNDS.position.x
-		and center.y - half.y >= BUILD_BOUNDS.position.y
-		and center.x + half.x <= BUILD_BOUNDS.end.x
-		and center.y + half.y <= BUILD_BOUNDS.end.y
+		and WorldLayoutScript.placement_inside_active_build_bounds(center, footprint)
 	)
 
 

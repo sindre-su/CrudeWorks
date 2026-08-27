@@ -11,12 +11,13 @@ const BuiltRefineryModelScript = preload("res://scripts/built_refinery_model.gd"
 const SaveSystemScript = preload("res://scripts/save_system.gd")
 const CrudeCatalogScript = preload("res://scripts/crude_contract_catalog.gd")
 const LabAnalysisPanelScript = preload("res://scripts/lab_analysis_panel.gd")
+const WorldLayoutScript = preload("res://scripts/world_layout.gd")
+const WorldBuilderScript = preload("res://scripts/world_builder.gd")
 
 const AUTOSAVE_INTERVAL_SECONDS := 12.0
 const SAVE_DEBOUNCE_SECONDS := 1.0
-const PLAYER_SAFE_SPAWN_POSITION := Vector3(-10.0, 0.1, 8.0)
-const PLAYER_SAFE_SPAWN_YAW := deg_to_rad(-18.0)
-const PLAYER_RECOVERY_MIN_Y := -20.0
+const PLAYER_SAFE_SPAWN_POSITION := WorldLayoutScript.NEW_GAME_SPAWN
+const PLAYER_SAFE_SPAWN_YAW := deg_to_rad(WorldLayoutScript.NEW_GAME_YAW_DEGREES)
 const PLAYER_RECOVERY_COOLDOWN_SECONDS := 1.0
 
 @export var persistence_enabled := true
@@ -34,6 +35,7 @@ var build_controller
 var build_mode_unlocked := false
 var build_serial_number := 0
 var build_area_label: Label3D
+var world_builder
 
 var hud_label: Label
 var objective_label: Label
@@ -53,6 +55,7 @@ var control_station_label: Label
 var lab_analysis_panel
 var startup_panel: PanelContainer
 var startup_label: Label
+var world_debug_label: Label
 var notification_time_left := 0.0
 var batch_report_visible := false
 var contract_selection_visible := false
@@ -129,7 +132,7 @@ func _process(delta: float) -> void:
 	process_model.tick(delta)
 	built_refinery_model.tick(delta)
 	player_recovery_cooldown = maxf(player_recovery_cooldown - delta, 0.0)
-	if player_recovery_cooldown <= 0.0 and player.global_position.y < PLAYER_RECOVERY_MIN_Y:
+	if player_recovery_cooldown <= 0.0 and WorldLayoutScript.player_requires_recovery(player.global_position):
 		_recover_player_from_out_of_bounds()
 	notification_time_left = maxf(notification_time_left - delta, 0.0)
 	discard_confirmation_time_left = maxf(discard_confirmation_time_left - delta, 0.0)
@@ -152,6 +155,7 @@ func _process(delta: float) -> void:
 		_schedule_save()
 	_update_process_visuals(delta)
 	_update_user_interface()
+	_update_world_debug_overlay()
 	_update_unit_statuses()
 
 
@@ -185,69 +189,13 @@ func _starter_equipment_locks() -> Dictionary:
 
 
 func _build_environment() -> void:
-	var world_environment := WorldEnvironment.new()
-	var environment := Environment.new()
-	environment.background_mode = Environment.BG_COLOR
-	environment.background_color = Color("87aeb5")
-	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	environment.ambient_light_color = Color("d8edf0")
-	environment.ambient_light_energy = 0.85
-	environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	world_environment.environment = environment
-	add_child(world_environment)
-
-	var sunlight := DirectionalLight3D.new()
-	sunlight.rotation_degrees = Vector3(-52.0, -32.0, 0.0)
-	sunlight.light_color = Color("fff0d1")
-	sunlight.light_energy = 1.25
-	sunlight.shadow_enabled = true
-	add_child(sunlight)
-
-	_create_static_box(
-		"Ground",
-		Vector3(0.0, -0.2, 13.5),
-		Vector3(54.0, 0.4, 63.0),
-		Color("55656a")
-	)
-	_create_static_box(
-		"ProcessPad",
-		Vector3(0.0, 0.03, 0.0),
-		Vector3(31.0, 0.12, 13.0),
-		Color("8a9190")
-	)
-	_create_static_box(
-		"BuildPad",
-		Vector3(0.0, 0.04, 24.5),
-		Vector3(44.0, 0.14, 30.0),
-		Color("6f7b79")
-	)
-	build_area_label = _create_world_label(
-		"BYGGEOMRÅDE 02\nFullfør pilotoppdraget for å låse opp",
-		Vector3(0.0, 2.0, 10.2),
-		Color("9ce8c1")
-	)
-
-	# Safety stripes make the small greybox area readable without art assets.
-	for stripe_x in [-14.0, 14.0]:
-		_create_visual_box(
-			Vector3(stripe_x, 0.11, 0.0),
-			Vector3(0.16, 0.04, 13.0),
-			Color("f2c94c")
-		)
-	# The larger pad has its own edge markers, so its usable construction area
-	# remains readable without moving any established Area 02 equipment.
-	for stripe_x in [-21.8, 21.8]:
-		_create_visual_box(
-			Vector3(stripe_x, 0.12, 24.5),
-			Vector3(0.16, 0.04, 30.0),
-			Color("f2c94c")
-		)
-	for stripe_z in [9.7, 39.3]:
-		_create_visual_box(
-			Vector3(0.0, 0.12, stripe_z),
-			Vector3(44.0, 0.04, 0.16),
-			Color("f2c94c")
-		)
+	world_builder = WorldBuilderScript.new()
+	world_builder.name = "GrayboxWorld"
+	add_child(world_builder)
+	world_builder.build_world()
+	build_area_label = world_builder.prototype_build_area_label
+	build_area_label.text = "BYGGEOMRÅDE 02\nFullfør pilotoppdraget for å låse opp"
+	build_area_label.modulate = Color("9ce8c1")
 
 
 func _build_process_area() -> void:
@@ -634,6 +582,44 @@ func _build_user_interface() -> void:
 	startup_label.add_theme_color_override("font_color", Color("fff3bd"))
 	startup_panel.add_child(startup_label)
 	canvas.add_child(startup_panel)
+
+	world_debug_label = Label.new()
+	world_debug_label.anchor_left = 1.0
+	world_debug_label.anchor_right = 1.0
+	world_debug_label.anchor_top = 1.0
+	world_debug_label.anchor_bottom = 1.0
+	world_debug_label.offset_left = -360.0
+	world_debug_label.offset_right = -18.0
+	world_debug_label.offset_top = -132.0
+	world_debug_label.offset_bottom = -18.0
+	world_debug_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	world_debug_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	world_debug_label.add_theme_font_size_override("font_size", 14)
+	world_debug_label.add_theme_color_override("font_color", Color("ccebf2"))
+	world_debug_label.add_theme_color_override("font_outline_color", Color.BLACK)
+	world_debug_label.add_theme_constant_override("outline_size", 5)
+	world_debug_label.visible = OS.is_debug_build()
+	canvas.add_child(world_debug_label)
+
+
+func _update_world_debug_overlay() -> void:
+	if world_debug_label == null or not world_debug_label.visible:
+		return
+	var position_3d: Vector3 = player.global_position
+	var bounds: Rect2 = WorldLayoutScript.WORLD_BOUNDS
+	var area_id := WorldLayoutScript.area_id_at(Vector2(position_3d.x, position_3d.z))
+	world_debug_label.text = (
+		"WORLD DEBUG  •  area: %s\n" % area_id
+		+ "XYZ  %7.1f  %5.1f  %7.1f\n" % [position_3d.x, position_3d.y, position_3d.z]
+		+ "bounds  X %.0f..%.0f  Z %.0f..%.0f\n" % [
+			bounds.position.x, bounds.end.x, bounds.position.y, bounds.end.y,
+		]
+		+ "spawn  %.0f, %.1f, %.0f" % [
+			WorldLayoutScript.NEW_GAME_SPAWN.x,
+			WorldLayoutScript.NEW_GAME_SPAWN.y,
+			WorldLayoutScript.NEW_GAME_SPAWN.z,
+		]
+	)
 
 
 func _update_user_interface() -> void:
@@ -2064,54 +2050,3 @@ func _create_valve_handle(valve) -> Node3D:
 	handle.material_override = handle_material
 	handle_root.add_child(handle)
 	return handle_root
-
-
-func _create_static_box(
-	object_name: String,
-	position_3d: Vector3,
-	size: Vector3,
-	color: Color
-) -> void:
-	var body := StaticBody3D.new()
-	body.name = object_name
-	body.position = position_3d
-	var mesh_instance := MeshInstance3D.new()
-	var mesh := BoxMesh.new()
-	mesh.size = size
-	mesh_instance.mesh = mesh
-	var material := StandardMaterial3D.new()
-	material.albedo_color = color
-	material.roughness = 0.85
-	mesh_instance.material_override = material
-	body.add_child(mesh_instance)
-	var collider := CollisionShape3D.new()
-	var shape := BoxShape3D.new()
-	shape.size = size
-	collider.shape = shape
-	body.add_child(collider)
-	add_child(body)
-
-
-func _create_visual_box(position_3d: Vector3, size: Vector3, color: Color) -> void:
-	var mesh_instance := MeshInstance3D.new()
-	mesh_instance.position = position_3d
-	var mesh := BoxMesh.new()
-	mesh.size = size
-	mesh_instance.mesh = mesh
-	var material := StandardMaterial3D.new()
-	material.albedo_color = color
-	mesh_instance.material_override = material
-	add_child(mesh_instance)
-
-
-func _create_world_label(text_value: String, position_3d: Vector3, color: Color) -> Label3D:
-	var label := Label3D.new()
-	label.text = text_value
-	label.position = position_3d
-	label.font_size = 54
-	label.outline_size = 12
-	label.modulate = color
-	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	label.no_depth_test = true
-	add_child(label)
-	return label

@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.28.2 – Process Foundation Gate**
+**Prototypeversjon: 0.29.0 – Graybox World Skeleton**
 
 CrudeWorks is a first-person refinery-builder prototype. The player starts with
 a manual Pilot process, unlocks Area 02, builds directed refinery routes,
@@ -10,11 +10,12 @@ approved diesel.
 
 ## Current phase
 
-**v0.28.2 — PROCESS FOUNDATION READY FOR GRAYBOX.** The simulation foundation
-is frozen while the next phase creates the permanent broad world layout, scale,
-navigation and functional refinery areas. This is not the phase for another
-process unit, detailed simulation, vehicle gameplay, a full Control Room or
-final art.
+**v0.29.0 — GRAYBOX WORLD SKELETON.** The frozen process foundation now sits
+inside a canonical 600 x 400 m Nordic coastal site with planned area platforms,
+roads, collision boundaries, southwest spawn and debug markers. Functional
+equipment remains in the compatible prototype neighborhood until systematic
+area migration. This is not the phase for another process unit, vehicle
+gameplay, a full Control Room or final art.
 
 Quick orientation:
 
@@ -116,6 +117,9 @@ Den første komplette «vertical slice»-en inneholder:
   Area 02, CI/PD, CDU, VDU/FCC og generatorbrensel
 - filterrestriksjon uttrykkes som avledet pumpekapabilitet, restriksjon/ΔP og
   oppnåelig flow; ingen avledet hydraulikk eller duplikatbeholdning lagres
+- kanonisk 600 x 400 m Graybox World med sørvendt hav, nordisk land-/skogskant,
+  alle planlagte V1-områder, hoved-/serviceveier, plattformramper, kollisjonsgrenser,
+  southwest spawn og live debug-koordinater uten å flytte gamle saves
 
 Alle objekter er foreløpig bygget av Godots primitive 3D-former. Det gjør at vi
 kan teste gameplay før vi bruker tid på modeller og grafikk.
@@ -142,6 +146,7 @@ godot --headless --path . --script res://tests/physical_logistics_test.gd
 godot --headless --path . --script res://tests/progression_test.gd
 godot --headless --path . --script res://tests/main_built_loop_test.gd
 godot --headless --path . --script res://tests/save_system_test.gd
+godot --headless --path . --script res://tests/world_layout_test.gd
 ```
 
 ## Lagring
@@ -341,12 +346,15 @@ CrudeWorks/
     ├── process_model.gd
     ├── process_network.gd
     ├── process_port.gd
-    └── save_system.gd
+    ├── save_system.gd
+    ├── world_builder.gd
+    └── world_layout.gd
 └── tests/
     ├── built_refinery_model_test.gd
     ├── building_system_test.gd
     ├── main_built_loop_test.gd
     ├── process_model_test.gd
     ├── process_network_test.gd
-    └── save_system_test.gd
+    ├── save_system_test.gd
+    └── world_layout_test.gd
 ```

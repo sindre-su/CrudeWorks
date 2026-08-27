@@ -6,9 +6,16 @@ For long-term design, Graybox direction and scope, see `CRUDEWORKS_VISION.md`,
 
 ## Runtime ownership
 
-- `scenes/main.tscn` / `scripts/main.gd`: temporary world assembly,
-  first-person integration, contextual field/UI feedback, progression and save
-  coordination. It does not own Area 02 material or topology rules.
+- `scenes/main.tscn` / `scripts/main.gd`: first-person integration, functional
+  prototype equipment, contextual field/UI feedback, progression and save
+  coordination. It does not own macro-world geometry, bounds, Area 02 material
+  or topology rules.
+- `scripts/world_layout.gd`: sole authority for canonical world coordinates,
+  area/road specifications, active placement bounds, spawn and player/save
+  bounds.
+- `scripts/world_builder.gd`: primitive macro terrain, platforms, roads,
+  boundaries, labels, collision and retained prototype pads. It consumes
+  `WorldLayout` and owns no gameplay or persisted process state.
 - `scripts/process_model.gd`: fixed Pilot training process, economy and original
   progression loop.
 - `scripts/built_refinery_model.gd`: Area 02 material, operations, contracts,
@@ -117,17 +124,25 @@ utility/trip state and stable identifiers; it rebuilds derived state and restore
 pumps stopped. Existing v0.27/v0.28-compatible saves remain supported through
 validated migration/fallback paths.
 
+The 600 x 400 m world was enlarged around the old prototype coordinates.
+Absolute player and construction positions are therefore retained without a
+coordinate migration. `BuildController` and `SaveSystem` consume the same
+active placement bounds from `WorldLayout`; player save validation and
+out-of-bounds recovery consume its canonical world/spawn values. The active
+construction footprint remains the original Area 02 pad until functional
+migration deliberately changes it.
+
 Graybox relocation must preserve stable IDs/semantics where saves and process
 routes depend on them, retain process-network ports and interactions, and avoid
 placing visual duplicate equipment that looks functional but has no model state.
 
 ## Scope boundary
 
-The v0.28.2 process foundation is frozen for Graybox World. The architecture is
-ready to support physical migration of CDU, VDU, FCC, HT-201, routing, storage,
-LAB, PD-101, utilities, controls, alarms and maintenance. New major process
-families, detailed hydraulics and detailed thermal simulation require an
-explicit post-Graybox gameplay decision.
+The v0.28.2 process foundation remains frozen in v0.29.0 while Graybox World is
+built around it. The architecture is ready to support physical migration of
+CDU, VDU, FCC, HT-201, routing, storage, LAB, PD-101, utilities, controls,
+alarms and maintenance. New major process families, detailed hydraulics and
+detailed thermal simulation require an explicit post-Graybox gameplay decision.
 
 ## Test map
 
@@ -137,5 +152,8 @@ explicit post-Graybox gameplay decision.
 - `tests/built_refinery_model_test.gd`: Area 02 simulation, conservation,
   contracts, quality, LAB, dispatch, VDU/FCC, maintenance and utilities.
 - `tests/physical_logistics_test.gd`: CI-101/PD-101 physical material paths.
+- `tests/progression_test.gd`: unlock and first-hour progression gates.
 - `tests/main_built_loop_test.gd`: end-to-end world/UI integration.
 - `tests/save_system_test.gd`: persistence, validation and migrations.
+- `tests/world_layout_test.gd`: canonical bounds, target footprints, legacy
+  coordinates, world-builder output, ramps and non-duplicated bounds authority.

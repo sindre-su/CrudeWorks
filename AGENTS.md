@@ -19,9 +19,11 @@ The game must be:
 
 ## Current project phase — authoritative
 
-**PROCESS FOUNDATION READY FOR GRAYBOX** at version `0.28.2`, clean checkpoint
-`11b1b77`. The immediate priority is **Graybox World**, not another process
-unit or simulation-depth pass.
+**GRAYBOX WORLD WP1 COMPLETE** at version `0.29.0`. The v0.28.2 process
+foundation remains frozen and tested inside the canonical world skeleton. The
+immediate priority is **functional Pilot/start-area integration**, not another
+process unit, simulation-depth pass or broad functional-area migration in one
+step.
 
 Use the documents for their distinct roles:
 

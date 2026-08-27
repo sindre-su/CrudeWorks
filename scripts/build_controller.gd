@@ -9,9 +9,9 @@ const Catalog = preload("res://scripts/equipment_catalog.gd")
 const ProcessPortScript = preload("res://scripts/process_port.gd")
 const ProcessNetworkScript = preload("res://scripts/process_network.gd")
 const FlowVisualScript = preload("res://scripts/flow_visual.gd")
+const WorldLayoutScript = preload("res://scripts/world_layout.gd")
 
 const GRID_SIZE := 1.0
-const BUILD_BOUNDS := Rect2(-20.0, 10.5, 40.0, 28.0)
 
 var player
 var unlocked := false
@@ -37,6 +37,10 @@ var canvas: CanvasLayer
 var build_panel: PanelContainer
 var build_label: Label
 var build_hint: Label
+
+
+static func build_bounds() -> Rect2:
+	return WorldLayoutScript.build_bounds()
 
 
 func setup(p_player, p_process_network = null) -> void:
@@ -579,13 +583,7 @@ func _update_ghost() -> void:
 func _position_is_valid(position_3d: Vector3, footprint: Vector2) -> bool:
 	var center := Vector2(position_3d.x, position_3d.z)
 	var half_size := footprint * 0.5
-	if center.x - half_size.x < BUILD_BOUNDS.position.x:
-		return false
-	if center.y - half_size.y < BUILD_BOUNDS.position.y:
-		return false
-	if center.x + half_size.x > BUILD_BOUNDS.end.x:
-		return false
-	if center.y + half_size.y > BUILD_BOUNDS.end.y:
+	if not WorldLayoutScript.placement_inside_active_build_bounds(center, footprint):
 		return false
 	for entry in registered_units:
 		var unit = entry["node"]

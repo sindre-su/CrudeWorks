@@ -1,5 +1,40 @@
 # CrudeWorks Development Log
 
+## v0.29.0 — Graybox World Program WP1: World Skeleton
+
+- Completed the repository and process-readiness audit. The tested v0.28.2
+  process foundation already covers the V1 systems required for Graybox, so no
+  new process family or gameplay simulation was added.
+- Extracted macro geometry from `main.gd` into `world_builder.gd` and established
+  `world_layout.gd` as the sole authority for the 600 x 400 m site, area/road
+  coordinates, active placement bounds, southwest spawn and player/save bounds.
+- Built the primitive Nordic coastal macro world: flat industrial terrain,
+  southern sea, north/east/west land/forest borders, perimeter collision, all
+  planned V1 pads, explicit Future Expansion, 8 m logistics road, 5 m service
+  roads, access links, raised-platform ramps and graybox labels/boundaries.
+- Kept the working Pilot, fixed logistics/utilities and active Area 02 build pad
+  at their existing absolute coordinates. The enlarged world contains all old
+  valid coordinates, so no equipment or player save is silently translated.
+  `BuildController` and `SaveSystem` now delegate footprint validation to the
+  same canonical layout source.
+- Added a debug HUD with player coordinates, current area ID and world bounds,
+  plus world-space area ID/dimension/elevation labels. These are diagnostic
+  graybox aids rather than final signage or navigation UX.
+- Added deterministic world-layout coverage for unique IDs, positive target
+  footprints, containment, future expansion, spawn, road widths, road/platform
+  clearance, canonical bounds ownership, legacy coordinates, generated world
+  nodes, collision boundaries and player-sized traversal of every raised ramp.
+- Render-inspected the full overhead layout and the actual 1280 x 720 fresh
+  spawn. The first pass exposed cross roads hidden beneath Storage/FCC and a
+  ramp touching the Utilities road centerline; both were corrected before lock.
+- Measured collision-world walking routes from Control Room at 6 m/s: CDU 32.4
+  s, HT 73.7 s, VDU 48.2 s, FCC 89.1 s, Utilities 48.2 s, Storage 28.2 s,
+  Crude Intake 48.1 s and Product Dispatch 69.6 s. Human feel/pacing remains a
+  required check during functional migration; no transport feature was added.
+- Preserved all prior process, progression, physical-logistics, full-Main and
+  save/load tests. Functional-area migration intentionally stops before Work
+  Package 2.
+
 ## v0.28.2 — Vision & Repository Documentation Sync
 
 - Recorded the completed Process Foundation Gate as the boundary before world
