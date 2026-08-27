@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.30.3 – Area 02 Spatial Coherence**
+**Prototypeversjon: 0.30.4 – Graybox Readability & Build Menu Cleanup**
 
 CrudeWorks is a first-person refinery-builder prototype. The player starts with
 a manual Pilot process, unlocks Area 02, builds directed refinery routes,
@@ -10,15 +10,14 @@ approved diesel.
 
 ## Current phase
 
-**v0.30.3 — AREA 02 SPATIAL COHERENCE.** The elevated white Operations Hub is
-now the runtime Area 02 footprint. Its canonical specification derives the
-platform, +0.75 m surface, 4 m inset build bounds, Build Mode overlay,
-placement/save validation and the upstream/downstream CI-101/PD-101 anchors.
-The old blue prototype zone is migration-only. The fixed endpoints retain their
-IDs and behavior, while qualifying v0.30.2 player construction receives one
-explicit deterministic translation onto the new platform. The Pilot slice and
-v0.30.2 visual-stability fixes remain unchanged; broader Main Refinery
-migration has not started.
+**v0.30.4 — GRAYBOX READABILITY & BUILD MENU CLEANUP.** The obsolete Pilot-side
+Crude Intake board is removed. Operations–Storage now uses two clean, flush,
+non-overlapping 5 m pedestrian segments. Build Mode teaches `Tank → Pump →
+Manual Valve → Heater → Distillation Column` on keys `1–5`; Diesel Treater is
+`6`. The functional Crude Feed Header and Product Routing Header stay intact,
+but remain hidden until the first atmospheric product makes multi-train or
+multi-storage routing meaningful. The v0.30.3 Area 02 spatial contract is
+unchanged.
 
 Quick orientation:
 
@@ -208,9 +207,10 @@ Byggemodus låses opp når den første dieselbatchen er solgt.
 | Tast | Handling |
 | --- | --- |
 | B | Åpne eller lukke byggemodus |
-| 1–4 | Velg tank, pumpe, varmeenhet eller destillasjonskolonne |
-| 5 / 6 / 7 / 8 | Velg manuell ventil, dieselbehandler, Crude Feed Header eller Product Routing Header |
-| 9 / 0 / - | Velg VDU-301, PU-101 ekspansjonsgenerator eller FCC-401 |
+| 1 / 2 / 3 / 4 / 5 | Velg tank, pumpe, manuell ventil, varmeenhet eller destillasjonskolonne |
+| 6 | Velg dieselbehandler |
+| 7 / 8 / 9 | Første linje: VDU-301, PU-101 og FCC-401 når de er synlige/ulåste |
+| 7 / 8 / 9 / 0 / - | Etter første atmosfæriske produksjon: Crude Feed Header, Product Routing Header, VDU-301, PU-101 og FCC-401 |
 | Q / E | Roter forhåndsvisningen |
 | Venstreklikk | Plasser eller bekreft valgt handling |
 | X | Bytt til fjerningsmodus; fjerning gir full refusjon |
@@ -328,13 +328,15 @@ mate to komplette tog, kobler spilleren tanken til en **Crude Feed Header** og
 kobler `OUT A` og `OUT B` til hver sin pumpe. Trykk `E` på headeren for å velge
 `A → B → ingen rute`. Valgt pumpevei får all råolje; bytte er blokkert mens en
 pumpe fra samme kilde går. Headeren deler aldri flow automatisk og velger aldri
-en reservevei på egen hånd.
+en reservevei på egen hånd. Headeren vises først etter den første atmosfæriske
+produksjonen, når flere tog faktisk kan være et forståelig behov.
 
 For utvidet produktlagring kan et kolonneutløp eller HT-201 kobles til en
 **Product Routing Header**. Koble `OUT A` og `OUT B` til kompatible tanker og
 trykk `E` på headeren for å velge `A → B → ingen tank`. Bytte krever at den
 aktuelle pumpen er stoppet. Bare valgt tank mottar nytt produkt; et fullt valgt
 lager stopper prosessen i stedet for å flytte eller duplisere materialet.
+Den vises på samme sene routing-steg som Crude Feed Header.
 
 Hvis en batch blir off-spec, forklarer
 terminalen at `R` kan sende bygde produkter til sikker avfallshåndtering uten

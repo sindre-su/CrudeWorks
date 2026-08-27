@@ -19,15 +19,15 @@ The game must be:
 
 ## Current project phase — authoritative
 
-**AREA 02 SPATIAL COHERENCE COMPLETE** at version `0.30.3`. The fixed Pilot
-loop and v0.30.2 visual-stability corrections remain proven. The elevated
-`operations_hub` specification in `WorldLayout` now derives the active Area 02
-platform, elevation, build bounds/overlay/validation and fixed CI-101/PD-101
-edge anchors/orientation. Legacy construction bounds exist only for one
-validated deterministic save migration. Broader Main Refinery equipment,
-Utilities, storage, LAB, CDU/HT/VDU/FCC and dedicated logistics-pad migration
-has not started. The immediate priority is the specified v0.30.3 human retest;
-do not begin v0.31 until that spatial contract is accepted.
+**GRAYBOX READABILITY & BUILD MENU CLEANUP COMPLETE** at version `0.30.4`.
+The Pilot loop, visual-stability work and Area 02 spatial contract remain
+proven. Pilot-side wayfinding is deliberately minimal; pedestrian links use
+simple non-overlapping rectangles; and the first six build choices teach the
+physical starter flow. Functional routing headers are deferred from the early
+menu by the existing first-atmospheric-production gate, not removed. Broader
+Main Refinery equipment, Utilities, storage, LAB, CDU/HT/VDU/FCC and dedicated
+logistics-pad migration has not started. The immediate priority is the
+specified v0.30.4 human retest; do not begin v0.31 until it is accepted.
 
 Use the documents for their distinct roles:
 

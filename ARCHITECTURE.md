@@ -32,8 +32,8 @@ For long-term design, Graybox direction and scope, see `CRUDEWORKS_VISION.md`,
 - `scripts/utility_distribution.gd`: reusable electrical/utility bus trip and
   reset lifecycle. Electricity is instantiated; Instrument Air and Cooling
   Water are modeled as dependent utility availability in the refinery model.
-- `scripts/build_controller.gd`: placement, rotation, pipe selection and visual
-  connection cache; never a second logical topology.
+- `scripts/build_controller.gd`: placement, rotation, pipe selection, visible
+  hotbar ordering and visual connection cache; never a second logical topology.
 - `scripts/feed_allocation.gd` / `scripts/product_allocation.gd`: explicit,
   stopped-only ownership selection for shared crude and product headers.
 - `scripts/equipment_catalog.gd` / `scripts/crude_contract_catalog.gd`:
@@ -149,7 +149,7 @@ placing visual duplicate equipment that looks functional but has no model state.
 
 ## Scope boundary
 
-The v0.28.2 process foundation remains frozen in v0.30.3. The existing fixed
+The v0.28.2 process foundation remains frozen in v0.30.4. The existing fixed
 Pilot is now verified as one complete fresh-save world loop without relocating
 its stable IDs or absolute coordinates. CI-101/PD-101 and Area 02 building are
 spatially integrated, but Main CDU, VDU, FCC, HT-201, routing, storage, LAB,
@@ -157,6 +157,13 @@ utilities, controls, alarms and maintenance remain functionally compact and
 await deliberate migration. New major process families, detailed hydraulics
 and detailed thermal simulation require an explicit post-Graybox gameplay
 decision.
+
+`EquipmentCatalog.ORDER` is the full hotbar contract, while `BuildController`
+derives a visible order from deferred equipment. The first six slots are Tank,
+Pump, Manual Valve, Heater, Column and Diesel Treater. The existing
+`first_atmospheric_production` state hides both routing headers until the player
+has an atmospheric product route; header units, graph behavior and saved unit
+types remain unchanged.
 
 ## Test map
 

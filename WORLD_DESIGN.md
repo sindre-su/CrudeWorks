@@ -14,8 +14,9 @@ add new process families, detailed assets, vehicle gameplay or a complete
 Control Room.
 
 **Implementation status:** Graybox World Program Work Package 1, v0.30.0 Pilot
-Integration, v0.30.1 Traversal Cleanup, v0.30.2 Visual Stability and v0.30.3
-Area 02 Spatial Coherence are complete. The macro world, canonical coordinates,
+Integration, v0.30.1 Traversal Cleanup, v0.30.2 Visual Stability, v0.30.3
+Area 02 Spatial Coherence and v0.30.4 Readability Cleanup are complete. The
+macro world, canonical coordinates,
 area footprints, roads, boundaries, modular ramps, physical signs and collision
 skeleton are implemented. The fixed Pilot is proven in its canonical southwest
 footprint. Area 02 building plus CI-101/PD-101 now use the Operations Hub
@@ -119,7 +120,7 @@ The new-game player still spawns at `(-10, 0.1, 8)` facing the existing fixed
 Pilot equipment. Short mounted graybox structures provide restrained physical
 orientation:
 
-- separate Starter Site/Pilot and Crude Intake boards establish the two routes;
+- a Starter Site/Pilot board establishes the immediate route;
 - a short Pilot board identifies the process line;
 - a physical build-area board reports its existing locked/open state;
 - an open six-metre Main Refinery gate uses fence rails, posts and one short
@@ -139,7 +140,7 @@ economy and progression behavior is unchanged.
 The Pilot platform remains ground-level as an explicit compatibility exception.
 Raising it now would bury or relocate functional equipment and invalidate the
 safe absolute-coordinate strategy. Main-world scale and the measured long
-routes remain provisional pending the human v0.30.3 retest.
+routes remain provisional pending the human v0.30.4 retest.
 
 ## v0.30.1 traversal and readability standard
 
@@ -211,8 +212,9 @@ Product Dispatch. Two 5 m north-south service roads at x `62.5` and x `342.5`
 connect the southern logistics edge to the process areas. A 5 m cross road at
 z `-57.5` and a short orthogonal jog between z `-152.5`/`-147.5` connect the
 lower, middle and staggered northern rows without passing under a platform. Short
-primitive access links connect the logistics pads. A 3 m, near-flush pedestrian
-link connects the Operations and Storage ramps. These are broad circulation
+primitive access links connect the logistics pads. A 5 m, near-flush
+L-shaped pedestrian link connects the Operations and Storage ramps with
+non-overlapping rectangular segments. These are broad circulation
 reserves; final parking, additional footpaths, gates and road dressing remain
 later Graybox work.
 
@@ -262,6 +264,21 @@ returned to the southwest spawn. Existing valid saves keep their absolute
 positions unless they match the explicit Area 02 migration above.
 Invalid/corrupt coordinates still use the existing validated save-recovery
 behavior.
+
+## v0.30.4 readability cleanup
+
+The obsolete Pilot-side Crude Intake sign is removed from canonical wayfinding;
+the Starter Site, Pilot process and Main Refinery gate remain. The
+Operations–Storage pedestrian connection now uses two flush 5 m rectangles that
+meet at a shared edge instead of overlapping, eliminating the visual wedge and
+coplanar-intersection read without adding collision geometry.
+
+Build Mode keeps its simple single-panel design. Its visible starter order is
+Tank, Pump, Manual Valve, Heater, Distillation Column and Diesel Treater. Crude
+Feed Header and Product Routing Header remain implemented routing tools but are
+hidden until `first_atmospheric_production`; the existing post-production gate
+is sufficient for this small cleanup and does not create a new progression
+system.
 
 In debug builds, `F7` toggles the HUD with live player coordinates, site bounds
 and current canonical area ID. `F8` independently toggles world-space area ID,

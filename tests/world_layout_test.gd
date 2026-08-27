@@ -149,7 +149,18 @@ func _test_road_configuration() -> void:
 		var dimensions: Vector2 = path_spec["dimensions"]
 		_expect(not path_ids.has(path_id), "pedestrian path ID %s is unique" % path_id)
 		path_ids[path_id] = true
-		_expect(minf(dimensions.x, dimensions.y) >= 2.0, "%s keeps human-scale walking clearance" % path_id)
+		_expect(minf(dimensions.x, dimensions.y) == 5.0, "%s keeps one consistent pedestrian width" % path_id)
+	for first_index in WorldLayoutScript.PATH_SPECS.size():
+		var first: Dictionary = WorldLayoutScript.PATH_SPECS[first_index]
+		var first_rect := Rect2(Vector2(first["center"]) - Vector2(first["dimensions"]) * 0.5, first["dimensions"])
+		for second_index in range(first_index + 1, WorldLayoutScript.PATH_SPECS.size()):
+			var second: Dictionary = WorldLayoutScript.PATH_SPECS[second_index]
+			var second_rect := Rect2(Vector2(second["center"]) - Vector2(second["dimensions"]) * 0.5, second["dimensions"])
+			var overlap := first_rect.intersection(second_rect)
+			_expect(
+				overlap.size.x <= 0.001 or overlap.size.y <= 0.001,
+				"pedestrian paths %s and %s meet without coplanar overlap" % [first["id"], second["id"]]
+			)
 
 
 func _test_surface_standard() -> void:
@@ -178,7 +189,6 @@ func _test_surface_standard() -> void:
 func _test_wayfinding_configuration() -> void:
 	var expected_arrows := {
 		"starter_site": "←",
-		"crude_intake": "←",
 		"main_refinery_gate": "↑",
 	}
 	for sign_id: String in expected_arrows:
@@ -188,6 +198,10 @@ func _test_wayfinding_configuration() -> void:
 			WorldLayoutScript.wayfinding_arrow(spec) == expected_arrows[sign_id],
 			"%s direction is derived from board approach and its canonical target center" % sign_id
 		)
+	_expect(
+		WorldLayoutScript.wayfinding_spec_by_id("crude_intake").is_empty(),
+		"obsolete Crude Intake sign has no remaining Pilot wayfinding authority"
+	)
 	_expect(
 		WorldLayoutScript.wayfinding_arrow(
 			WorldLayoutScript.wayfinding_spec_by_id("pilot_process_chain")
@@ -268,7 +282,6 @@ func _test_world_builder() -> void:
 	)
 	var signs: Array = [
 		builder.orientation_nodes["starter_site"],
-		builder.orientation_nodes["crude_intake"],
 		builder.orientation_nodes["pilot_process_chain"],
 		builder.orientation_nodes["build_area"],
 		builder.orientation_nodes["main_refinery_gate"].get_node("GateSign"),
@@ -297,7 +310,7 @@ func _test_world_builder() -> void:
 		Vector2(builder.orientation_nodes["starter_site"].get_meta("board_size")).x <= 3.0,
 		"starter sign remains human-scale rather than filling the approach view"
 	)
-	for sign_id: String in ["starter_site", "crude_intake"]:
+	for sign_id: String in ["starter_site"]:
 		var sign = builder.orientation_nodes[sign_id]
 		var spec := WorldLayoutScript.wayfinding_spec_by_id(sign_id)
 		_expect(

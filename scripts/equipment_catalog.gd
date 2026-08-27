@@ -1,7 +1,9 @@
 class_name EquipmentCatalog
 extends RefCounted
 
-const ORDER := ["tank", "pump", "heater", "column", "valve", "treatment", "header", "product_header", "vacuum_distillation", "power_unit", "catalytic_cracking"]
+## Stable catalog order doubles as the full late-game hotbar order. The first
+## six entries teach the physical starter flow before routing/advanced tools.
+const ORDER := ["tank", "pump", "valve", "heater", "column", "treatment", "header", "product_header", "vacuum_distillation", "power_unit", "catalytic_cracking"]
 
 
 static func definition(equipment_type: String) -> Dictionary:
@@ -343,15 +345,45 @@ static func _port(
 	}
 
 
-static func menu_text(locked_equipment: Dictionary = {}) -> String:
+static func visible_order(hidden_equipment: Dictionary = {}) -> Array[String]:
+	var visible: Array[String] = []
+	for equipment_type: String in ORDER:
+		if not hidden_equipment.has(equipment_type):
+			visible.append(equipment_type)
+	return visible
+
+
+static func hotkey_label(index: int) -> String:
+	return "0" if index == 9 else ("-" if index == 10 else str(index + 1))
+
+
+static func hotkey_index(keycode: Key) -> int:
+	if keycode == KEY_MINUS:
+		return 10
+	if keycode == KEY_0:
+		return 9
+	if keycode >= KEY_1 and keycode <= KEY_9:
+		return int(keycode) - int(KEY_1)
+	return -1
+
+
+static func selection_help(hidden_equipment: Dictionary = {}) -> String:
+	var count := visible_order(hidden_equipment).size()
+	if count <= 9:
+		return "1–%d Velg" % count
+	return "1–9 / 0 / - Velg"
+
+
+static func menu_text(locked_equipment: Dictionary = {}, hidden_equipment: Dictionary = {}) -> String:
 	var lines: Array[String] = []
-	for index in ORDER.size():
-		var data := definition(ORDER[index])
-		var key_label := "0" if index == 9 else ("-" if index == 10 else str(index + 1))
-		var lock_reason := String(locked_equipment.get(ORDER[index], ""))
+	var visible := visible_order(hidden_equipment)
+	for index in visible.size():
+		var equipment_type: String = visible[index]
+		var data := definition(equipment_type)
+		var lock_reason := String(locked_equipment.get(equipment_type, ""))
 		lines.append(
-			"%s  %-22s LÅST — %s" % [key_label, data["name"], lock_reason]
+			"%s  %-22s LÅST — %s" % [hotkey_label(index), data["name"], lock_reason]
 			if not lock_reason.is_empty()
-			else "%s  %-22s %4d kr" % [key_label, data["name"], data["cost"]]
+			else "%s  %-22s %4d kr" % [hotkey_label(index), data["name"], data["cost"]]
 		)
 	return "\n".join(lines)

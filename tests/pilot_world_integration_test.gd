@@ -48,10 +48,13 @@ func _test_fresh_world_context(main) -> void:
 	)
 	_expect(
 		main.world_builder.orientation_nodes.has("starter_site")
-		and main.world_builder.orientation_nodes.has("crude_intake")
 		and main.world_builder.orientation_nodes.has("pilot_process_chain")
 		and main.world_builder.orientation_nodes.has("main_refinery_gate"),
-		"starter region has physical Pilot/Crude orientation and a Main Refinery gate"
+		"starter region keeps focused Pilot orientation and a Main Refinery gate"
+	)
+	_expect(
+		not main.world_builder.orientation_nodes.has("crude_intake"),
+		"obsolete Pilot-side Crude Intake sign is absent without removing other wayfinding"
 	)
 	_expect(
 		main.world_builder.build_visual_nodes.all(func(node: Node3D) -> bool: return not node.visible),
@@ -207,6 +210,11 @@ func _test_successful_pilot_operation(main) -> void:
 	main._update_user_interface()
 	main.build_controller.set_build_mode(true)
 	main._process(0.0)
+	_expect(
+		"Crude Feed Header" not in main.build_controller.build_label.text
+		and "Product Routing Header" not in main.build_controller.build_label.text,
+		"first Area 02 build menu defers routing headers until routing complexity is relevant"
+	)
 	_expect(
 		main.world_builder.build_visual_nodes.all(func(node: Node3D) -> bool: return node.visible),
 		"Build Mode reveals the retained construction pad and bounds"

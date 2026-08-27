@@ -26,12 +26,32 @@ func _run_tests() -> void:
 	_expect(controller.ghost.has_node("PreviewInputPort"), "placement preview shows the input port")
 	_expect(controller.ghost.has_node("PreviewOutputPort"), "placement preview shows the output port")
 	_expect(controller.ghost.has_node("FlowDirection"), "placement preview shows a flow-direction arrow")
+	var tank_key := InputEventKey.new()
+	tank_key.keycode = KEY_1
+	tank_key.pressed = true
+	controller._input(tank_key)
+	_expect(controller.selected_type == "tank", "key 1 selects the displayed Tank starter slot")
+	var pump_key := InputEventKey.new()
+	pump_key.keycode = KEY_2
+	pump_key.pressed = true
+	controller._input(pump_key)
+	_expect(controller.selected_type == "pump", "key 2 selects the displayed Pump starter slot")
 	var valve_key := InputEventKey.new()
-	valve_key.keycode = KEY_5
+	valve_key.keycode = KEY_3
 	valve_key.pressed = true
 	controller._input(valve_key)
-	_expect(controller.selected_type == "valve", "key 5 selects the new manual valve without changing keys 1-4")
+	_expect(controller.selected_type == "valve", "key 3 selects the displayed Manual Valve starter slot")
 	_expect(controller.ghost.has_node("PreviewInputPort") and controller.ghost.has_node("PreviewOutputPort"), "manual-valve preview exposes readable IN and OUT ports")
+	var heater_key := InputEventKey.new()
+	heater_key.keycode = KEY_4
+	heater_key.pressed = true
+	controller._input(heater_key)
+	_expect(controller.selected_type == "heater", "key 4 selects the displayed Heater starter slot")
+	var column_key := InputEventKey.new()
+	column_key.keycode = KEY_5
+	column_key.pressed = true
+	controller._input(column_key)
+	_expect(controller.selected_type == "column", "key 5 selects the displayed Distillation Column starter slot")
 	var treatment_key := InputEventKey.new()
 	treatment_key.keycode = KEY_6
 	treatment_key.pressed = true
@@ -67,6 +87,27 @@ func _run_tests() -> void:
 	controller._input(fcc_key)
 	_expect(controller.selected_type == "catalytic_cracking", "minus key selects the player-buildable FCC-401")
 	_expect(_ghost_has_port(controller.ghost, "gasoline") and _ghost_has_port(controller.ghost, "lpg") and _ghost_has_port(controller.ghost, "lco"), "FCC preview exposes its three typed upgraded-product outlets")
+	controller.set_hidden_equipment({"header": true, "product_header": true})
+	controller._update_build_text()
+	_expect(
+		"Crude Feed Header" not in controller.build_label.text
+		and "Product Routing Header" not in controller.build_label.text
+		and "1–9 Velg" in controller.build_label.text,
+		"deferred routing headers do not clutter the first-line menu or its visible hotkey help"
+	)
+	controller._input(_key_event(KEY_7))
+	_expect(controller.selected_type == "vacuum_distillation", "after hidden headers, key 7 advances to the next visible advanced tool")
+	controller.set_hidden_equipment({})
+	controller._input(header_key)
+	_expect(
+		controller.selected_type == "header" and controller.ghost.has_node("PreviewOut APort") and controller.ghost.has_node("PreviewOut BPort"),
+		"deferred Crude Feed Header remains a valid later routing tool"
+	)
+	controller._input(product_header_key)
+	_expect(
+		controller.selected_type == "product_header" and controller.ghost.has_node("PreviewOut APort") and controller.ghost.has_node("PreviewOut BPort"),
+		"deferred Product Routing Header remains a valid later routing tool"
+	)
 	controller.set_build_mode(false)
 
 	_test_catalog()
@@ -83,6 +124,15 @@ func _run_tests() -> void:
 
 func _test_catalog() -> void:
 	_expect(Catalog.ORDER.size() == 11, "catalog exposes FCC-401 alongside existing refinery machines and utilities")
+	_expect(
+		Catalog.ORDER.slice(0, 6) == ["tank", "pump", "valve", "heater", "column", "treatment"]
+		and "1  Tank" in Catalog.menu_text()
+		and "2  Pumpe" in Catalog.menu_text()
+		and "3  Manuell ventil" in Catalog.menu_text()
+		and "4  Varmeenhet" in Catalog.menu_text()
+		and "5  Destillasjonskolonne" in Catalog.menu_text(),
+		"catalog order and displayed labels teach Tank → Pump → Valve → Heater → Column"
+	)
 	for equipment_type in Catalog.ORDER:
 		var definition: Dictionary = Catalog.definition(equipment_type)
 		_expect(not definition.is_empty(), "%s has a catalog definition" % equipment_type)
@@ -106,6 +156,13 @@ func _ghost_has_port(ghost: Node3D, target_port_id: String) -> bool:
 		if child.get("port_id") == target_port_id:
 			return true
 	return false
+
+
+func _key_event(keycode: Key) -> InputEventKey:
+	var event := InputEventKey.new()
+	event.keycode = keycode
+	event.pressed = true
+	return event
 
 
 func _test_units_and_footprints(world: Node3D) -> void:

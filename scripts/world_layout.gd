@@ -243,14 +243,14 @@ const ROAD_SPECS := [
 
 const PATH_SPECS := [
 	{
-		"id": "operations_storage_path_x",
-		"center": Vector2(172.5, -10.0),
-		"dimensions": Vector2(15.0, 3.0),
+		"id": "operations_storage_path_east",
+		"center": Vector2(170.0, -10.0),
+		"dimensions": Vector2(10.0, 5.0),
 	},
 	{
-		"id": "operations_storage_path_z",
-		"center": Vector2(180.0, -2.5),
-		"dimensions": Vector2(3.0, 15.0),
+		"id": "operations_storage_path_north",
+		"center": Vector2(177.5, -2.5),
+		"dimensions": Vector2(5.0, 15.0),
 	},
 ]
 
@@ -265,14 +265,6 @@ const WAYFINDING_SPECS := [
 		"primary": "PILOT AREA",
 		"target_area_id": "pilot_plant",
 		"board_size": Vector2(3.0, 0.8),
-	},
-	{
-		"id": "crude_intake",
-		"position": Vector3(-17.0, 0.0, 9.0),
-		"yaw_degrees": -90.0,
-		"primary": "CRUDE INTAKE",
-		"target_area_id": "crude_intake",
-		"board_size": Vector2(3.4, 0.8),
 	},
 	{
 		"id": "pilot_process_chain",

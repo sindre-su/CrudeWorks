@@ -1,5 +1,28 @@
 # CrudeWorks Development Log
 
+## v0.30.4 — Graybox Readability & Build Menu Cleanup
+
+- Removed the obsolete Pilot-side Crude Intake wayfinding specification and
+  generated sign. Starter Site, Pilot process and Main Refinery gate signs
+  remain canonical and the focused Pilot route remains readable.
+- Replaced the Operations–Storage 3 m overlapping path rectangles with two
+  flush 5 m segments that meet on an edge. The connection remains visual-only,
+  preserves the existing ramp/traversal route and has no coplanar overlap or
+  added collision lip.
+- Reordered the full build hotbar to Tank, Pump, Manual Valve, Heater,
+  Distillation Column, Diesel Treater, then routing and advanced tools. Key
+  labels, selection mapping and contextual help derive from the same visible
+  catalog order.
+- Audited Crude Feed Header and Product Routing Header: both remain required
+  for later shared-crude and multiple-destination storage routing, so neither
+  was removed. The existing first-atmospheric-production availability state now
+  hides both from the first-line menu; saved headers and all network behavior
+  remain valid.
+- Added regressions for the first five key mappings, displayed labels, deferred
+  routing items, retained header previews, removed sign authority and
+  non-overlapping consistent-width paths. No process mechanics, progression
+  state, Area 02 spatial contract or save schema changed.
+
 ## v0.30.3 — Area 02 Spatial Coherence
 
 - Root cause: the rendered elevated Operations Hub, runtime build rectangle,

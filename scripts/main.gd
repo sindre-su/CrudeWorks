@@ -153,6 +153,7 @@ func _process(delta: float) -> void:
 	_update_autosave(delta)
 	build_controller.set_available_money(process_model.money)
 	build_controller.set_locked_equipment(_starter_equipment_locks())
+	build_controller.set_hidden_equipment(_starter_equipment_hidden())
 	build_controller.set_process_flow(
 		built_refinery_model.actual_flow_lps,
 		BuiltRefineryModelScript.PUMP_MAX_FLOW_LPS,
@@ -202,6 +203,17 @@ func _starter_equipment_locks() -> Dictionary:
 	if not vgo_seen:
 		locks["catalytic_cracking"] = "produser Vacuum Gas Oil i VDU-301"
 	return locks
+
+
+func _starter_equipment_hidden() -> Dictionary:
+	# Headers only add value after the player has one atmospheric product route
+	# and can understand why a second train or storage destination matters.
+	if not built_refinery_model.first_atmospheric_production:
+		return {
+			"header": true,
+			"product_header": true,
+		}
+	return {}
 
 
 func _build_environment() -> void:

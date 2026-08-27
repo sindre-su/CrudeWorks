@@ -18,6 +18,7 @@ var unlocked := false
 var active := false
 var available_money := 0
 var locked_equipment: Dictionary = {}
+var hidden_equipment: Dictionary = {}
 var selected_type := "tank"
 var rotation_quadrants := 0
 var mode := "place"
@@ -64,7 +65,14 @@ func set_available_money(value: int) -> void:
 
 func set_locked_equipment(value: Dictionary) -> void:
 	locked_equipment = value.duplicate(true)
-	if locked_equipment.has(selected_type):
+	if locked_equipment.has(selected_type) or hidden_equipment.has(selected_type):
+		selected_type = "tank"
+		_rebuild_ghost()
+
+
+func set_hidden_equipment(value: Dictionary) -> void:
+	hidden_equipment = value.duplicate(true)
+	if hidden_equipment.has(selected_type):
 		selected_type = "tank"
 		_rebuild_ghost()
 
@@ -201,17 +209,20 @@ func _input(event: InputEvent) -> void:
 			return
 		if not active:
 			return
+		var hotkey_index := Catalog.hotkey_index(event.keycode)
+		if hotkey_index >= 0:
+			var visible_order := Catalog.visible_order(hidden_equipment)
+			if hotkey_index < visible_order.size():
+				var candidate: String = visible_order[hotkey_index]
+				if locked_equipment.has(candidate):
+					notification_requested.emit("%s er låst — %s." % [Catalog.definition(candidate)["name"], locked_equipment[candidate]])
+				else:
+					selected_type = candidate
+			mode = "place"
+			_rebuild_ghost()
+			get_viewport().set_input_as_handled()
+			return
 		match event.keycode:
-			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9, KEY_0, KEY_MINUS:
-				var index := 10 if event.keycode == KEY_MINUS else (9 if event.keycode == KEY_0 else int(event.keycode) - int(KEY_1))
-				if index < Catalog.ORDER.size():
-					var candidate: String = Catalog.ORDER[index]
-					if locked_equipment.has(candidate):
-						notification_requested.emit("%s er låst — %s." % [Catalog.definition(candidate)["name"], locked_equipment[candidate]])
-					else:
-						selected_type = candidate
-				mode = "place"
-				_rebuild_ghost()
 			KEY_Q:
 				rotation_quadrants = posmod(rotation_quadrants - 1, 4)
 			KEY_E:
@@ -725,10 +736,10 @@ func _update_build_text() -> void:
 		connection_text = "\nValgt utløp: %s" % _port_display_name(connection_source)
 	build_label.text = (
 		"BYGGEMODUS — %s\nPenger: %d kr\n\n%s\n\n"
-		% [mode_name, available_money, Catalog.menu_text(locked_equipment)]
+		% [mode_name, available_money, Catalog.menu_text(locked_equipment, hidden_equipment)]
 		+ "Valgt: %s (%d kr)%s\n" % [data["name"], data["cost"], connection_text]
 		+ "Retning: %d°  |  IN blå  |  OUT oransje\n\n" % (rotation_quadrants * 90)
 		+ "Nettverk: %s\n\n" % network_feedback
-		+ "1–9 / 0 / - Velg  |  Q/E Roter  |  Klikk Plasser\n"
+		+ "%s  |  Q/E Roter  |  Klikk Plasser\n" % Catalog.selection_help(hidden_equipment)
 		+ "X Fjern  |  F Koble  |  G Koble fra  |  V Valider  |  B Avslutt"
 	)
