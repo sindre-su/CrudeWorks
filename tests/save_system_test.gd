@@ -220,6 +220,7 @@ func _test_v0304_player_recovery(snapshot: Dictionary) -> void:
 	_expect(
 		migration["ok"]
 		and migration["data"].get("spatial_migrations", []).has("world_v0310_player_recovery")
+		and migration["data"].get("spatial_migrations", []).has("world_v0311_player_recovery")
 		and Vector3(
 			float(migration["data"]["player"]["position"][0]),
 			float(migration["data"]["player"]["position"][1]),
@@ -227,6 +228,20 @@ func _test_v0304_player_recovery(snapshot: Dictionary) -> void:
 		).is_equal_approx(WorldLayoutScript.NEW_GAME_SPAWN)
 		and SaveSystemScript.validate_snapshot(migration["data"])["ok"],
 		"valid v0.30.4 broad-world player positions recover to Harbor without discarding refinery state"
+	)
+	var terraced_world_snapshot := snapshot.duplicate(true)
+	terraced_world_snapshot["game_version"] = "0.31.0"
+	terraced_world_snapshot["player"]["position"] = [52.0, 16.1, -285.0]
+	var terraced_migration := SaveSystemScript.migrate_snapshot(terraced_world_snapshot)
+	_expect(
+		terraced_migration["ok"]
+		and terraced_migration["data"].get("spatial_migrations", []).has("world_v0311_player_recovery")
+		and Vector3(
+			float(terraced_migration["data"]["player"]["position"][0]),
+			float(terraced_migration["data"]["player"]["position"][1]),
+			float(terraced_migration["data"]["player"]["position"][2])
+		).is_equal_approx(WorldLayoutScript.NEW_GAME_SPAWN),
+		"valid v0.31.0 Upper Plant positions recover after the intimacy rescale"
 	)
 	var corrupt_snapshot := snapshot.duplicate(true)
 	corrupt_snapshot["player"]["position"] = [900.0, 0.1, 0.0]

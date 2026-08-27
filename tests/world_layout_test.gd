@@ -36,8 +36,9 @@ func _run_tests() -> void:
 func _test_canonical_bounds() -> void:
 	var world_bounds: Rect2 = WorldLayoutScript.WORLD_BOUNDS
 	_expect(
-		is_equal_approx(world_bounds.size.x, 240.0) and is_equal_approx(world_bounds.size.y, 405.0),
-		"compact world bounds support the 230 m x 395 m active terraced footprint"
+		is_equal_approx(world_bounds.size.x, 214.0) and is_equal_approx(world_bounds.size.y, 268.0)
+		and WorldLayoutScript.LAND_BOUNDS.size == Vector2(214.0, 264.0),
+		"compact bounds support the 214 m x 264 m intimate refinery land footprint"
 	)
 	_expect(
 		BuildControllerScript.build_bounds() == WorldLayoutScript.build_bounds()
@@ -53,9 +54,9 @@ func _test_canonical_bounds() -> void:
 func _test_terrace_configuration() -> void:
 	var expected_elevations := {
 		"harbor": 0.0,
-		"lower_plant": 5.0,
-		"main_plant": 10.0,
-		"upper_plant": 16.0,
+		"lower_plant": 3.5,
+		"main_plant": 7.0,
+		"upper_plant": 10.5,
 	}
 	var ids := {}
 	for terrace: Dictionary in WorldLayoutScript.TERRACE_SPECS:
@@ -73,26 +74,45 @@ func _test_terrace_configuration() -> void:
 		)
 		_expect(not String(terrace.get("purpose", "")).is_empty(), "%s has an explicit functional purpose" % terrace_id)
 	_expect(ids.size() == 4, "Harbor, Lower, Main and Upper are the only canonical elevation bands")
+	var grade_samples := [
+		WorldLayoutScript.natural_grade_elevation_at_z(0.0),
+		WorldLayoutScript.natural_grade_elevation_at_z(-75.0),
+		WorldLayoutScript.natural_grade_elevation_at_z(-127.0),
+		WorldLayoutScript.natural_grade_elevation_at_z(-178.0),
+	]
+	_expect(
+		grade_samples[0] < grade_samples[1]
+		and grade_samples[1] < grade_samples[2]
+		and grade_samples[2] < grade_samples[3],
+		"macro terrain rises continuously from Harbor through the three inland districts"
+	)
+	_expect(
+		is_equal_approx(
+			WorldLayoutScript.natural_grade_elevation_at_z(WorldLayoutScript.NATURAL_GRADE_END_Z),
+			10.5
+		),
+		"broad natural grade reaches the approved +10.5 m upper elevation"
+	)
 
 
 func _test_area_configuration() -> void:
 	var ids := {}
 	var expected_dimensions := {
-		"crude_intake": Vector2(40.0, 30.0),
+		"crude_intake": Vector2(26.0, 18.0),
 		"pilot_plant": Vector2(55.0, 42.0),
 		"operations_hub": Vector2(80.0, 60.0),
-		"crude_storage": Vector2(55.0, 50.0),
-		"cdu": Vector2(52.0, 60.0),
-		"vdu": Vector2(70.0, 55.0),
-		"ht": Vector2(34.0, 50.0),
-		"fcc": Vector2(36.0, 55.0),
-		"utilities": Vector2(48.0, 50.0),
-		"control_room": Vector2(34.0, 24.0),
-		"lab": Vector2(28.0, 20.0),
-		"product_storage": Vector2(80.0, 65.0),
-		"maintenance": Vector2(60.0, 55.0),
-		"product_dispatch": Vector2(50.0, 30.0),
-		"future_expansion": Vector2(75.0, 55.0),
+		"crude_storage": Vector2(38.0, 26.0),
+		"cdu": Vector2(28.0, 26.0),
+		"vdu": Vector2(48.0, 28.0),
+		"ht": Vector2(28.0, 26.0),
+		"fcc": Vector2(22.0, 28.0),
+		"utilities": Vector2(34.0, 26.0),
+		"control_room": Vector2(20.0, 14.0),
+		"lab": Vector2(20.0, 14.0),
+		"product_storage": Vector2(50.0, 36.0),
+		"maintenance": Vector2(46.0, 34.0),
+		"product_dispatch": Vector2(34.0, 18.0),
+		"future_expansion": Vector2(46.0, 28.0),
 	}
 	for area: Dictionary in WorldLayoutScript.AREA_SPECS:
 		var area_id := String(area["id"])
@@ -114,6 +134,14 @@ func _test_area_configuration() -> void:
 		_expect(not String(area.get("road_access", "")).is_empty(), "%s records its road/access relationship" % area_id)
 		if expected_dimensions.has(area_id):
 			_expect(dimensions == expected_dimensions[area_id], "%s preserves its target footprint" % area_id)
+		if bool(area.get("terrain_pad", false)):
+			_expect(
+				is_equal_approx(
+					WorldLayoutScript.terrain_elevation_at(area["center"]),
+					float(area["elevation"])
+				),
+				"%s remains locally level within the natural macro grade" % area_id
+			)
 	for required_id: String in expected_dimensions:
 		_expect(ids.has(required_id), "required area %s exists" % required_id)
 	_expect(
@@ -132,8 +160,8 @@ func _test_area_configuration() -> void:
 				"same-terrace areas %s and %s do not unintentionally overlap" % [first["id"], second["id"]]
 			)
 	_expect(
-		WorldLayoutScript.harbor_logistics_anchor("crude_intake") == Vector2(42.0, 50.0)
-		and WorldLayoutScript.harbor_logistics_anchor("product_dispatch") == Vector2(135.0, 50.0),
+		WorldLayoutScript.harbor_logistics_anchor("crude_intake") == Vector2(31.0, 49.0)
+		and WorldLayoutScript.harbor_logistics_anchor("product_dispatch") == Vector2(138.0, 49.0),
 		"final CI/PD Harbor anchors are exact canonical reservations"
 	)
 
@@ -199,28 +227,16 @@ func _test_road_configuration() -> void:
 				clear_of_platforms = false
 		_expect(clear_of_platforms, "%s does not disappear beneath an area platform" % road_id)
 	main_sequence.sort_custom(func(left: Dictionary, right: Dictionary) -> bool: return int(left["sequence"]) < int(right["sequence"]))
-	_expect(main_sequence.size() == 7, "one primary road spine contains four flats and three level ramps")
-	var expected_connections := [
-		["harbor", "lower_plant"],
-		["lower_plant", "main_plant"],
-		["main_plant", "upper_plant"],
-	]
-	var ramp_index := 0
-	for road: Dictionary in main_sequence:
-		if String(road.get("kind", "flat")) != "ramp":
-			continue
-		var from_terrace := WorldLayoutScript.terrace_by_id(String(road["from_terrace"]))
-		var to_terrace := WorldLayoutScript.terrace_by_id(String(road["to_terrace"]))
-		var grade := (
-			(float(to_terrace["elevation"]) - float(from_terrace["elevation"]))
-			/ float(Vector2(road["dimensions"]).y)
-		)
-		_expect(
-			[String(road["from_terrace"]), String(road["to_terrace"])] == expected_connections[ramp_index],
-			"main-road ramp %d connects the next canonical active level" % ramp_index
-		)
-		_expect(grade > 0.0 and grade <= 0.10, "%s remains gentle and vehicle-capable" % road["id"])
-		ramp_index += 1
+	_expect(main_sequence.size() == 2, "one primary road spine contains one Harbor flat and one continuous inland grade")
+	var inland_grade: Dictionary = main_sequence[1]
+	var grade := (
+		(float(inland_grade["to_elevation"]) - float(inland_grade["from_elevation"]))
+		/ float(Vector2(inland_grade["dimensions"]).y)
+	)
+	_expect(
+		String(inland_grade.get("kind", "")) == "grade" and grade > 0.0 and grade <= 0.07,
+		"continuous inland road remains a gentle future-vehicle grade"
+	)
 	for sequence_index in range(main_sequence.size() - 1):
 		var current_rect := WorldLayoutScript.road_rect(main_sequence[sequence_index])
 		var next_rect := WorldLayoutScript.road_rect(main_sequence[sequence_index + 1])
@@ -229,6 +245,15 @@ func _test_road_configuration() -> void:
 			and is_equal_approx(current_rect.position.y, next_rect.end.y),
 			"main-road sequence %d meets the next segment edge-to-edge" % sequence_index
 		)
+	for first_index in WorldLayoutScript.ROAD_SPECS.size():
+		var first: Dictionary = WorldLayoutScript.ROAD_SPECS[first_index]
+		for second_index in range(first_index + 1, WorldLayoutScript.ROAD_SPECS.size()):
+			var second: Dictionary = WorldLayoutScript.ROAD_SPECS[second_index]
+			var overlap := WorldLayoutScript.road_rect(first).intersection(WorldLayoutScript.road_rect(second))
+			_expect(
+				overlap.size.x <= 0.001 or overlap.size.y <= 0.001,
+				"road overlays %s and %s meet without coplanar overlap" % [first["id"], second["id"]]
+			)
 	var path_ids := {}
 	for path_spec: Dictionary in WorldLayoutScript.PATH_SPECS:
 		var path_id := String(path_spec["id"])
@@ -251,14 +276,8 @@ func _test_road_configuration() -> void:
 
 func _test_surface_standard() -> void:
 	_expect(
-		is_zero_approx(WorldLayoutScript.BASE_GRADE_ELEVATION)
-		and WorldLayoutScript.ROAD_ELEVATION <= 0.02
-		and WorldLayoutScript.PEDESTRIAN_PATH_ELEVATION <= 0.03,
-		"surface overlays remain near-flush relative to each owning terrace"
-	)
-	_expect(
-		absf(WorldLayoutScript.PEDESTRIAN_PATH_ELEVATION - WorldLayoutScript.ROAD_ELEVATION) <= 0.01,
-		"road-to-path visual grade change cannot create a gameplay-sized seam"
+		is_zero_approx(WorldLayoutScript.BASE_GRADE_ELEVATION),
+		"Harbor remains the canonical zero-elevation reference"
 	)
 	var semantic_colors := {
 		WorldBuilderScript.COLOR_GROUND.to_html(): true,
@@ -266,7 +285,7 @@ func _test_surface_standard() -> void:
 		WorldBuilderScript.COLOR_SERVICE_ROAD.to_html(): true,
 		WorldBuilderScript.COLOR_PATH.to_html(): true,
 		WorldBuilderScript.COLOR_PLATFORM.to_html(): true,
-		WorldBuilderScript.COLOR_BUILD_PAD.to_html(): true,
+		WorldBuilderScript.COLOR_PROTOTYPE_PAD.to_html(): true,
 		WorldBuilderScript.COLOR_RESERVED.to_html(): true,
 	}
 	_expect(semantic_colors.size() == 7, "graybox surface roles use distinct flat development colors")
@@ -294,6 +313,11 @@ func _test_wayfinding_configuration() -> void:
 		).is_empty(),
 		"non-directional Pilot process marker does not invent a route arrow"
 	)
+	var gate_spec := WorldLayoutScript.wayfinding_spec_by_id("main_refinery_gate")
+	_expect(
+		is_equal_approx(float(gate_spec["yaw_degrees"]), 180.0),
+		"Main Refinery gate board faces the player approaching north from Harbor"
+	)
 
 
 func _test_spawn_and_legacy_coordinates() -> void:
@@ -320,9 +344,19 @@ func _test_spawn_and_legacy_coordinates() -> void:
 		"deep Harbor water triggers safe recovery without swimming"
 	)
 	_expect(
+		is_equal_approx(WorldLayoutScript.LAND_BOUNDS.end.y, WorldLayoutScript.SHORELINE_Z)
+		and WorldLayoutScript.player_position_is_valid(Vector3(0.0, 0.1, WorldLayoutScript.SHORELINE_Z - 1.0)),
+		"visible Harbor land ends at the canonical shoreline before deep-water recovery"
+	)
+	_expect(
 		WorldLayoutScript.legacy_v0304_player_position(Vector3(400.0, 0.1, 0.0))
 		and not WorldLayoutScript.player_position_is_valid(Vector3(400.0, 0.1, 0.0)),
 		"old broad-world positions are recognized for deterministic Harbor recovery"
+	)
+	_expect(
+		WorldLayoutScript.legacy_v0310_player_position(Vector3(52.0, 16.0, -285.0))
+		and not WorldLayoutScript.player_position_is_valid(Vector3(52.0, 16.0, -285.0)),
+		"old v0.31.0 Upper Plant positions are recognized for intimacy-pass recovery"
 	)
 	for old_placement: Vector2 in [Vector2(-11.0, 15.0), Vector2(0.0, 20.0), Vector2(17.0, 35.0)]:
 		_expect(
@@ -353,6 +387,13 @@ func _test_world_builder() -> void:
 		and builder.harbor_nodes["warehouse"].get_meta("canonical_spec") == WorldLayoutScript.HARBOR_WAREHOUSE_SPEC,
 		"Harbor quay and warehouse geometry consume canonical layout specifications"
 	)
+	_expect(
+		builder.find_children("*", "StaticBody3D", true, false).filter(
+			func(node) -> bool: return String(node.get_meta("harbor_feature", "")).contains("quay")
+		).size() == 1
+		and builder.find_children("QuayBarrier", "StaticBody3D", true, false).is_empty(),
+		"Harbor emits one shoreline safety edge and no duplicate parallel barrier layer"
+	)
 	_expect(builder.has_node("TerrainBuffer"), "world builder creates traversable macro terrain")
 	var terrain_buffer: StaticBody3D = builder.get_node("TerrainBuffer")
 	_expect(
@@ -360,10 +401,15 @@ func _test_world_builder() -> void:
 		and terrain_buffer.find_children("*", "CollisionShape3D", true, false).size() == 1,
 		"macro terrain collision has no duplicate rendered surface at base grade"
 	)
-	_expect(builder.get_node("IndustrialGround") is MeshInstance3D, "one authoritative macro ground surface is rendered")
+	var industrial_ground: MeshInstance3D = builder.get_node("IndustrialGround")
+	_expect(
+		industrial_ground is MeshInstance3D and industrial_ground.mesh.get_surface_count() == 7,
+		"one authoritative terrain mesh renders ground, roads, paths and local pads without overlays"
+	)
 	_expect(builder.has_node("SouthernSea"), "world builder creates the southern sea edge")
-	for boundary_name: String in ["NorthBoundary", "WestBoundary", "EastBoundary", "SouthShoreBoundary"]:
+	for boundary_name: String in ["NorthBoundary", "WestBoundary", "EastBoundary"]:
 		_expect(builder.has_node(boundary_name), "%s collision boundary exists" % boundary_name)
+	_expect(not builder.has_node("SouthShoreBoundary"), "shoreline safety edge replaces the duplicate south perimeter fence")
 	for area: Dictionary in WorldLayoutScript.AREA_SPECS:
 		var area_id := String(area["id"])
 		var area_node: Node = builder.area_nodes[area_id]
@@ -377,7 +423,11 @@ func _test_world_builder() -> void:
 					"%s raised platform has %s walk access" % [area_id, String(access_side)]
 				)
 		else:
-			_expect(area_node.has_node("AreaFootprint"), "%s consumes its canonical terrace footprint" % area_id)
+			_expect(
+				not area_node.has_node("AreaFootprint")
+				and bool(area_node.get_meta("terrain_pad", false)) == bool(area.get("terrain_pad", false)),
+				"%s uses the single rendered terrain surface instead of a coplanar area overlay" % area_id
+			)
 	for terrace: Dictionary in WorldLayoutScript.TERRACE_SPECS:
 		var terrace_id := String(terrace["id"])
 		var terrace_node: Node3D = builder.terrace_nodes[terrace_id]
@@ -388,26 +438,29 @@ func _test_world_builder() -> void:
 		)
 	for road: Dictionary in WorldLayoutScript.ROAD_SPECS:
 		var road_node: Node3D = builder.road_nodes[String(road["id"])]
-		_expect(road_node.get_meta("canonical_rect") == WorldLayoutScript.road_rect(road), "%s geometry consumes canonical road data" % road["id"])
-		if String(road.get("kind", "flat")) == "ramp":
+		_expect(
+			road_node.get_meta("canonical_rect") == WorldLayoutScript.road_rect(road)
+			and String(road_node.get_meta("render_owner")) == "IndustrialGround"
+			and not road_node is MeshInstance3D,
+			"%s is canonically painted into the single terrain mesh" % road["id"]
+		)
+		if String(road.get("kind", "flat")) == "grade":
 			_expect(
-				float(road_node.get_meta("grade_percent")) <= 10.0,
-				"%s rendered grade remains at most ten percent" % road["id"]
+				float(road_node.get_meta("grade_percent")) <= 7.0,
+				"%s rendered grade remains at most seven percent" % road["id"]
 			)
 	_expect(
-		builder.get_node("PrototypeProcessPad") is MeshInstance3D
-		and builder.get_node("Area02BuildOverlay") is MeshInstance3D
+		builder.get_node("PrototypeProcessPad") is Node3D
+		and builder.get_node("Area02BuildOverlay") is Node3D
 		and not builder.has_node("PrototypeBuildPad"),
-		"Pilot pad remains visual-only and no legacy build-pad node survives"
+		"Pilot pad is painted into terrain and no legacy build-pad node survives"
 	)
-	var build_overlay: MeshInstance3D = builder.get_node("Area02BuildOverlay")
-	var overlay_mesh: BoxMesh = build_overlay.mesh
+	var build_overlay: Node3D = builder.get_node("Area02BuildOverlay")
 	var canonical_build_bounds := WorldLayoutScript.build_bounds()
 	_expect(
-		Vector2(build_overlay.position.x, build_overlay.position.z) == canonical_build_bounds.get_center()
-		and Vector2(overlay_mesh.size.x, overlay_mesh.size.z) == canonical_build_bounds.size
-		and build_overlay.get_meta("canonical_bounds") == canonical_build_bounds,
-		"Build Mode overlay footprint exactly matches canonical build validation"
+		build_overlay.get_meta("canonical_bounds") == canonical_build_bounds
+		and not build_overlay is MeshInstance3D,
+		"Build Mode uses canonical boundary lines without a duplicate full-pad floor surface"
 	)
 	var signs: Array = [
 		builder.orientation_nodes["starter_site"],
@@ -556,8 +609,7 @@ func _test_platform_walkability() -> void:
 	var boundary_checks := [
 		{"start": Vector3(WorldLayoutScript.WORLD_BOUNDS.position.x + 2.0, 0.1, 0.0), "direction": Vector3.LEFT},
 		{"start": Vector3(WorldLayoutScript.WORLD_BOUNDS.end.x - 2.0, 0.1, 0.0), "direction": Vector3.RIGHT},
-		{"start": Vector3(72.0, 0.1, WorldLayoutScript.WORLD_BOUNDS.position.y + 2.0), "direction": Vector3.FORWARD},
-		{"start": Vector3(72.0, 0.1, WorldLayoutScript.WORLD_BOUNDS.end.y - 2.0), "direction": Vector3.BACK},
+		{"start": Vector3(52.0, 10.4, WorldLayoutScript.WORLD_BOUNDS.position.y + 2.0), "direction": Vector3.FORWARD},
 	]
 	for boundary_check: Dictionary in boundary_checks:
 		walker.global_position = boundary_check["start"]
@@ -573,7 +625,7 @@ func _test_platform_walkability() -> void:
 			"site boundary collision contains a player-sized body at %s" % boundary_check["start"]
 		)
 
-	walker.global_position = Vector3(72.0, 0.1, -14.0)
+	walker.global_position = Vector3(52.0, 0.1, -22.0)
 	walker.velocity = Vector3.ZERO
 	await physics_frame
 	for frame_index in 100:
@@ -581,27 +633,38 @@ func _test_platform_walkability() -> void:
 		walker.move_and_slide()
 		await physics_frame
 	_expect(
-		walker.global_position.z < -24.0,
+		walker.global_position.z < -32.0,
 		"open starter transition gate preserves player-sized access toward the Main Refinery"
+	)
+
+	walker.global_position = Vector3(0.0, 0.1, WorldLayoutScript.SHORELINE_Z - 4.0)
+	walker.velocity = Vector3.ZERO
+	await physics_frame
+	for frame_index in 60:
+		walker.velocity = Vector3(0.0, -0.5, 6.0)
+		walker.move_and_slide()
+		await physics_frame
+	_expect(
+		walker.global_position.z < WorldLayoutScript.DEEP_WATER_RECOVERY_Z,
+		"single Harbor safety edge physically blocks the visible shoreline before recovery water"
 	)
 
 	await _walk_route(
 		walker,
 		[
 			Vector2(-10.0, 8.0),
-			Vector2(-10.0, 30.0),
-			Vector2(60.0, 30.0),
-			Vector2(72.0, 30.0),
-			Vector2(72.0, -20.0),
-			Vector2(72.0, -95.0),
-			Vector2(72.0, -190.0),
-			Vector2(72.0, -297.5),
+			Vector2(-10.0, 28.0),
+			Vector2(52.0, 28.0),
+			Vector2(52.0, -28.0),
+			Vector2(52.0, -75.0),
+			Vector2(52.0, -127.0),
+			Vector2(52.0, -178.0),
 		],
-		9.0
+		6.0
 	)
 	_expect(
 		WorldLayoutScript.terrace_id_at(Vector2(walker.global_position.x, walker.global_position.z)) == "upper_plant"
-		and walker.global_position.y >= 15.8,
+		and walker.global_position.y >= 8.8,
 		"Harbor → Lower → Main → Upper main-road route is continuous without jumping"
 	)
 

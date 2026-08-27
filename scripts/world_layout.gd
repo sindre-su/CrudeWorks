@@ -4,8 +4,10 @@ extends RefCounted
 ## Canonical x/z-space configuration for the CrudeWorks v1 graybox world.
 ## Rect2 values use x as east/west and y as north/south (world z).
 
-const WORLD_BOUNDS := Rect2(-60.0, -325.0, 240.0, 405.0)
-const TERRAIN_BOUNDS := Rect2(-90.0, -355.0, 300.0, 475.0)
+const WORLD_BOUNDS := Rect2(-42.0, -200.0, 214.0, 268.0)
+const LAND_BOUNDS := Rect2(-42.0, -200.0, 214.0, 264.0)
+const TERRAIN_BOUNDS := Rect2(-58.0, -216.0, 246.0, 312.0)
+const LEGACY_WORLD_BOUNDS_V0310 := Rect2(-60.0, -325.0, 240.0, 405.0)
 const LEGACY_WORLD_BOUNDS_V0304 := Rect2(-60.0, -250.0, 600.0, 400.0)
 const AREA_02_ID := "operations_hub"
 const AREA_02_BUILD_MARGIN := Vector2(4.0, 4.0)
@@ -18,66 +20,65 @@ const LEGACY_AREA_02_BUILD_BOUNDS := Rect2(-20.0, 10.5, 40.0, 28.0)
 const LEGACY_AREA_02_PLACEMENT_BASE_Y := 0.16
 const PLAYER_Y_RANGE := Vector2(-5.0, 40.0)
 const RECOVERY_MIN_Y := -20.0
-const DEEP_WATER_RECOVERY_Z := 76.0
+const SHORELINE_Z := 64.0
+const DEEP_WATER_RECOVERY_Z := 64.5
 const NEW_GAME_SPAWN := Vector3(-10.0, 0.1, 8.0)
 const NEW_GAME_YAW_DEGREES := -18.0
+const PILOT_PROCESS_PAD_BOUNDS := Rect2(-15.5, -6.5, 31.0, 13.0)
 
 const BASE_GRADE_ELEVATION := 0.0
-const ROAD_ELEVATION := 0.012
-const PEDESTRIAN_PATH_ELEVATION := 0.018
+const NATURAL_GRADE_START_Z := -42.0
+const NATURAL_GRADE_END_Z := -200.0
+const NATURAL_GRADE_MAX_ELEVATION := 10.5
+const TERRAIN_GRID_STEP := 4.0
+const PAD_TRANSITION_MARGIN := 6.0
 const PROCESS_PLATFORM_ELEVATION := 0.75
 
 const TERRACE_SPECS := [
 	{
 		"id": "harbor",
 		"display_name": "Harbor",
-		"center": Vector2(60.0, 17.5),
-		"dimensions": Vector2(230.0, 115.0),
+		"center": Vector2(65.0, 11.0),
+		"dimensions": Vector2(214.0, 106.0),
 		"elevation": 0.0,
 		"purpose": "Spawn, Pilot, logistics and active compatibility systems",
 	},
 	{
 		"id": "lower_plant",
 		"display_name": "Lower Plant",
-		"center": Vector2(60.0, -90.0),
-		"dimensions": Vector2(230.0, 80.0),
-		"elevation": 5.0,
+		"center": Vector2(65.0, -75.0),
+		"dimensions": Vector2(214.0, 38.0),
+		"elevation": 3.5,
 		"purpose": "Crude storage, first process block and early utilities",
 	},
 	{
 		"id": "main_plant",
 		"display_name": "Main Plant",
-		"center": Vector2(60.0, -185.0),
-		"dimensions": Vector2(230.0, 90.0),
-		"elevation": 10.0,
+		"center": Vector2(65.0, -127.0),
+		"dimensions": Vector2(214.0, 42.0),
+		"elevation": 7.0,
 		"purpose": "Product storage, Control/LAB core and maintenance",
 	},
 	{
 		"id": "upper_plant",
 		"display_name": "Upper Plant",
-		"center": Vector2(60.0, -285.0),
-		"dimensions": Vector2(230.0, 70.0),
-		"elevation": 16.0,
+		"center": Vector2(65.0, -178.0),
+		"dimensions": Vector2(214.0, 36.0),
+		"elevation": 10.5,
 		"purpose": "VDU, FCC and approved late expansion",
 	},
 ]
 
 const HARBOR_QUAY_SPEC := {
-	"id": "quay_edge",
-	"center": Vector2(60.0, 72.5),
-	"dimensions": Vector2(230.0, 1.0),
-	"height": 1.1,
-}
-const HARBOR_BARRIER_SPEC := {
-	"center_z": 69.5,
-	"x_positions": [-38.0, -10.0, 18.0, 46.0, 102.0, 130.0, 158.0],
-	"dimensions": Vector2(18.0, 0.35),
+	"id": "quay_safety_edge",
+	"center": Vector2(65.0, 63.7),
+	"dimensions": Vector2(214.0, 0.4),
 	"height": 1.1,
 }
 const HARBOR_WAREHOUSE_SPEC := {
 	"id": "warehouse",
-	"center": Vector2(45.0, 18.0),
-	"dimensions": Vector2(18.0, 16.0),
+	"center": Vector2(82.0, 32.0),
+	"dimensions": Vector2(16.0, 12.0),
 	"height": 7.0,
 }
 
@@ -85,38 +86,41 @@ const AREA_SPECS := [
 	{
 		"id": "control_room",
 		"display_name": "Control Room",
-		"center": Vector2(48.0, -170.0),
-		"dimensions": Vector2(34.0, 24.0),
-		"elevation": 10.0,
+		"center": Vector2(30.0, -116.0),
+		"dimensions": Vector2(20.0, 14.0),
+		"elevation": 7.0,
 		"kind": "operations",
 		"terrace": "main_plant",
 		"purpose": "Future central supervision shell",
-		"road_access": "main_spine_main",
+		"road_access": "main_corridor_west",
 		"render_platform": false,
+		"terrain_pad": true,
 	},
 	{
 		"id": "lab",
 		"display_name": "LAB",
-		"center": Vector2(48.0, -207.0),
-		"dimensions": Vector2(28.0, 20.0),
-		"elevation": 10.0,
+		"center": Vector2(30.0, -138.0),
+		"dimensions": Vector2(20.0, 14.0),
+		"elevation": 7.0,
 		"kind": "operations",
 		"terrace": "main_plant",
 		"purpose": "Future analytical facility near product operations",
 		"road_access": "lab_access",
 		"render_platform": false,
+		"terrain_pad": true,
 	},
 	{
 		"id": "crude_intake",
 		"display_name": "Crude Intake",
-		"center": Vector2(42.0, 50.0),
-		"dimensions": Vector2(40.0, 30.0),
+		"center": Vector2(31.0, 49.0),
+		"dimensions": Vector2(26.0, 18.0),
 		"elevation": 0.0,
 		"kind": "logistics",
 		"terrace": "harbor",
 		"purpose": "Reserved final CI-101 Harbor anchor",
-		"road_access": "crude_intake_access",
+		"road_access": "main_spine_harbor",
 		"render_platform": false,
+		"terrain_pad": false,
 		"functional_state": "reserved_anchor",
 	},
 	{
@@ -130,6 +134,7 @@ const AREA_SPECS := [
 		"purpose": "Contained functional tutorial process",
 		"road_access": "pilot_access",
 		"render_platform": false,
+		"terrain_pad": false,
 		"functional_state": "functional",
 	},
 	{
@@ -141,7 +146,7 @@ const AREA_SPECS := [
 		"kind": "operations",
 		"terrace": "harbor",
 		"purpose": "Temporary active Area 02 and functional CI/PD compatibility pocket",
-		"road_access": "main_spine_harbor",
+		"road_access": "area02_access",
 		"render_platform": true,
 		"access_sides": ["west", "east"],
 		"buildable": true,
@@ -152,301 +157,239 @@ const AREA_SPECS := [
 	{
 		"id": "crude_storage",
 		"display_name": "Crude Storage",
-		"center": Vector2(-25.0, -95.0),
-		"dimensions": Vector2(55.0, 50.0),
-		"elevation": 5.0,
+		"center": Vector2(-15.0, -75.0),
+		"dimensions": Vector2(38.0, 26.0),
+		"elevation": 3.5,
 		"kind": "storage",
 		"terrace": "lower_plant",
 		"purpose": "Future crude tank farm",
-		"road_access": "crude_storage_access",
+		"road_access": "lower_corridor_west",
 		"render_platform": false,
+		"terrain_pad": true,
 	},
 	{
 		"id": "cdu",
 		"display_name": "CDU",
-		"center": Vector2(32.0, -95.0),
-		"dimensions": Vector2(52.0, 60.0),
-		"elevation": 5.0,
+		"center": Vector2(26.0, -75.0),
+		"dimensions": Vector2(28.0, 26.0),
+		"elevation": 3.5,
 		"kind": "process",
 		"terrace": "lower_plant",
 		"purpose": "First atmospheric process block",
-		"road_access": "cdu_access",
+		"road_access": "lower_corridor_west",
 		"render_platform": false,
+		"terrain_pad": true,
 	},
 	{
 		"id": "ht",
 		"display_name": "HT",
-		"center": Vector2(98.0, -95.0),
-		"dimensions": Vector2(34.0, 50.0),
-		"elevation": 5.0,
+		"center": Vector2(78.0, -75.0),
+		"dimensions": Vector2(28.0, 26.0),
+		"elevation": 3.5,
 		"kind": "process",
 		"terrace": "lower_plant",
 		"purpose": "Treatment support within Lower Plant",
-		"road_access": "main_spine_lower",
+		"road_access": "lower_corridor_east",
 		"render_platform": false,
+		"terrain_pad": true,
 	},
 	{
 		"id": "utilities",
 		"display_name": "Utilities",
-		"center": Vector2(148.0, -95.0),
-		"dimensions": Vector2(48.0, 50.0),
-		"elevation": 5.0,
+		"center": Vector2(113.0, -75.0),
+		"dimensions": Vector2(34.0, 26.0),
+		"elevation": 3.5,
 		"kind": "utilities",
 		"terrace": "lower_plant",
 		"purpose": "Reserved early Utilities Yard",
-		"road_access": "utilities_access",
+		"road_access": "lower_corridor_east",
 		"render_platform": false,
+		"terrain_pad": true,
 	},
 	{
 		"id": "vdu",
 		"display_name": "VDU",
-		"center": Vector2(-20.0, -285.0),
-		"dimensions": Vector2(70.0, 55.0),
-		"elevation": 16.0,
+		"center": Vector2(-8.0, -178.0),
+		"dimensions": Vector2(48.0, 28.0),
+		"elevation": 10.5,
 		"kind": "process",
 		"terrace": "upper_plant",
 		"purpose": "Future VDU process block",
-		"road_access": "vdu_access",
+		"road_access": "upper_corridor_west",
 		"render_platform": false,
+		"terrain_pad": true,
 	},
 	{
 		"id": "fcc",
 		"display_name": "FCC",
-		"center": Vector2(45.0, -285.0),
-		"dimensions": Vector2(36.0, 55.0),
-		"elevation": 16.0,
+		"center": Vector2(31.0, -178.0),
+		"dimensions": Vector2(22.0, 28.0),
+		"elevation": 10.5,
 		"kind": "process",
 		"terrace": "upper_plant",
 		"purpose": "Future FCC process block",
-		"road_access": "fcc_access",
+		"road_access": "upper_corridor_west",
 		"render_platform": false,
+		"terrain_pad": true,
 	},
 	{
 		"id": "future_expansion",
 		"display_name": "Future Expansion",
-		"center": Vector2(135.0, -285.0),
-		"dimensions": Vector2(75.0, 55.0),
-		"elevation": 16.0,
+		"center": Vector2(87.0, -178.0),
+		"dimensions": Vector2(46.0, 28.0),
+		"elevation": 10.5,
 		"kind": "reserved",
 		"terrace": "upper_plant",
 		"purpose": "Naphtha, larger utilities and approved late expansion",
-		"road_access": "future_expansion_access",
+		"road_access": "upper_corridor_east",
 		"render_platform": false,
+		"terrain_pad": true,
 	},
 	{
 		"id": "product_dispatch",
 		"display_name": "Product Dispatch",
-		"center": Vector2(135.0, 50.0),
-		"dimensions": Vector2(50.0, 30.0),
+		"center": Vector2(138.0, 49.0),
+		"dimensions": Vector2(34.0, 18.0),
 		"elevation": 0.0,
 		"kind": "logistics",
 		"terrace": "harbor",
 		"purpose": "Reserved final PD-101 Harbor anchor",
-		"road_access": "product_dispatch_access",
+		"road_access": "harbor_logistics_lane",
 		"render_platform": false,
+		"terrain_pad": false,
 		"functional_state": "reserved_anchor",
 	},
 	{
 		"id": "product_storage",
 		"display_name": "Product Tank Farm",
-		"center": Vector2(-10.0, -188.0),
-		"dimensions": Vector2(80.0, 65.0),
-		"elevation": 10.0,
+		"center": Vector2(-9.0, -128.0),
+		"dimensions": Vector2(50.0, 36.0),
+		"elevation": 7.0,
 		"kind": "storage",
 		"terrace": "main_plant",
 		"purpose": "Future product storage and routing",
-		"road_access": "product_storage_access",
+		"road_access": "main_corridor_west",
 		"render_platform": false,
+		"terrain_pad": true,
 	},
 	{
 		"id": "maintenance",
 		"display_name": "Maintenance / Workshop",
-		"center": Vector2(140.0, -188.0),
-		"dimensions": Vector2(60.0, 55.0),
-		"elevation": 10.0,
+		"center": Vector2(87.0, -128.0),
+		"dimensions": Vector2(46.0, 34.0),
+		"elevation": 7.0,
 		"kind": "support",
 		"terrace": "main_plant",
 		"purpose": "Future central service and workshop gameplay",
-		"road_access": "maintenance_access",
+		"road_access": "main_corridor_east",
 		"render_platform": false,
+		"terrain_pad": true,
 	},
 ]
 
 const ROAD_SPECS := [
 	{
 		"id": "main_spine_harbor",
-		"center": Vector2(72.0, 25.0),
-		"dimensions": Vector2(8.0, 100.0),
+		"center": Vector2(52.0, 11.0),
+		"dimensions": Vector2(8.0, 106.0),
 		"class": "main",
 		"terrace": "harbor",
 		"elevation": 0.0,
 		"sequence": 0,
 	},
 	{
-		"id": "main_ramp_harbor_lower",
-		"center": Vector2(72.0, -50.0),
-		"dimensions": Vector2(8.0, 50.0),
+		"id": "main_spine_inland_grade",
+		"center": Vector2(52.0, -121.0),
+		"dimensions": Vector2(8.0, 158.0),
 		"class": "main",
-		"kind": "ramp",
-		"from_terrace": "harbor",
-		"to_terrace": "lower_plant",
+		"kind": "grade",
+		"from_elevation": 0.0,
+		"to_elevation": 10.5,
 		"direction": "north",
 		"sequence": 1,
 	},
 	{
-		"id": "main_spine_lower",
-		"center": Vector2(72.0, -95.0),
-		"dimensions": Vector2(8.0, 40.0),
-		"class": "main",
-		"terrace": "lower_plant",
-		"elevation": 5.0,
-		"sequence": 2,
-	},
-	{
-		"id": "main_ramp_lower_main",
-		"center": Vector2(72.0, -140.0),
-		"dimensions": Vector2(8.0, 50.0),
-		"class": "main",
-		"kind": "ramp",
-		"from_terrace": "lower_plant",
-		"to_terrace": "main_plant",
-		"direction": "north",
-		"sequence": 3,
-	},
-	{
-		"id": "main_spine_main",
-		"center": Vector2(72.0, -190.0),
-		"dimensions": Vector2(8.0, 50.0),
-		"class": "main",
-		"terrace": "main_plant",
-		"elevation": 10.0,
-		"sequence": 4,
-	},
-	{
-		"id": "main_ramp_main_upper",
-		"center": Vector2(72.0, -245.0),
-		"dimensions": Vector2(8.0, 60.0),
-		"class": "main",
-		"kind": "ramp",
-		"from_terrace": "main_plant",
-		"to_terrace": "upper_plant",
-		"direction": "north",
-		"sequence": 5,
-	},
-	{
-		"id": "main_spine_upper",
-		"center": Vector2(72.0, -297.5),
-		"dimensions": Vector2(8.0, 45.0),
-		"class": "main",
-		"terrace": "upper_plant",
-		"elevation": 16.0,
-		"sequence": 6,
-	},
-	{
-		"id": "crude_intake_access",
-		"center": Vector2(65.0, 50.0),
-		"dimensions": Vector2(6.0, 5.0),
-		"class": "service",
-		"terrace": "harbor",
-		"elevation": 0.0,
-	},
-	{
 		"id": "pilot_access",
-		"center": Vector2(44.75, 5.0),
-		"dimensions": Vector2(54.5, 5.0),
+		"center": Vector2(32.75, 5.0),
+		"dimensions": Vector2(30.5, 5.0),
 		"class": "service",
 		"terrace": "harbor",
 		"elevation": 0.0,
 	},
 	{
-		"id": "product_dispatch_access",
-		"center": Vector2(93.0, 50.0),
-		"dimensions": Vector2(34.0, 5.0),
+		"id": "area02_access",
+		"center": Vector2(65.5, -10.0),
+		"dimensions": Vector2(19.0, 5.0),
 		"class": "service",
 		"terrace": "harbor",
 		"elevation": 0.0,
 	},
 	{
-		"id": "crude_storage_access",
-		"center": Vector2(35.25, -95.0),
-		"dimensions": Vector2(65.5, 5.0),
+		"id": "harbor_logistics_lane",
+		"center": Vector2(88.5, 49.0),
+		"dimensions": Vector2(65.0, 5.0),
 		"class": "service",
-		"terrace": "lower_plant",
-		"elevation": 5.0,
+		"terrace": "harbor",
+		"elevation": 0.0,
 	},
 	{
-		"id": "cdu_access",
-		"center": Vector2(63.0, -95.0),
-		"dimensions": Vector2(10.0, 5.0),
+		"id": "lower_corridor_west",
+		"center": Vector2(7.0, -57.0),
+		"dimensions": Vector2(82.0, 5.0),
 		"class": "service",
 		"terrace": "lower_plant",
-		"elevation": 5.0,
 	},
 	{
-		"id": "utilities_access",
-		"center": Vector2(100.0, -95.0),
-		"dimensions": Vector2(48.0, 5.0),
+		"id": "lower_corridor_east",
+		"center": Vector2(93.0, -57.0),
+		"dimensions": Vector2(74.0, 5.0),
 		"class": "service",
 		"terrace": "lower_plant",
-		"elevation": 5.0,
 	},
 	{
-		"id": "product_storage_access",
-		"center": Vector2(49.0, -188.0),
-		"dimensions": Vector2(38.0, 5.0),
+		"id": "main_corridor_west",
+		"center": Vector2(7.0, -104.0),
+		"dimensions": Vector2(82.0, 5.0),
 		"class": "service",
 		"terrace": "main_plant",
-		"elevation": 10.0,
+	},
+	{
+		"id": "main_corridor_east",
+		"center": Vector2(83.0, -104.0),
+		"dimensions": Vector2(54.0, 5.0),
+		"class": "service",
+		"terrace": "main_plant",
 	},
 	{
 		"id": "lab_access",
-		"center": Vector2(65.0, -207.0),
-		"dimensions": Vector2(6.0, 5.0),
+		"center": Vector2(44.0, -138.0),
+		"dimensions": Vector2(8.0, 5.0),
 		"class": "service",
 		"terrace": "main_plant",
-		"elevation": 10.0,
 	},
 	{
-		"id": "maintenance_access",
-		"center": Vector2(93.0, -188.0),
-		"dimensions": Vector2(34.0, 5.0),
-		"class": "service",
-		"terrace": "main_plant",
-		"elevation": 10.0,
-	},
-	{
-		"id": "vdu_access",
-		"center": Vector2(41.5, -285.0),
-		"dimensions": Vector2(53.0, 5.0),
+		"id": "upper_corridor_west",
+		"center": Vector2(8.0, -156.0),
+		"dimensions": Vector2(80.0, 5.0),
 		"class": "service",
 		"terrace": "upper_plant",
-		"elevation": 16.0,
 	},
 	{
-		"id": "fcc_access",
-		"center": Vector2(65.5, -285.0),
-		"dimensions": Vector2(5.0, 5.0),
+		"id": "upper_corridor_east",
+		"center": Vector2(83.0, -156.0),
+		"dimensions": Vector2(54.0, 5.0),
 		"class": "service",
 		"terrace": "upper_plant",
-		"elevation": 16.0,
-	},
-	{
-		"id": "future_expansion_access",
-		"center": Vector2(86.75, -285.0),
-		"dimensions": Vector2(21.5, 5.0),
-		"class": "service",
-		"terrace": "upper_plant",
-		"elevation": 16.0,
 	},
 ]
 
 const PATH_SPECS := [
 	{
 		"id": "control_lab_path",
-		"center": Vector2(48.0, -189.5),
-		"dimensions": Vector2(5.0, 15.0),
+		"center": Vector2(30.0, -127.0),
+		"dimensions": Vector2(5.0, 8.0),
 		"terrace": "main_plant",
-		"elevation": 10.0,
+		"elevation": 7.0,
 	},
 	{
 		"id": "pilot_quay_path",
@@ -478,11 +421,11 @@ const WAYFINDING_SPECS := [
 	},
 	{
 		"id": "main_refinery_gate",
-		"position": Vector3(72.0, 0.0, -20.0),
-		"yaw_degrees": 0.0,
+		"position": Vector3(52.0, 0.0, -28.0),
+		"yaw_degrees": 180.0,
 		"primary": "MAIN REFINERY",
 		"target_area_id": "cdu",
-		"target_position": Vector2(72.0, -95.0),
+		"target_position": Vector2(52.0, -75.0),
 		"board_size": Vector2(3.8, 0.8),
 	},
 ]
@@ -581,6 +524,40 @@ static func terrace_id_at(point: Vector2) -> String:
 		if terrace_rect(terrace).has_point(point):
 			return String(terrace["id"])
 	return "transit"
+
+
+static func natural_grade_elevation_at_z(z_position: float) -> float:
+	if z_position >= NATURAL_GRADE_START_Z:
+		return BASE_GRADE_ELEVATION
+	if z_position <= NATURAL_GRADE_END_Z:
+		return NATURAL_GRADE_MAX_ELEVATION
+	var progress := inverse_lerp(NATURAL_GRADE_START_Z, NATURAL_GRADE_END_Z, z_position)
+	return lerpf(BASE_GRADE_ELEVATION, NATURAL_GRADE_MAX_ELEVATION, progress)
+
+
+static func terrain_elevation_at(point: Vector2) -> float:
+	var natural_elevation := natural_grade_elevation_at_z(point.y)
+	var shaped_elevation := natural_elevation
+	for area: Dictionary in AREA_SPECS:
+		if not bool(area.get("terrain_pad", false)):
+			continue
+		var rect := area_rect(area)
+		var target_elevation := float(area["elevation"])
+		if rect.has_point(point) or _point_on_rect_end(point, rect):
+			return target_elevation
+		var margin := float(area.get("terrain_transition", PAD_TRANSITION_MARGIN))
+		var expanded := rect.grow(margin)
+		if not expanded.has_point(point):
+			continue
+		var delta_x := maxf(maxf(rect.position.x - point.x, point.x - rect.end.x), 0.0)
+		var delta_z := maxf(maxf(rect.position.y - point.y, point.y - rect.end.y), 0.0)
+		var distance := Vector2(delta_x, delta_z).length()
+		var blend := 1.0 - smoothstep(0.0, margin, distance)
+		shaped_elevation = maxf(
+			shaped_elevation,
+			lerpf(natural_elevation, target_elevation, blend)
+		)
+	return shaped_elevation
 
 
 static func area_rect(area: Dictionary) -> Rect2:
@@ -693,6 +670,15 @@ static func legacy_v0304_player_position(position: Vector3) -> bool:
 	var point := Vector2(position.x, position.z)
 	return (
 		(LEGACY_WORLD_BOUNDS_V0304.has_point(point) or _point_on_rect_end(point, LEGACY_WORLD_BOUNDS_V0304))
+		and position.y >= PLAYER_Y_RANGE.x
+		and position.y <= PLAYER_Y_RANGE.y
+	)
+
+
+static func legacy_v0310_player_position(position: Vector3) -> bool:
+	var point := Vector2(position.x, position.z)
+	return (
+		(LEGACY_WORLD_BOUNDS_V0310.has_point(point) or _point_on_rect_end(point, LEGACY_WORLD_BOUNDS_V0310))
 		and position.y >= PLAYER_Y_RANGE.x
 		and position.y <= PLAYER_Y_RANGE.y
 	)

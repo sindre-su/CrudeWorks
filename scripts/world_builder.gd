@@ -8,10 +8,6 @@ const COLOR_GROUND := Color("#405347")
 const COLOR_BUFFER := Color("#26352f")
 const COLOR_SEA := Color("#214d61")
 const COLOR_FOREST := Color("#1e3228")
-const COLOR_HARBOR_APRON := Color("#6f7778")
-const COLOR_TERRACE_LOWER := Color("#68756f")
-const COLOR_TERRACE_MAIN := Color("#737b78")
-const COLOR_TERRACE_UPPER := Color("#646d6d")
 const COLOR_RETAINING_WALL := Color("#525b5b")
 const COLOR_SERVICE_ROAD := Color("#414a50")
 const COLOR_MAIN_ROAD := Color("#252c31")
@@ -21,12 +17,10 @@ const COLOR_RESERVED := Color("#50545b")
 const COLOR_LOGISTICS := Color("#717c78")
 const COLOR_BOUNDARY := Color("#9c906b")
 const COLOR_PROTOTYPE_PAD := Color("#65736d")
-const COLOR_BUILD_PAD := Color("#526775")
 const COLOR_FIXED_STRUCTURE := Color("#444c51")
-const SURFACE_VISUAL_THICKNESS := 0.02
 
 var area02_build_area_label: Label3D
-var area02_build_overlay: MeshInstance3D
+var area02_build_overlay: Node3D
 var terrace_nodes: Dictionary = {}
 var area_nodes: Dictionary = {}
 var road_nodes: Dictionary = {}
@@ -79,34 +73,34 @@ func _build_environment() -> void:
 
 
 func _build_macro_terrain() -> void:
+	var terrain_mesh := _create_natural_terrain_mesh()
+	var ground := MeshInstance3D.new()
+	ground.name = "IndustrialGround"
+	ground.mesh = terrain_mesh
+	ground.set_meta("surface_role", "authoritative_ground")
+	add_child(ground)
+
+	var terrain_body := StaticBody3D.new()
+	terrain_body.name = "TerrainBuffer"
+	var terrain_collision := CollisionShape3D.new()
+	var terrain_shape := ConcavePolygonShape3D.new()
+	terrain_shape.set_faces(terrain_mesh.get_faces())
+	terrain_collision.shape = terrain_shape
+	terrain_body.add_child(terrain_collision)
+	add_child(terrain_body)
+
 	var terrain_center := WorldLayoutScript.TERRAIN_BOUNDS.get_center()
 	var terrain_size := WorldLayoutScript.TERRAIN_BOUNDS.size
-	_create_collision_box(
-		"TerrainBuffer",
-		Vector3(
-			terrain_center.x,
-			WorldLayoutScript.BASE_GRADE_ELEVATION - 0.25,
-			terrain_center.y
-		),
-		Vector3(terrain_size.x, 0.5, terrain_size.y)
+
+	_create_visual_box(
+		"SouthernSea",
+		Vector3(terrain_center.x, -0.12, WorldLayoutScript.SHORELINE_Z + 44.0),
+		Vector3(terrain_size.x + 120.0, 0.08, 88.0),
+		COLOR_SEA
 	)
 
 	var world_center := WorldLayoutScript.WORLD_BOUNDS.get_center()
 	var world_size := WorldLayoutScript.WORLD_BOUNDS.size
-	_create_visual_box(
-		"IndustrialGround",
-		Vector3(world_center.x, WorldLayoutScript.BASE_GRADE_ELEVATION - 0.004, world_center.y),
-		Vector3(world_size.x, 0.008, world_size.y),
-		COLOR_GROUND
-	)
-
-	_create_visual_box(
-		"SouthernSea",
-		Vector3(world_center.x, -0.08, WorldLayoutScript.WORLD_BOUNDS.end.y + 45.0),
-		Vector3(terrain_size.x + 120.0, 0.08, 90.0),
-		COLOR_SEA
-	)
-
 	_create_visual_box(
 		"NorthForestBorder",
 		Vector3(world_center.x, 1.5, WorldLayoutScript.WORLD_BOUNDS.position.y - 15.0),
@@ -127,42 +121,155 @@ func _build_macro_terrain() -> void:
 	)
 
 
+func _create_natural_terrain_mesh() -> ArrayMesh:
+	var x_values := _terrain_axis_values(
+		WorldLayoutScript.LAND_BOUNDS.position.x,
+		WorldLayoutScript.LAND_BOUNDS.end.x,
+		true
+	)
+	var z_values := _terrain_axis_values(
+		WorldLayoutScript.LAND_BOUNDS.position.y,
+		WorldLayoutScript.LAND_BOUNDS.end.y,
+		false
+	)
+	var surface_colors := {
+		"ground": COLOR_GROUND,
+		"main_road": COLOR_MAIN_ROAD,
+		"service_road": COLOR_SERVICE_ROAD,
+		"path": COLOR_PATH,
+		"process_pad": COLOR_PROTOTYPE_PAD,
+		"industrial_pad": COLOR_PLATFORM,
+		"reserved_pad": COLOR_RESERVED,
+	}
+	var surfaces := {}
+	for role: String in surface_colors:
+		var role_surface := SurfaceTool.new()
+		role_surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+		surfaces[role] = role_surface
+	for x_index in range(x_values.size() - 1):
+		for z_index in range(z_values.size() - 1):
+			var p00 := _terrain_vertex(x_values[x_index], z_values[z_index])
+			var p10 := _terrain_vertex(x_values[x_index + 1], z_values[z_index])
+			var p01 := _terrain_vertex(x_values[x_index], z_values[z_index + 1])
+			var p11 := _terrain_vertex(x_values[x_index + 1], z_values[z_index + 1])
+			var cell_center := Vector2(
+				(x_values[x_index] + x_values[x_index + 1]) * 0.5,
+				(z_values[z_index] + z_values[z_index + 1]) * 0.5
+			)
+			var surface: SurfaceTool = surfaces[_terrain_surface_role(cell_center)]
+			# Godot treats this x/z winding as the upward-facing terrain side.
+			surface.add_vertex(p00)
+			surface.add_vertex(p10)
+			surface.add_vertex(p11)
+			surface.add_vertex(p00)
+			surface.add_vertex(p11)
+			surface.add_vertex(p01)
+	var terrain_mesh := ArrayMesh.new()
+	for role: String in surface_colors:
+		var role_surface: SurfaceTool = surfaces[role]
+		role_surface.generate_normals()
+		role_surface.commit(terrain_mesh)
+		terrain_mesh.surface_set_material(
+			terrain_mesh.get_surface_count() - 1,
+			_material(surface_colors[role])
+		)
+	return terrain_mesh
+
+
+func _terrain_axis_values(start: float, finish: float, x_axis: bool) -> Array[float]:
+	var values: Array[float] = []
+	var cursor := start
+	while cursor < finish:
+		values.append(cursor)
+		cursor += WorldLayoutScript.TERRAIN_GRID_STEP
+	values.append(finish)
+	for area: Dictionary in WorldLayoutScript.AREA_SPECS:
+		if not bool(area.get("terrain_pad", false)):
+			continue
+		var rect := WorldLayoutScript.area_rect(area)
+		var low := rect.position.x if x_axis else rect.position.y
+		var high := rect.end.x if x_axis else rect.end.y
+		for value: float in [
+			low - WorldLayoutScript.PAD_TRANSITION_MARGIN,
+			low,
+			high,
+			high + WorldLayoutScript.PAD_TRANSITION_MARGIN,
+		]:
+			values.append(clampf(value, start, finish))
+	for road: Dictionary in WorldLayoutScript.ROAD_SPECS:
+		_append_rect_axis_edges(values, WorldLayoutScript.road_rect(road), start, finish, x_axis)
+	for path_spec: Dictionary in WorldLayoutScript.PATH_SPECS:
+		_append_rect_axis_edges(values, WorldLayoutScript.road_rect(path_spec), start, finish, x_axis)
+	_append_rect_axis_edges(
+		values, WorldLayoutScript.PILOT_PROCESS_PAD_BOUNDS, start, finish, x_axis
+	)
+	values.sort()
+	var unique_values: Array[float] = []
+	for value: float in values:
+		if unique_values.is_empty() or not is_equal_approx(unique_values[-1], value):
+			unique_values.append(value)
+	return unique_values
+
+
+func _append_rect_axis_edges(
+	values: Array[float], rect: Rect2, start: float, finish: float, x_axis: bool
+) -> void:
+	var low := rect.position.x if x_axis else rect.position.y
+	var high := rect.end.x if x_axis else rect.end.y
+	values.append(clampf(low, start, finish))
+	values.append(clampf(high, start, finish))
+
+
+func _terrain_surface_role(point: Vector2) -> String:
+	if WorldLayoutScript.PILOT_PROCESS_PAD_BOUNDS.has_point(point):
+		return "process_pad"
+	for road: Dictionary in WorldLayoutScript.ROAD_SPECS:
+		if WorldLayoutScript.road_rect(road).has_point(point):
+			return "main_road" if String(road["class"]) == "main" else "service_road"
+	for path_spec: Dictionary in WorldLayoutScript.PATH_SPECS:
+		if WorldLayoutScript.road_rect(path_spec).has_point(point):
+			return "path"
+	for area: Dictionary in WorldLayoutScript.AREA_SPECS:
+		if bool(area.get("terrain_pad", false)) and WorldLayoutScript.area_rect(area).has_point(point):
+			return "reserved_pad" if String(area["kind"]) == "reserved" else "industrial_pad"
+	return "ground"
+
+
+func _terrain_vertex(x_position: float, z_position: float) -> Vector3:
+	return Vector3(
+		x_position,
+		WorldLayoutScript.terrain_elevation_at(Vector2(x_position, z_position)),
+		z_position
+	)
+
+
 func _build_site_boundaries() -> void:
 	var bounds := WorldLayoutScript.WORLD_BOUNDS
 	var center := bounds.get_center()
-	var wall_height := 2.2
+	var wall_height := WorldLayoutScript.NATURAL_GRADE_MAX_ELEVATION + 2.2
+	var wall_center_y := wall_height * 0.5
 	var wall_thickness := 0.5
 	_create_static_box(
 		"NorthBoundary",
-		Vector3(center.x, wall_height * 0.5, bounds.position.y),
+		Vector3(center.x, wall_center_y, bounds.position.y),
 		Vector3(bounds.size.x, wall_height, wall_thickness),
 		Color("#41564e")
 	)
 	_create_static_box(
 		"WestBoundary",
-		Vector3(bounds.position.x, wall_height * 0.5, center.y),
+		Vector3(bounds.position.x, wall_center_y, center.y),
 		Vector3(wall_thickness, wall_height, bounds.size.y),
 		Color("#41564e")
 	)
 	_create_static_box(
 		"EastBoundary",
-		Vector3(bounds.end.x, wall_height * 0.5, center.y),
+		Vector3(bounds.end.x, wall_center_y, center.y),
 		Vector3(wall_thickness, wall_height, bounds.size.y),
 		Color("#41564e")
 	)
-	_create_static_box(
-		"SouthShoreBoundary",
-		Vector3(center.x, 0.55, bounds.end.y),
-		Vector3(bounds.size.x, 1.1, wall_thickness),
-		Color("#50605c")
-	)
-
-
 func _build_terraces() -> void:
 	for terrace: Dictionary in WorldLayoutScript.TERRACE_SPECS:
 		var terrace_id := String(terrace["id"])
-		var center: Vector2 = terrace["center"]
-		var dimensions: Vector2 = terrace["dimensions"]
 		var elevation := float(terrace["elevation"])
 		var root_node := Node3D.new()
 		root_node.name = "Terrace_%s" % terrace_id
@@ -172,84 +279,7 @@ func _build_terraces() -> void:
 		add_child(root_node)
 		terrace_nodes[terrace_id] = root_node
 
-		if elevation <= 0.05:
-			_create_visual_box(
-				"TerraceSurface",
-				Vector3(center.x, WorldLayoutScript.BASE_GRADE_ELEVATION + 0.003, center.y),
-				Vector3(dimensions.x, 0.006, dimensions.y),
-				COLOR_HARBOR_APRON,
-				root_node
-			)
-			continue
-
-		var terrace_color := COLOR_TERRACE_LOWER
-		if terrace_id == "main_plant":
-			terrace_color = COLOR_TERRACE_MAIN
-		elif terrace_id == "upper_plant":
-			terrace_color = COLOR_TERRACE_UPPER
-		var terrace_rect := WorldLayoutScript.terrace_rect(terrace)
-		var spine_road := _flat_main_road_for_terrace(terrace_id)
-		if spine_road.is_empty():
-			_create_terrace_mass_rect("TerraceMass", terrace_rect, elevation, terrace_color, root_node)
-			continue
-		var spine_rect := WorldLayoutScript.road_rect(spine_road)
-		_create_terrace_mass_rect(
-			"TerraceMassWest",
-			Rect2(
-				terrace_rect.position,
-				Vector2(spine_rect.position.x - terrace_rect.position.x, terrace_rect.size.y)
-			),
-			elevation,
-			terrace_color,
-			root_node
-		)
-		_create_terrace_mass_rect(
-			"TerraceMassEast",
-			Rect2(
-				Vector2(spine_rect.end.x, terrace_rect.position.y),
-				Vector2(terrace_rect.end.x - spine_rect.end.x, terrace_rect.size.y)
-			),
-			elevation,
-			terrace_color,
-			root_node
-		)
-		_create_terrace_mass_rect(
-			"TerraceMassSpine",
-			spine_rect,
-			elevation,
-			terrace_color,
-			root_node
-		)
-
-
-func _flat_main_road_for_terrace(terrace_id: String) -> Dictionary:
-	for road: Dictionary in WorldLayoutScript.ROAD_SPECS:
-		if (
-			String(road["class"]) == "main"
-			and String(road.get("kind", "flat")) != "ramp"
-			and String(road.get("terrace", "")) == terrace_id
-		):
-			return road
-	return {}
-
-
-func _create_terrace_mass_rect(
-	node_name: String,
-	rect: Rect2,
-	elevation: float,
-	color: Color,
-	parent: Node3D
-) -> void:
-	if rect.size.x <= 0.01 or rect.size.y <= 0.01:
-		return
-	var body := _create_static_box(
-		node_name,
-		Vector3(rect.get_center().x, elevation * 0.5, rect.get_center().y),
-		Vector3(rect.size.x, elevation, rect.size.y),
-		color,
-		parent
-	)
-	body.set_meta("retaining_wall", true)
+		root_node.set_meta("terrain_model", "continuous_natural_grade")
 
 
 func _build_harbor() -> void:
@@ -258,26 +288,14 @@ func _build_harbor() -> void:
 	var quay_dimensions: Vector2 = quay_spec["dimensions"]
 	var quay_height := float(quay_spec["height"])
 	var quay := _create_static_box(
-		"HarborQuayEdge",
+		"HarborQuaySafetyEdge",
 		Vector3(quay_center.x, quay_height * 0.5, quay_center.y),
 		Vector3(quay_dimensions.x, quay_height, quay_dimensions.y),
 		COLOR_RETAINING_WALL
 	)
-	quay.set_meta("harbor_feature", "quay_edge")
+	quay.set_meta("harbor_feature", "single_quay_safety_edge")
 	quay.set_meta("canonical_spec", quay_spec)
 	harbor_nodes["quay_edge"] = quay
-
-	var barrier_spec: Dictionary = WorldLayoutScript.HARBOR_BARRIER_SPEC
-	var barrier_dimensions: Vector2 = barrier_spec["dimensions"]
-	var barrier_height := float(barrier_spec["height"])
-	for barrier_x: float in barrier_spec["x_positions"]:
-		var barrier := _create_static_box(
-			"QuayBarrier",
-			Vector3(barrier_x, barrier_height * 0.5, float(barrier_spec["center_z"])),
-			Vector3(barrier_dimensions.x, barrier_height, barrier_dimensions.y),
-			Color("#9b8f69")
-		)
-		barrier.set_meta("harbor_feature", "quay_barrier")
 
 	for anchor_id: String in ["crude_intake", "product_dispatch"]:
 		var area := WorldLayoutScript.area_by_id(anchor_id)
@@ -351,15 +369,11 @@ func _build_area_platforms() -> void:
 					area_root
 				)
 		else:
-			var footprint := _create_visual_box(
-				"AreaFootprint",
-				Vector3(center.x, elevation + 0.007, center.y),
-				Vector3(dimensions.x, 0.014, dimensions.y),
-				platform_color,
-				area_root
-			)
-			footprint.set_meta("canonical_area_id", area_id)
-			footprint.set_meta("surface_role", "future_locked" if String(area["kind"]) == "reserved" else "area_footprint")
+			# The continuous terrain mesh owns the visible pad surface. Full-area
+			# overlays previously sat beneath road/pad overlays and recreated the
+			# localized coplanar flicker seen in v0.31.0.
+			area_root.set_meta("terrain_pad", bool(area.get("terrain_pad", false)))
+			area_root.set_meta("pad_color", platform_color)
 
 		_create_area_outline(area, area_root)
 		_create_area_label(area, area_root)
@@ -368,62 +382,49 @@ func _build_area_platforms() -> void:
 func _build_roads() -> void:
 	for road: Dictionary in WorldLayoutScript.ROAD_SPECS:
 		var road_id := String(road["id"])
-		var center: Vector2 = road["center"]
-		var dimensions: Vector2 = road["dimensions"]
 		var road_class := String(road["class"])
-		var color := COLOR_MAIN_ROAD if road_class == "main" else COLOR_SERVICE_ROAD
-		var road_node: Node3D
-		if String(road.get("kind", "flat")) == "ramp":
-			road_node = _create_road_ramp(road, color)
-		else:
-			var elevation := float(road.get("elevation", 0.0))
-			road_node = _create_visual_box(
-				road_id,
-				Vector3(center.x, elevation + WorldLayoutScript.ROAD_ELEVATION, center.y),
-				Vector3(dimensions.x, SURFACE_VISUAL_THICKNESS, dimensions.y),
-				color
-			)
+		var road_node := Node3D.new()
+		road_node.name = road_id
+		add_child(road_node)
 		road_node.set_meta("road_id", road_id)
 		road_node.set_meta("surface_role", "main_road" if road_class == "main" else "service_road")
+		road_node.set_meta("render_owner", "IndustrialGround")
 		road_node.set_meta("canonical_rect", WorldLayoutScript.road_rect(road))
+		if String(road.get("kind", "flat")) == "grade":
+			road_node.set_meta(
+				"grade_percent",
+				absf(float(road["to_elevation"]) - float(road["from_elevation"]))
+				/ float(Vector2(road["dimensions"]).y) * 100.0
+			)
 		road_nodes[road_id] = road_node
 
 
 func _build_paths() -> void:
 	for path_spec: Dictionary in WorldLayoutScript.PATH_SPECS:
 		var path_id := String(path_spec["id"])
-		var center: Vector2 = path_spec["center"]
-		var dimensions: Vector2 = path_spec["dimensions"]
-		var elevation := float(path_spec.get("elevation", 0.0))
-		var path_node := _create_visual_box(
-			path_id,
-			Vector3(center.x, elevation + WorldLayoutScript.PEDESTRIAN_PATH_ELEVATION, center.y),
-			Vector3(dimensions.x, SURFACE_VISUAL_THICKNESS, dimensions.y),
-			COLOR_PATH
-		)
+		var path_node := Node3D.new()
+		path_node.name = path_id
+		add_child(path_node)
 		path_node.set_meta("path_id", path_id)
 		path_node.set_meta("surface_role", "pedestrian_route")
-		path_node.set_meta("surface_elevation", elevation)
+		path_node.set_meta("render_owner", "IndustrialGround")
+		path_node.set_meta("surface_elevation", float(path_spec.get("elevation", 0.0)))
 		path_nodes[path_id] = path_node
 
 
 func _build_prototype_pads() -> void:
-	var process_pad := _create_visual_box(
-		"PrototypeProcessPad",
-		Vector3(0.0, WorldLayoutScript.BASE_GRADE_ELEVATION + 0.009, 0.0),
-		Vector3(31.0, 0.018, 13.0),
-		COLOR_PROTOTYPE_PAD
-	)
+	var process_pad := Node3D.new()
+	process_pad.name = "PrototypeProcessPad"
+	process_pad.set_meta("canonical_bounds", WorldLayoutScript.PILOT_PROCESS_PAD_BOUNDS)
+	process_pad.set_meta("render_owner", "IndustrialGround")
 	process_pad.set_meta("surface_role", "pilot_process")
+	add_child(process_pad)
 	var build_bounds := WorldLayoutScript.build_bounds()
 	var build_center := build_bounds.get_center()
 	var build_elevation := WorldLayoutScript.area02_surface_elevation()
-	area02_build_overlay = _create_visual_box(
-		"Area02BuildOverlay",
-		Vector3(build_center.x, build_elevation + 0.011, build_center.y),
-		Vector3(build_bounds.size.x, 0.02, build_bounds.size.y),
-		COLOR_BUILD_PAD
-	)
+	area02_build_overlay = Node3D.new()
+	area02_build_overlay.name = "Area02BuildOverlay"
+	add_child(area02_build_overlay)
 	area02_build_overlay.set_meta("surface_role", "buildable_area")
 	area02_build_overlay.set_meta("canonical_bounds", build_bounds)
 	build_visual_nodes.append(area02_build_overlay)
@@ -648,33 +649,6 @@ func set_build_visualization_visible(value: bool) -> void:
 			visual.visible = value
 
 
-func _create_road_ramp(road: Dictionary, color: Color) -> StaticBody3D:
-	var from_terrace := WorldLayoutScript.terrace_by_id(String(road["from_terrace"]))
-	var to_terrace := WorldLayoutScript.terrace_by_id(String(road["to_terrace"]))
-	var low_elevation := float(from_terrace["elevation"])
-	var high_elevation := float(to_terrace["elevation"])
-	var center: Vector2 = road["center"]
-	var dimensions: Vector2 = road["dimensions"]
-	var rise := high_elevation - low_elevation
-	var run := dimensions.y
-	var thickness := 0.18
-	var angle := atan(rise / run)
-	var slope_length := sqrt(run * run + rise * rise)
-	var center_y := (low_elevation + high_elevation) * 0.5 - cos(angle) * thickness * 0.5
-	var ramp := _create_static_box(
-		String(road["id"]),
-		Vector3(center.x, center_y, center.y),
-		Vector3(dimensions.x, thickness, slope_length),
-		color
-	)
-	ramp.rotation.x = angle if String(road.get("direction", "north")) == "north" else -angle
-	ramp.set_meta("from_terrace", String(road["from_terrace"]))
-	ramp.set_meta("to_terrace", String(road["to_terrace"]))
-	ramp.set_meta("grade_percent", absf(rise / run) * 100.0)
-	_set_shadow_casting(ramp, false)
-	return ramp
-
-
 func _create_access_ramp(area: Dictionary, side: String, parent: Node3D) -> void:
 	var center: Vector2 = area["center"]
 	var dimensions: Vector2 = area["dimensions"]
@@ -798,19 +772,6 @@ func _create_static_box(
 	mesh_instance.material_override = _material(color)
 	body.add_child(mesh_instance)
 
-	var collision := CollisionShape3D.new()
-	var shape := BoxShape3D.new()
-	shape.size = size
-	collision.shape = shape
-	body.add_child(collision)
-	return body
-
-
-func _create_collision_box(node_name: String, position: Vector3, size: Vector3) -> StaticBody3D:
-	var body := StaticBody3D.new()
-	body.name = node_name
-	body.position = position
-	add_child(body)
 	var collision := CollisionShape3D.new()
 	var shape := BoxShape3D.new()
 	shape.size = size

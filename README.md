@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.31.0 – Harbor & Terraced World Rescale**
+**Prototypeversjon: 0.31.1 – World Intimacy & Natural Grade Pass**
 
 CrudeWorks is a first-person refinery-builder prototype. The player starts with
 a manual Pilot process, unlocks Area 02, builds directed refinery routes,
@@ -10,14 +10,14 @@ approved diesel.
 
 ## Current phase
 
-**v0.31.0 — HARBOR & TERRACED WORLD RESCALE.** The meaningful refinery is now a
-compact 230 x 395 m progression from Harbor through Lower and Main Plant to
-Upper Plant at 0/5/10/16 m. One 8 m road spine and three gentle ramps provide
-the primary navigation axis; smaller area footprints, a recognizable quay,
-central Control/LAB/Maintenance shells and uphill VDU/FCC reservations replace
-the former flat scattered-field reading. Pilot, active Area 02, functional
-CI/PD, build-menu behavior and all process gameplay remain unchanged pending
-human approval of the macro world.
+**v0.31.1 — WORLD INTIMACY & NATURAL GRADE PASS.** Playable land is now 214 x
+264 m, with an approximately 41-second normal-walk route from Harbor to the
+current Upper Plant. One continuous terrain mesh rises from 0 to +10.5 m;
+locally level process pads are shaped into it instead of sitting on four giant
+terraces. Harbor has one shoreline barrier, the gate sign faces the Harbor
+approach, and roads/pads are materials in the authoritative terrain rather than
+coplanar floor overlays. Pilot, active Area 02, functional CI/PD, saves and all
+process gameplay remain unchanged pending human approval.
 
 Quick orientation:
 
@@ -119,13 +119,13 @@ Den første komplette «vertical slice»-en inneholder:
   Area 02, CI/PD, CDU, VDU/FCC og generatorbrensel
 - filterrestriksjon uttrykkes som avledet pumpekapabilitet, restriksjon/ΔP og
   oppnåelig flow; ingen avledet hydraulikk eller duplikatbeholdning lagres
-- kanonisk terrassert Graybox World med 230 x 395 m meningsfullt fotavtrykk,
-  Harbor/quay, 0/5/10/16 m progresjonsnivåer, én hovedvei, korte servicegrener,
-  kollisjonsgrenser, deep-water recovery og live debug-koordinater
+- kanonisk Graybox World med 214 x 264 m spillbart land, Harbor/quay, naturlig
+  0–10,5 m innlandsstigning, lokalt flate prosesspads, én hovedvei, korte
+  servicegrener, tydelig shoreline recovery og live debug-koordinater
 - fysisk integrert Pilot-start med kort ganglinje, monterte retnings-/prosesskilt,
   åpen overgang mot det senere hovedraffineriet og testet fresh-save
   produksjon, salg, bygging og reload/resume
-- nær-flush graybox-underlag, ramper uten små kantkollisjoner, gjenbrukbare
+- ett sammenhengende graybox-terreng uten koplanare gulvlag, gjenbrukbare
   fysiske skilt, tydelig materialhierarki og ikke-funksjonelle
   distriktslandemerker for menneskelig navigasjonstest
 
@@ -179,9 +179,9 @@ Utviklingslagringer der alle spillerbygg fortsatt ligger på den gamle v0.30.2-
 flaten, flyttes samlet og deterministisk til den kanoniske Area 02-plattformen.
 Relative posisjoner, rotasjoner, rør og stabile ID-er bevares; spilleren flyttes
 ikke av denne Area 02-migreringen, og save-formatet er fortsatt versjon 2.
-Spillerposisjoner som var gyldige i den gamle 600 x 400 m-verdenen, men ligger
-utenfor den kompakte v0.31.0-verdenen, flyttes trygt til Harbor uten at prosess,
-økonomi eller konstruksjon forkastes.
+Spillerposisjoner som var gyldige i den gamle 600 x 400 m-verdenen eller den
+større v0.31.0-verdenen, men ligger utenfor v0.31.1, flyttes trygt til Harbor
+uten at prosess, økonomi eller konstruksjon forkastes.
 
 ## Styring
 

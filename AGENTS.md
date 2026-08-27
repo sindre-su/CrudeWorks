@@ -19,15 +19,16 @@ The game must be:
 
 ## Current project phase — authoritative
 
-**HARBOR & TERRACED WORLD RESCALE COMPLETE** at version `0.31.0`, pending human
-macro-world approval. The meaningful world now progresses Harbor -> Lower ->
-Main -> Upper at 0/5/10/16 m through one primary road. Pilot, the v0.30.3 Area
-02 spatial contract, v0.30.4 build menu and all process behavior remain proven.
+**WORLD INTIMACY & NATURAL GRADE PASS COMPLETE** at version `0.31.1`, pending
+human macro-world approval. Playable land is 214 x 264 m and rises continuously
+from Harbor at 0 m to Upper Plant at +10.5 m through one primary road. Pilot,
+the v0.30.3 Area 02 spatial contract, v0.30.4 build menu and all process
+behavior remain proven.
 Functional CI/PD stay once on the active Area 02 compatibility anchors while
 their exact final Harbor areas are non-gameplay reservations. Broader Main
 Refinery equipment, Utilities, storage, LAB, CDU/HT/VDU/FCC and logistics
 migration has not started. Do not begin functional migration until a real
-1280 x 720 Harbor-to-Upper walk approves scale, navigation and terrace feel.
+1280 x 720 Harbor-to-Upper walk approves scale, navigation and natural grade.
 
 Use the documents for their distinct roles:
 

@@ -165,7 +165,7 @@ static func migrate_snapshot(snapshot) -> Dictionary:
 	if version == FORMAT_VERSION:
 		var current: Dictionary = snapshot.duplicate(true)
 		var spatially_migrated := _migrate_legacy_area02_construction(current)
-		var player_recovered := _migrate_v0304_player_position(current)
+		var player_recovered := _migrate_legacy_world_player_position(current)
 		return {
 			"ok": true,
 			"message": (
@@ -213,7 +213,7 @@ static func migrate_snapshot(snapshot) -> Dictionary:
 		report["delivery_bonus"] = 0
 	migrated["format_version"] = FORMAT_VERSION
 	_migrate_legacy_area02_construction(migrated)
-	_migrate_v0304_player_position(migrated)
+	_migrate_legacy_world_player_position(migrated)
 	return {"ok": true, "message": "Lagringen er oppgradert til format 2.", "data": migrated}
 
 
@@ -257,7 +257,7 @@ static func _migrate_legacy_area02_construction(snapshot: Dictionary) -> bool:
 	return true
 
 
-static func _migrate_v0304_player_position(snapshot: Dictionary) -> bool:
+static func _migrate_legacy_world_player_position(snapshot: Dictionary) -> bool:
 	var player = snapshot.get("player", {})
 	if typeof(player) != TYPE_DICTIONARY or not _valid_vector(player.get("position"), 3):
 		return false
@@ -267,7 +267,10 @@ static func _migrate_v0304_player_position(snapshot: Dictionary) -> bool:
 	)
 	if WorldLayoutScript.player_position_is_valid(position):
 		return false
-	if not WorldLayoutScript.legacy_v0304_player_position(position):
+	if (
+		not WorldLayoutScript.legacy_v0310_player_position(position)
+		and not WorldLayoutScript.legacy_v0304_player_position(position)
+	):
 		return false
 	player["position"] = [
 		WorldLayoutScript.NEW_GAME_SPAWN.x,
@@ -279,8 +282,10 @@ static func _migrate_v0304_player_position(snapshot: Dictionary) -> bool:
 	var migrations: Array = stored_migrations.duplicate() if typeof(stored_migrations) == TYPE_ARRAY else []
 	if "world_v0310_player_recovery" not in migrations:
 		migrations.append("world_v0310_player_recovery")
+	if "world_v0311_player_recovery" not in migrations:
+		migrations.append("world_v0311_player_recovery")
 	snapshot["spatial_migrations"] = migrations
-	snapshot["game_version"] = ProjectSettings.get_setting("application/config/version", "0.31.0")
+	snapshot["game_version"] = ProjectSettings.get_setting("application/config/version", "0.31.1")
 	return true
 
 

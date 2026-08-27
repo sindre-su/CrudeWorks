@@ -11,12 +11,12 @@ For long-term design, Graybox direction and scope, see `CRUDEWORKS_VISION.md`,
   coordination. It does not own macro-world geometry, bounds, Area 02 material
   or topology rules.
 - `scripts/world_layout.gd`: sole authority for canonical world coordinates,
-  four terrace specifications, area purpose/footprint/elevation/access, the
-  Harbor-to-Upper road sequence, Area 02 build bounds/fixed compatibility
+  natural grade and progression districts, area purpose/footprint/elevation/
+  access, the Harbor-to-Upper road sequence, Area 02 build bounds/fixed compatibility
   anchors, final Harbor logistics reservations, spawn and player/save/recovery
   bounds. Old world/build rectangles are migration-only data.
-- `scripts/world_builder.gd`: primitive macro terrain, terrace/retaining masses,
-  Harbor/quay, roads, flush paths, vehicle-grade ramps, boundaries,
+- `scripts/world_builder.gd`: one primitive multi-material terrain mesh with
+  shaped local pads, Harbor/quay, integrated roads/paths, boundaries,
   non-gameplay landmark shells, starter wayfinding, collision and retained
   compatibility pads. It consumes `WorldLayout` and owns no gameplay or
   persisted process state.
@@ -130,12 +130,12 @@ utility/trip state and stable identifiers; it rebuilds derived state and restore
 pumps stopped. Existing v0.27/v0.28-compatible saves remain supported through
 validated migration/fallback paths.
 
-v0.31.0 replaces the broad flat 600 x 400 m plan with canonical 240 x 405 m
-player bounds and a 230 x 395 m meaningful terrace footprint. Harbor, Lower,
-Main and Upper are at 0, +5, +10 and +16 m. Four flat main-road sections and
-three <=10% collision ramps form one continuous inward/uphill navigation
-sequence. Raised terrace masses leave a canonical road notch so ramps meet each
-flat without colliding with a hidden vertical retaining face.
+v0.31.1 uses 214 x 268 m player bounds and 214 x 264 m visible land. Harbor is
+flat through z `-42`; one continuous terrain grade then reaches +10.5 m at z
+`-200`. Lower/Main/Upper are planning districts with local pads at +3.5/+7.0/
++10.5 m, not map-wide shelves. `IndustrialGround` is one multi-material mesh;
+its collision derives from the same triangles, while roads, paths, Pilot and
+future pads are material regions rather than stacked floor meshes.
 
 The functional `operations_hub` remains unchanged at x `80..160`, z `-40..20`,
 surface `+0.75 m` as an explicit Harbor compatibility pocket. One 4 m safety
@@ -153,10 +153,11 @@ height receive one all-or-nothing translation `(120, 0.61, -34)`. This keeps
 relative layout, rotations, connections and IDs. Mixed/ambiguous layouts are
 not guessed, fixed CI/PD are rebuilt from their stable IDs rather than persisted
 positions. No schema bump was needed. Valid saved player positions in the old
-600 x 400 m world but outside v0.31.0 bounds recover to the Harbor spawn during
-migration without changing construction or process state. Deep water at z
-`76+`, world exits and falls below y `-20` use the same runtime safe recovery;
-unknown positions outside both current and legacy bounds remain corrupt.
+600 x 400 m world or v0.31.0 bounds but outside v0.31.1 recover to Harbor
+without changing construction or process state. Visible land ends at the
+physical Harbor edge at z `64`; deep water at z `64.5+`, world exits and falls
+below y `-20` use the same recovery. Unknown positions outside recognized
+current/legacy bounds remain corrupt.
 
 Graybox relocation must preserve stable IDs/semantics where saves and process
 routes depend on them, retain process-network ports and interactions, and avoid
@@ -164,13 +165,13 @@ placing visual duplicate equipment that looks functional but has no model state.
 
 ## Scope boundary
 
-The v0.28.2 process foundation remains frozen in v0.31.0. The existing fixed
+The v0.28.2 process foundation remains frozen in v0.31.1. The existing fixed
 Pilot is now verified as one complete fresh-save world loop without relocating
 its stable IDs or absolute coordinates. CI-101/PD-101 and Area 02 building are
 retained as functional compatibility, while Main CDU, VDU, FCC, HT-201,
 routing, storage, LAB, utilities, controls, alarms and maintenance remain
 functionally compact and await deliberate migration after human approval of the
-terraced world. New major process families, detailed hydraulics and detailed
+natural-grade world. New major process families, detailed hydraulics and detailed
 thermal simulation require an explicit post-Graybox gameplay decision.
 
 `EquipmentCatalog.ORDER` is the full hotbar contract, while `BuildController`
@@ -192,8 +193,8 @@ types remain unchanged.
 - `tests/main_built_loop_test.gd`: end-to-end world/UI integration.
 - `tests/save_system_test.gd`: persistence, validation and migrations.
 - `tests/world_layout_test.gd`: canonical bounds, target footprints, legacy
-  coordinates, semantic surfaces, reusable signs, non-gameplay landmarks,
-  every ramp, the starter-to-CDU route and non-duplicated bounds authority.
+  coordinates, one terrain surface, natural grade, reusable signs,
+  non-gameplay landmarks, full Harbor-to-Upper traversal and bounds authority.
 - `tests/pilot_world_integration_test.gd`: fresh southwest spawn, physical
   starter context, Pilot troubleshooting/production/sale, post-sale building,
   disk persistence and deliberate resume after reload.

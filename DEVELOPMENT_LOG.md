@@ -1,5 +1,37 @@
 # CrudeWorks Development Log
 
+## v0.31.1 — World Intimacy & Natural Grade Pass
+
+- Human v0.31.0 playtesting found a 60-second Harbor-to-Upper walk, shelf-like
+  terraces, localized floor flicker, false walkable Harbor ground, duplicate
+  barriers and a gate sign readable from the wrong side.
+- Reduced visible land from 230 x 395 m to 214 x 264 m. The canonical
+  Harbor-to-Upper road route is about 248 m / 41 seconds at normal walk speed;
+  non-functional area pads were reduced and clustered while the functional
+  80 x 60 m Area 02 contract stayed unchanged.
+- Replaced four full-width terrace masses and three separate ramps with one
+  continuous terrain mesh: flat Harbor transitions into a 158 m, approximately
+  6.6% inland grade reaching +10.5 m. Lower/Main/Upper pads are locally shaped
+  flat at +3.5/+7.0/+10.5 m with short blended embankments.
+- Eliminated the floor-flicker root cause. Full-area footprint overlays, road
+  overlays, path overlays and the Pilot pad no longer stack over ground; their
+  materials are separate surfaces in the same authoritative terrain mesh, and
+  collision derives from those same triangles. The Area 02 build zone now uses
+  boundary lines without a duplicate full-pad floor.
+- Aligned visible land, water and recovery: land ends at z 64, one physical
+  quay safety edge blocks access, sea begins beyond it and z 64.5+ remains a
+  safe fallback recovery. Removed the separate south perimeter wall and the
+  segmented parallel quay barrier layer.
+- Rotated the complete Main Refinery gate sign assembly to face the Harbor
+  approach. The board still derives its arrow/target from canonical wayfinding.
+- Added deterministic checks for natural elevation ordering, flat local pads,
+  non-overlapping rendered road regions, one Harbor barrier, shoreline/OOB
+  consistency, sign facing, full route traversal and v0.31.0 player recovery.
+  Player-height and overview renders covered the old flicker junction, gate,
+  grade and shoreline.
+- No process, utility, economy, progression, equipment ID, Area 02 construction
+  or functional CI/PD migration occurred. Process Scope Freeze remains active.
+
 ## v0.31.0 — Harbor & Terraced World Rescale
 
 - Replaced the flat, scattered 600 x 400 m area plan with a compact 230 x 395 m
