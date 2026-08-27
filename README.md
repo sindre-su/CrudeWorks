@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.30.4 – Graybox Readability & Build Menu Cleanup**
+**Prototypeversjon: 0.31.0 – Harbor & Terraced World Rescale**
 
 CrudeWorks is a first-person refinery-builder prototype. The player starts with
 a manual Pilot process, unlocks Area 02, builds directed refinery routes,
@@ -10,14 +10,14 @@ approved diesel.
 
 ## Current phase
 
-**v0.30.4 — GRAYBOX READABILITY & BUILD MENU CLEANUP.** The obsolete Pilot-side
-Crude Intake board is removed. Operations–Storage now uses two clean, flush,
-non-overlapping 5 m pedestrian segments. Build Mode teaches `Tank → Pump →
-Manual Valve → Heater → Distillation Column` on keys `1–5`; Diesel Treater is
-`6`. The functional Crude Feed Header and Product Routing Header stay intact,
-but remain hidden until the first atmospheric product makes multi-train or
-multi-storage routing meaningful. The v0.30.3 Area 02 spatial contract is
-unchanged.
+**v0.31.0 — HARBOR & TERRACED WORLD RESCALE.** The meaningful refinery is now a
+compact 230 x 395 m progression from Harbor through Lower and Main Plant to
+Upper Plant at 0/5/10/16 m. One 8 m road spine and three gentle ramps provide
+the primary navigation axis; smaller area footprints, a recognizable quay,
+central Control/LAB/Maintenance shells and uphill VDU/FCC reservations replace
+the former flat scattered-field reading. Pilot, active Area 02, functional
+CI/PD, build-menu behavior and all process gameplay remain unchanged pending
+human approval of the macro world.
 
 Quick orientation:
 
@@ -119,9 +119,9 @@ Den første komplette «vertical slice»-en inneholder:
   Area 02, CI/PD, CDU, VDU/FCC og generatorbrensel
 - filterrestriksjon uttrykkes som avledet pumpekapabilitet, restriksjon/ΔP og
   oppnåelig flow; ingen avledet hydraulikk eller duplikatbeholdning lagres
-- kanonisk 600 x 400 m Graybox World med sørvendt hav, nordisk land-/skogskant,
-  alle planlagte V1-områder, hoved-/serviceveier, plattformramper, kollisjonsgrenser,
-  sørvestlig spawn og live debug-koordinater uten å flytte gamle saves
+- kanonisk terrassert Graybox World med 230 x 395 m meningsfullt fotavtrykk,
+  Harbor/quay, 0/5/10/16 m progresjonsnivåer, én hovedvei, korte servicegrener,
+  kollisjonsgrenser, deep-water recovery og live debug-koordinater
 - fysisk integrert Pilot-start med kort ganglinje, monterte retnings-/prosesskilt,
   åpen overgang mot det senere hovedraffineriet og testet fresh-save
   produksjon, salg, bygging og reload/resume
@@ -178,7 +178,10 @@ batch som Standard-råolje uten å gi en ny batch eller bonus.
 Utviklingslagringer der alle spillerbygg fortsatt ligger på den gamle v0.30.2-
 flaten, flyttes samlet og deterministisk til den kanoniske Area 02-plattformen.
 Relative posisjoner, rotasjoner, rør og stabile ID-er bevares; spilleren flyttes
-ikke, og save-formatet er fortsatt versjon 2.
+ikke av denne Area 02-migreringen, og save-formatet er fortsatt versjon 2.
+Spillerposisjoner som var gyldige i den gamle 600 x 400 m-verdenen, men ligger
+utenfor den kompakte v0.31.0-verdenen, flyttes trygt til Harbor uten at prosess,
+økonomi eller konstruksjon forkastes.
 
 ## Styring
 

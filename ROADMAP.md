@@ -2,13 +2,14 @@
 
 ## Current baseline
 
-Version 0.30.4 retains the tested v0.28.2 process foundation, v0.29.0 canonical
-600 x 400 m world, v0.30.0 functional Pilot, v0.30.2 visual-stability pass and
-v0.30.3 Area 02 spatial contract. The elevated `operations_hub` remains the
-single runtime Area 02 source. The readability pass removes obsolete Pilot
-instruction, gives Operations–Storage one clean 5 m pedestrian link and orders
-early construction around the taught physical process flow. Other Main
-Refinery functional areas remain unmigrated.
+Version 0.31.0 retains the tested v0.28.2 process foundation, functional Pilot,
+v0.30.3 Area 02 spatial contract and v0.30.4 build-menu/readability behavior.
+It replaces the broad flat 600 x 400 m plan with a 230 x 395 m meaningful
+Harbor -> Lower -> Main -> Upper terrace footprint at 0/5/10/16 m. One primary
+road spine and three gentle ramps now communicate progression inland/uphill.
+The elevated `operations_hub` remains the single runtime Area 02 source and
+functional CI/PD compatibility pocket; other Main Refinery systems remain
+unmigrated pending human approval of the new macro world.
 
 The underlying foundation has a tested pilot plant and a substantial Area 02 refinery
 slice: free building, directed process networks, multiple independent trains,
@@ -38,17 +39,15 @@ running sales pump before it can invoke the existing dispatch transaction.
 
 ## Current priority
 
-**Human-retest v0.30.4 Graybox readability, then reassess the next small Main
-Refinery slice.** Automated coverage now walks the complete
-spawn → Pilot → Crude Intake → gate → Operations → CDU route without jumping,
-and validates canonical build placement, CI/PD direction, save migration,
-clean path geometry and hotbar mapping. A real 1280 × 720 WASD retest must
-confirm sign clarity, path feel, port access, equipment spacing and the 10–20
-minute Pilot demonstration. Later
-graybox acceptance must still
-validate port aiming, pipe/valve readability, alarms, tank levels, LAB-101,
-LS-201, utilities, VDU/FCC placement and pump-condition pacing. Headless tests
-protect logic; they cannot replace human play.
+**Human-playtest v0.31.0 Harbor & Terraced World before any functional
+migration.** Automated coverage validates the four elevations, non-overlapping
+area reservations, one Harbor-to-Upper road sequence, all three main ramps,
+deep-water/world recovery, unchanged Area 02 placement and save compatibility.
+A real 1280 x 720 WASD pass must judge Harbor/Pilot containment, uphill/downhill
+orientation, terrace scale, landmark reading, purposeful empty space and the
+Harbor-to-Upper travel feel. It must also recheck Pilot signs, ports and the
+10–20 minute demonstration. Headless tests protect contracts; they cannot
+approve world feel.
 
 Utilities are now mechanically meaningful and have focused automated coverage:
 PG/GF/MCC/IA/CT/CWP field state, contextual interlocks, fail-safe behavior,
@@ -97,7 +96,7 @@ requires a post-graybox player-value decision, not process completeness alone.
 | Standard gross output | ~5,000 kr | 300 L Naphtha, 350 L Diesel, 350 L Heavy Residue at target |
 | HT-201 / PU-101 / VDU-301 / FCC-401 | 800 / 700 / 1,200 / 2,200 kr | Reachable after a successful first physical delivery; exact feel still needs human QA |
 
-v0.30.4 retains the existing equipment prices and fixed Utilities Yard at
+v0.31.0 retains the existing equipment prices and fixed Utilities Yard at
 no purchase cost. IA-101 and CWP-101 add 35 kW, so one first atmospheric train
 uses 70 kW before commissioning, 80 kW with LAB/LS, and 100 kW with Sour
 treatment. PU-101 still doubles generation to 200 kW for concurrent trains and
@@ -119,8 +118,10 @@ Establish the total site footprint, human-scale convention, major zones,
 approximate travel distances, sightlines and deliberately empty expansion pads.
 The compact prototype layout is not the target world.
 
-**Status: complete in v0.29.0.** Canonical dimensions and all planned area
-footprints are implemented and documented.
+**Status: rescaled in v0.31.0; awaiting human approval.** The original v0.29.0
+flat 600 x 400 m plan proved too large and spatially weak. Canonical dimensions,
+four terraces and rationalized area footprints now implement the compact
+Harbor-to-Upper direction documented in `WORLD_DESIGN.md`.
 
 ### 2. Roads, Paths & Boundaries
 
@@ -129,10 +130,11 @@ maintenance/parking approaches, entrances, fences/gates, safe edges and
 reliable out-of-bounds recovery. Reserve routes that can support future simple
 site transport without implementing transport now.
 
-**Status: visual-stability cleanup complete in v0.30.2.** Main/service roads,
-near-flush pedestrian overlays, lip-free modular ramps, a coherent open starter
-gate, perimeter collision and Nordic coastal borders exist. Detailed parking
-and dressing remain later graybox refinement.
+**Status: terraced road hierarchy complete in v0.31.0; awaiting human
+approval.** One 8 m primary road climbs all four levels through three <=10%
+ramps. Short service branches, near-flush pedestrian overlays, an open Harbor
+gate, quay safety, perimeter collision and deep-water recovery exist. Detailed
+parking and dressing remain later graybox refinement.
 
 ### 3. Functional Area Migration
 
@@ -141,14 +143,13 @@ Tank Farm, LAB-101 and PD-101 into their intended zones. Preserve IDs,
 interactions, ports, process topology and saves where practical. Do not place
 visual duplicates of functional equipment.
 
-**Status: Pilot slice complete and visually stable; Area 02 spatial contract
-complete in v0.30.3 and readability cleanup complete in v0.30.4.** Starter
-gameplay remains integrated without relocation.
-The functional CI-101 and PD-101 now occupy canonical upstream/downstream
-support anchors on the Operations Hub and face inward through their real port
-transforms. Crude/main storage, CDU/HT, Utilities, LAB, dedicated logistics
-pads, VDU and FCC migration remains pending and must proceed in smaller
-validated slices.
+**Status: paused for v0.31.0 macro-world approval.** Pilot remains complete and
+visually stable; Area 02 remains on its v0.30.3 platform. Functional CI-101 and
+PD-101 remain once at the Operations Hub compatibility anchors, while exact
+final Harbor CI/PD reservations now exist as non-gameplay Graybox areas. Crude
+storage, CDU/HT, Utilities, product storage, LAB, dedicated logistics, VDU and
+FCC migration remains pending and must proceed in smaller validated slices only
+after the terrace layout passes human playtesting.
 
 ### 4. Control Room & Expansion Graybox
 
@@ -156,6 +157,10 @@ Create the physical shell/location for the future Control Room, retain LS-201 as
 the current local-control seed, and reserve accessible pads for VDU, FCC,
 future Naphtha work and utility/Steam expansion. Do not implement a full Control
 Room or new process systems in this step.
+
+**Spatial reservation complete in v0.31.0.** Control Room, LAB and Maintenance
+shells occupy the central Main terrace. VDU/FCC and approved-later expansion
+occupy the far Upper terrace. Functional migration and gameplay remain pending.
 
 ### 5. Full Graybox Gameplay Pass
 

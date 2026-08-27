@@ -26,6 +26,7 @@ func _run_tests() -> void:
 	var snapshot: Dictionary = source_main._build_snapshot()
 	_test_schema_validation(snapshot, source_main)
 	_test_area02_spatial_migration(snapshot)
+	_test_v0304_player_recovery(snapshot)
 	_test_canonical_area02_save_states(snapshot)
 	_test_optional_delivery_report_validation(snapshot)
 	_test_disk_round_trip(snapshot)
@@ -207,6 +208,33 @@ func _test_area02_spatial_migration(snapshot: Dictionary) -> void:
 	_expect(
 		legacy["player"] == migration["data"]["player"],
 		"Area 02 construction migration does not silently move the saved player"
+	)
+
+
+func _test_v0304_player_recovery(snapshot: Dictionary) -> void:
+	var old_world_snapshot := snapshot.duplicate(true)
+	old_world_snapshot["game_version"] = "0.30.4"
+	old_world_snapshot["player"]["position"] = [400.0, 0.1, 0.0]
+	old_world_snapshot["player"]["rotation_y"] = 1.75
+	var migration := SaveSystemScript.migrate_snapshot(old_world_snapshot)
+	_expect(
+		migration["ok"]
+		and migration["data"].get("spatial_migrations", []).has("world_v0310_player_recovery")
+		and Vector3(
+			float(migration["data"]["player"]["position"][0]),
+			float(migration["data"]["player"]["position"][1]),
+			float(migration["data"]["player"]["position"][2])
+		).is_equal_approx(WorldLayoutScript.NEW_GAME_SPAWN)
+		and SaveSystemScript.validate_snapshot(migration["data"])["ok"],
+		"valid v0.30.4 broad-world player positions recover to Harbor without discarding refinery state"
+	)
+	var corrupt_snapshot := snapshot.duplicate(true)
+	corrupt_snapshot["player"]["position"] = [900.0, 0.1, 0.0]
+	var corrupt_migration := SaveSystemScript.migrate_snapshot(corrupt_snapshot)
+	_expect(
+		corrupt_migration["ok"]
+		and not SaveSystemScript.validate_snapshot(corrupt_migration["data"])["ok"],
+		"unknown positions outside both current and legacy worlds remain rejected as corrupt"
 	)
 
 

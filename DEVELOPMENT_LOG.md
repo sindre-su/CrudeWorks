@@ -1,5 +1,39 @@
 # CrudeWorks Development Log
 
+## v0.31.0 — Harbor & Terraced World Rescale
+
+- Replaced the flat, scattered 600 x 400 m area plan with a compact 230 x 395 m
+  meaningful refinery footprint inside 240 x 405 m player bounds. The world now
+  progresses Harbor -> Lower -> Main -> Upper at 0, +5, +10 and +16 m.
+- Added canonical terrace purpose/footprint/elevation data and rationalized all
+  planned area sizes. Lower holds crude storage/CDU/HT/Utilities; Main holds
+  product storage plus central Control/LAB/Maintenance shells; Upper holds
+  VDU/FCC and approved-later expansion.
+- Built broad flat primitive terrace masses with retaining faces. Canonical road
+  notches prevent hidden vertical collisions where three 8 m, <=10% main-road
+  ramps meet the four flat road sections. Short service branches and one
+  Control-to-LAB pedestrian link remain local and foot-friendly.
+- Added a recognizable Harbor apron, continuous quay edge, simple barriers,
+  non-functional CI/PD logistics reservation masses and one warehouse mass.
+  Sea means outward; the single dark road and rising silhouettes mean
+  inland/deeper progression.
+- Preserved the entire functional Pilot and active Area 02 contract. Functional
+  CI-101/PD-101 remain once on the unchanged Operations Hub support anchors;
+  their final Harbor areas are exact non-gameplay reservations with no unit ID,
+  ports, inventory or persistence. Utilities, storage, LAB/LS, CDU/HT, VDU/FCC
+  and product tanks were intentionally not migrated.
+- Added safe migration for valid v0.30.4 player positions outside the compact
+  world: only player location/facing recover to Harbor, while construction,
+  process and economy remain unchanged. Runtime recovery now explicitly catches
+  deep water at z 76+, world exits and falls below y -20. Save format remains 2.
+- Expanded deterministic coverage for terrace elevations, non-overlapping
+  areas, exact Harbor anchors, road sequence/grade, canonical geometry
+  consumption, all active level ramps, deep-water recovery and old-world player
+  migration. Render inspection covered spawn, Harbor/inland reading and the
+  complete oblique terrace hierarchy at 1280 x 720.
+- Process Scope Freeze remains unchanged. The macro world requires human WASD
+  approval before any functional logistics or refinery migration proceeds.
+
 ## v0.30.4 — Graybox Readability & Build Menu Cleanup
 
 - Removed the obsolete Pilot-side Crude Intake wayfinding specification and

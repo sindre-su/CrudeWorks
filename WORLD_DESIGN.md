@@ -1,357 +1,212 @@
 # CrudeWorks Graybox World Design
 
-## Purpose and boundary
+## Purpose and current boundary
 
-This is the practical spatial brief for the next phase: **Graybox World**. It
-turns the long-term vision in `CRUDEWORKS_VISION.md` into layout constraints
-without prescribing final art, final equipment count or a transport feature.
-The current compact scene is a functional test layout, not the intended final
-site geography.
+This is the authoritative spatial brief for the CrudeWorks V1 Graybox World. It
+translates `CRUDEWORKS_VISION.md` into a compact, traversable refinery geography
+without prescribing final art, final equipment count or vehicle gameplay.
 
-Graybox answers: where everything is, how large it feels, how the player moves,
-whether field work is accessible and where the refinery can grow. It does not
-add new process families, detailed assets, vehicle gameplay or a complete
-Control Room.
+**Implementation status: v0.31.0 Harbor & Terraced World Rescale.** The active
+world now reads **Harbor -> Lower Plant -> Main Plant -> Upper Plant**. Broad
+geography, elevations, area footprints, Harbor anchors, one primary road spine,
+service branches, recovery and non-functional landmark shells derive from
+`scripts/world_layout.gd` and are rendered by `scripts/world_builder.gd`.
 
-**Implementation status:** Graybox World Program Work Package 1, v0.30.0 Pilot
-Integration, v0.30.1 Traversal Cleanup, v0.30.2 Visual Stability, v0.30.3
-Area 02 Spatial Coherence and v0.30.4 Readability Cleanup are complete. The
-macro world, canonical coordinates,
-area footprints, roads, boundaries, modular ramps, physical signs and collision
-skeleton are implemented. The fixed Pilot is proven in its canonical southwest
-footprint. Area 02 building plus CI-101/PD-101 now use the Operations Hub
-platform contract; broader Main Refinery equipment remains compact until later
-migration packages.
+The milestone changes macro world design only. Pilot, Area 02 building,
+functional CI-101/PD-101, Utilities, storage, LAB-101, LS-201, CDU/HT, VDU and
+FCC gameplay remain functionally where they were before v0.31.0 unless noted in
+the compatibility section below. The Process Scope Freeze remains in force.
 
-## Scale and navigation convention
+## Scale and coordinate convention
 
-Use **1 Godot world unit ≈ 1 metre** as the Graybox planning convention. The
-current player capsule is approximately human height and current equipment sizes
-already use metre-like dimensions, so new world geometry should preserve that
-relationship.
+Use **1 Godot world unit approximately equal to 1 metre**. World x is
+east/west; world z is north/south. North/inland is negative z. South/outward and
+the sea are positive z.
 
-The site should feel like a believable industrial facility scaled for play, not
-a 1:1 real refinery and not a miniature platform. Walking must remain useful
-inside a process block. Major-area distances should sometimes make a future
-bicycle or small utility vehicle feel worthwhile.
+The previous v0.30.4 world spread planned areas uniformly across a 600 x 400 m
+flat rectangle. v0.31.0 uses:
 
-Reserve from the first layout pass:
+- canonical player bounds x `-60..180`, z `-325..80`: **240 x 405 m**;
+- meaningful terrace footprint x `-55..175`, z `-320..75`: **230 x 395 m**;
+- terrain/safety buffer x `-90..210`, z `-355..120`;
+- canonical spawn `(-10, 0.1, 8)` in the Harbor Pilot footprint;
+- sea/outward at the southern edge; refinery/inland toward negative z.
 
-- a main site road connecting major zones and entrances;
-- service roads for utilities, maintenance and tank-farm access;
-- short walking paths and safe approach space at field equipment;
-- sensible stopping/parking space near the Pilot, Control Room, Workshop, LAB,
-  Utilities Yard and dispatch;
-- clear barriers, fences, locked gates and out-of-bounds recovery at site edges.
+The long dimension still makes a future bicycle useful from Harbor to Upper
+Plant, while neighboring equipment and local areas remain comfortable on foot.
+The larger old v0.30.4 bounds survive only as save-migration data.
 
-Transport is a future possibility, not a Graybox feature. Do not tune the map
-around a vehicle controller that does not exist; simply avoid paths, bridges or
-gaps that would make future site transport impossible.
+## Canonical terraces
 
-## Canonical coordinates and bounds
+Each operating terrace is broad and flat. Retaining masses create the visual
+level change; 8 m road ramps connect levels at no more than 10% grade.
+Individual process units never sit on sloping terrain.
 
-`scripts/world_layout.gd` is the single runtime source of truth for world,
-active-build, placement, save-validation, spawn and recovery bounds. World x is
-east/west and world z is north/south:
-
-- north is negative z; south and the sea are positive z;
-- the playable industrial site is x `-60..540`, z `-250..150`, exactly
-  **600 m east-west x 400 m north-south**;
-- the primitive terrain/safety buffer is x `-90..570`, z `-280..180`;
-- the sea begins beyond the southern shoreline at z `150`;
-- north, east and west use visible land/forest masses outside collision walls;
-- the canonical new-game/recovery spawn is `(-10, 0.1, 8)` in the southwest
-  Pilot/starter region.
-
-Base collision grade is `0.00 m`. Road and pedestrian colors are thin,
-non-colliding visual overlays centered at approximately `+0.012 m` and
-`+0.018 m`; their exposed difference is under one centimetre and cannot stop a
-player. Raised industrial platforms remain nominally `+0.75 m`. The Pilot
-footprint intentionally remains ground-level in Work Package 1 because its
-working equipment still uses the original absolute y coordinates. It will be
-re-evaluated when that functional area is migrated, rather than silently moving
-or burying working equipment.
-
-## Implemented v1 macro topology
+| Terrace ID | Center x/z | Footprint | Elevation | Purpose |
+| --- | ---: | ---: | ---: | --- |
+| `harbor` | `60 / 17.5` | 230 x 115 m | 0 m | Spawn, Pilot, logistics and active compatibility. |
+| `lower_plant` | `60 / -90` | 230 x 80 m | +5 m | Crude storage, first process block and early Utilities. |
+| `main_plant` | `60 / -185` | 230 x 90 m | +10 m | Product storage, Control/LAB core and Maintenance. |
+| `upper_plant` | `60 / -285` | 230 x 70 m | +16 m | VDU, FCC and approved late expansion. |
 
 ```text
-NORTH / INLAND EDGE
+NORTH / INLAND / UPHILL
 
-[ UTILITIES ]   [ VDU ]   [ FCC ]   [ FUTURE EXPANSION ]
+[ VDU ] [ FCC ] -- MAIN ROAD -- [ LATE EXPANSION ]       +16 m
+                         |
+[ PRODUCT TANKS ] [ CONTROL + LAB ] -- [ MAINTENANCE ]    +10 m
+                         |
+[ CRUDE STORAGE ] [ CDU / HT ] -- [ UTILITIES ]            +5 m
+                         |
+[ PILOT ] [ HARBOR / QUAY ] [ CI / PD RESERVATIONS ]        0 m
 
-                [ CDU ]   [ HT ]
-
-[ PILOT ]       [ CONTROL + LAB ]   [ STORAGE ]
-
-[ CRUDE INTAKE ] ===== LOGISTICS ===== [ PRODUCT DISPATCH ]
-
-SOUTH / SEA
+SOUTH / SEA / OUTWARD
 ```
 
-The implemented footprints are deterministic data rather than coordinates
-duplicated in scene scripts:
+## Canonical area plan
 
-| Canonical ID | Center x/z | Footprint | Elevation | Work Package 1 role |
+Area definitions contain center, footprint, elevation, purpose, terrace,
+road/access relationship and buildability where relevant. They are not
+duplicated in `WorldBuilder`.
+
+| Area ID | Center x/z | Footprint | Elevation | Spatial role |
 | --- | ---: | ---: | ---: | --- |
-| `crude_intake` | `-10 / 75` | 80 x 70 m | +0.75 m | Dedicated logistics pad remains empty; CI-101 uses the interim Operations west-edge anchor. |
-| `pilot_plant` | `-10 / -10` | 75 x 75 m | ground | Southwest starter footprint containing the current Pilot neighborhood. |
-| `operations_hub` | `120 / -10` | 80 x 60 m | +0.75 m | Canonical Area 02 build platform with CI/PD edge support anchors; Control Room/LAB remain marked subareas. |
-| `control_room` | `105 / -10` | 30 x 22 m | +0.75 m | Marked sub-footprint only; no full control gameplay. |
-| `lab` | `145 / -10` | 24 x 20 m | +0.75 m | Marked sub-footprint only; LAB-101 is not migrated yet. |
-| `storage` | `260 / 5` | 150 x 120 m | +0.75 m | Crude/product tank-farm reserve. |
-| `cdu` | `120 / -105` | 100 x 90 m | +0.75 m | Main atmospheric process platform. |
-| `ht` | `260 / -105` | 90 x 80 m | +0.75 m | Diesel treatment platform. |
-| `utilities` | `0 / -195` | 110 x 90 m | +0.75 m | Dedicated support yard. |
-| `vdu` | `120 / -200` | 100 x 90 m | +0.75 m | Secondary-process platform. |
-| `fcc` | `260 / -197.5` | 110 x 95 m | +0.75 m | Secondary-process platform. |
-| `future_expansion` | `430 / -180` | 160 x 130 m | +0.75 m | Explicitly empty and reserved. |
-| `product_dispatch` | `440 / 75` | 90 x 70 m | +0.75 m | Dedicated road-facing pad remains empty; PD-101 uses the interim Operations east-edge anchor. |
+| `pilot_plant` | `-10 / 5` | 55 x 42 m | 0 m | Contained functional tutorial at Harbor. |
+| `crude_intake` | `42 / 50` | 40 x 30 m | 0 m | Exact final Harbor reservation for CI-101. |
+| `product_dispatch` | `135 / 50` | 50 x 30 m | 0 m | Exact final Harbor reservation for PD-101. |
+| `operations_hub` | `120 / -10` | 80 x 60 m | +0.75 m | Temporary active Area 02/CI/PD compatibility pocket. |
+| `crude_storage` | `-25 / -95` | 55 x 50 m | +5 m | Future crude tank farm. |
+| `cdu` | `32 / -95` | 52 x 60 m | +5 m | First atmospheric process block. |
+| `ht` | `98 / -95` | 34 x 50 m | +5 m | Treatment support within Lower Plant. |
+| `utilities` | `148 / -95` | 48 x 50 m | +5 m | Reserved early Utilities Yard. |
+| `product_storage` | `-10 / -188` | 80 x 65 m | +10 m | Future product tank farm and routing. |
+| `control_room` | `48 / -170` | 34 x 24 m | +10 m | Central future supervision shell. |
+| `lab` | `48 / -207` | 28 x 20 m | +10 m | Analytical shell beside product operations. |
+| `maintenance` | `140 / -188` | 60 x 55 m | +10 m | Central Workshop/service reservation. |
+| `vdu` | `-20 / -285` | 70 x 55 m | +16 m | Future VDU process block. |
+| `fcc` | `45 / -285` | 36 x 55 m | +16 m | Future FCC process block. |
+| `future_expansion` | `135 / -285` | 75 x 55 m | +16 m | Naphtha, larger Utilities and approved-later expansion. |
 
-Raised platforms have at least one primitive walk-up ramp; Crude Intake has
-north and south approaches, while Operations and Storage have paired approaches
-so the Control/LAB-to-tank-farm route does not require a long perimeter detour.
-Muted perimeter lines and optional debug labels,
-canonical IDs, dimensions and elevation make the planned areas inspectable
-without implying final signage or art.
+Areas on one terrace do not overlap. Their smaller footprints replace the
+former pattern of giving every future process an enormous isolated pad. Open
+land now communicates a specific route, service edge or expansion reservation.
 
-## v0.30 functional starter integration
+## Harbor
 
-The new-game player still spawns at `(-10, 0.1, 8)` facing the existing fixed
-Pilot equipment. Short mounted graybox structures provide restrained physical
-orientation:
+Harbor is the stable orientation landmark:
 
-- a Starter Site/Pilot board establishes the immediate route;
-- a short Pilot board identifies the process line;
-- a physical build-area board reports its existing locked/open state;
-- an open six-metre Main Refinery gate uses fence rails, posts and one short
-  mounted title instead of placeholder blocks and explanatory prose.
+- sea and the quay are outward/south;
+- the refinery road runs inland/north and visibly climbs;
+- a flat apron contains the functional Pilot and small logistics context;
+- a continuous quay edge, simple barriers and deep-water recovery prevent a
+  permanent water trap; swimming is not implemented;
+- two low warehouse/logistics masses identify the final CI/PD reservations
+  without pretending to be functional equipment;
+- the existing Pilot remains close to spawn and visually much smaller than the
+  uphill refinery silhouettes.
 
-These are collidable physical signs/structures, not giant floating UI markers.
-The larger refinery remains visible and traversable but is not operationally
-migrated by v0.30.
+The functional Pilot process is unchanged. Its equipment, stable IDs, tank
+levels, process feedback and visual-stability fixes remain authoritative in
+`main.gd`. The current fixed Utility objects near the Pilot are deliberately
+not migrated during this macro-layout milestone.
 
-Starter crude remains preloaded in the fixed `raw_tank`; this communicates the
-minimum Pilot feed relationship without creating another CI-101 architecture.
-The verified physical loop uses the established stable IDs and interactions:
-`raw_tank -> pump -> feed_valve -> heater -> column -> product tanks ->
-sales_terminal`. Existing LOW FLOW, temperature, storage, quality, sale,
-economy and progression behavior is unchanged.
+## Navigation and road hierarchy
 
-The Pilot platform remains ground-level as an explicit compatibility exception.
-Raising it now would bury or relocate functional equipment and invalidate the
-safe absolute-coordinate strategy. Main-world scale and the measured long
-routes remain provisional pending the human v0.30.4 retest.
+There is one primary 8 m road spine at x `72`. From south to north it consists
+of four flat terrace segments and three edge-matched ramps:
 
-## v0.30.1 traversal and readability standard
+1. Harbor flat, z `75..-25`, elevation 0 m;
+2. Harbor -> Lower ramp, 50 m run / 5 m rise;
+3. Lower flat, z `-75..-115`, elevation +5 m;
+4. Lower -> Main ramp, 50 m run / 5 m rise;
+5. Main flat, z `-165..-215`, elevation +10 m;
+6. Main -> Upper ramp, 60 m run / 6 m rise;
+7. Upper flat, z `-275..-320`, elevation +16 m.
 
-Normal ground movement uses one continuous terrain collider. Roads,
-pedestrian routes, the ground-level Pilot footprint and the active build pad
-are semantic visual overlays rather than stacked collision slabs. Raised-area
-ramps are simple orthogonal rectangular strips whose top faces meet base and
-platform grade exactly; their former centered thickness created the observed
-5–15 cm catches. No arbitrary polygon connector generator is used.
+Short 5–6 m service branches terminate at individual areas. The Control Room
+and LAB share one short pedestrian link. Finding the main road is sufficient to
+recover orientation: downhill means Harbor; uphill means deeper progression.
+The road reserves future bicycle/small-utility-vehicle use but adds no vehicle.
 
-Flat graybox colors now distinguish natural ground, main road, service road,
-pedestrian route, process platform, active build pad, fixed structure and
-future/locked land. The palette remains development-only and texture-free.
+## Control/LAB and Maintenance core
 
-One reusable `GrayboxSign` limits signs to two short lines, fixed board sizes
-and locally mounted text with safe depth offset. Text no longer billboards away
-from its board. Area labels default off and can be toggled with `F8`; the core
-coordinate/area/bounds HUD is independent on `F7`.
+The Control Room shell sits near the main road on the Main Plant terrace, with
+LAB directly north and a pedestrian connection between them. Product storage
+is west; Maintenance/Workshop is east. This gives the future central core quick
+access downhill to first process, sideways to product/repair work and uphill to
+late processing. Road-side stopping space remains available. No full Control
+Room, LAB migration or Maintenance gameplay is implemented here.
 
-Non-functional primitive silhouettes provide navigation identity for CDU, VDU,
-FCC, HT, Utilities and Storage. They have no equipment IDs, process ports,
-construction state or persistence entry and do not represent final dimensions.
-The deterministic collision route now covers spawn, Pilot, both Crude Intake
-directions, the open Main gate, Operations and CDU without a jump.
+## Functional compatibility and CI/PD decision
 
-## v0.30.2 visual stability and Pilot coherence
+### SPEC DEVIATIONS
 
-`TerrainBuffer` is collision-only and `IndustrialGround` is the sole rendered
-macro-ground layer. The former pair shared the exact `y = 0` top plane over the
-full site and could alternate by rendered triangle during camera movement.
-Directional-shadow-off and placeholder-shadow isolation did not remove the
-candidate surface conflict; removing the duplicate visual layer did. Navigation
-signs and landmark placeholders do not cast development-only shadows.
+The long-term layout places CI-101 and PD-101 at the Harbor reservations above.
+Moving them there now would separate them from the active Area 02 build surface
+before crude/product storage and routing are migrated. v0.31.0 therefore keeps
+the single functional CI-101 and PD-101 instances on the unchanged
+`operations_hub` edge anchors. Stable IDs, port direction, physical transfer,
+dispatch and saves remain unchanged.
 
-Wayfinding placement, board facing and target area IDs now live together in
-`WorldLayout`. Pilot and Crude arrows are derived relative to a player viewing
-the readable board face; the Main gate resolves to straight ahead. The reusable
-sign uses a smaller default board and the physical order viewer → text → board
-→ post. The confusing yellow starter approach strip was removed after render
-inspection identified it as obsolete route dressing rather than build logic.
+This is one explicit temporary compatibility placement, not a second canonical
+destination. `crude_intake` and `product_dispatch` are the final Harbor area
+reservations; `area02_anchor()` remains the current runtime placement contract
+until a dedicated functional logistics migration moves the whole material path.
+Harbor reserve masses are marked non-gameplay and have no unit IDs, ports,
+inventory or persistence.
 
-The retained prototype build pad, boundary lines and build sign are visual only
-outside placement validation and default hidden. They appear while Build Mode
-is active and are not persisted. The default `pilot_slice` playable stage ends
-with `PILOT COMPLETE`; switching the stage configuration to `main_refinery`
-restores the unchanged Area 02 objective architecture.
+The following functional systems are intentionally not migrated in v0.31.0:
 
-## v0.30.3 Area 02 spatial contract
+- fixed Utilities and LS-201;
+- player-built storage, atmospheric trains and product tanks;
+- LAB-101 and HT-201;
+- VDU-301 and FCC-401;
+- active Area 02 construction;
+- functional CI-101 and PD-101.
 
-The elevated white `operations_hub` is the sole active Area 02 platform. Its
-center `(120, -10)`, 80 x 60 m footprint and `+0.75 m` elevation derive the
-runtime build surface. A uniform 4 m edge margin gives build bounds x
-`84..156`, z `-36..16`; the cyan Build Mode overlay, boundary lines, placement
-ghost height, placement validation and save validation all consume these values.
+## Save and recovery behavior
 
-CI-101 is the existing functional fixed unit at west support anchor `(82, -10)`
-and PD-101 is the existing unit at east support anchor `(158, -10)`. Both sit on
-the platform support strip outside player construction bounds. Whole-unit
-rotation is derived from each functional port side and the vector toward Area
-02: crude flows east from CI, while PD product inputs face west and its
-logistics face points outward. The separately reserved Crude Intake and Product
-Dispatch macro pads remain future migration destinations; moving the complete
-storage/logistics chain there is broader than this corrective package.
+Area 02 construction bounds, height and fixed endpoint anchors are unchanged,
+so v0.30.3/v0.30.4 player construction needs no further translation. Existing
+legacy v0.30.2 Area 02 migration remains supported.
 
-## Implemented road skeleton
+Valid player positions inside the old 600 x 400 m world but outside the compact
+v0.31.0 bounds migrate safely to the Harbor spawn without discarding process,
+economy or construction state. Unknown corrupt positions remain rejected.
+Normal runtime recovery also handles:
 
-The 8 m main logistics road runs east-west at z `120` between Crude Intake and
-Product Dispatch. Two 5 m north-south service roads at x `62.5` and x `342.5`
-connect the southern logistics edge to the process areas. A 5 m cross road at
-z `-57.5` and a short orthogonal jog between z `-152.5`/`-147.5` connect the
-lower, middle and staggered northern rows without passing under a platform. Short
-primitive access links connect the logistics pads. A 5 m, near-flush
-L-shaped pedestrian link connects the Operations and Storage ramps with
-non-overlapping rectangular segments. These are broad circulation
-reserves; final parking, additional footpaths, gates and road dressing remain
-later Graybox work.
+- falling below y `-20`;
+- leaving canonical x/z bounds;
+- entering deep water at z `76` or farther south.
 
-### Work Package 1 traversal baseline
-
-The following times were measured with a player-sized collision body at the
-normal `6 m/s` walk speed, following the implemented ramps, road lanes and
-platform approaches from the Control Room center. They are a deterministic
-graybox scale baseline, not a promise of final travel pacing:
-
-| Destination | Measured walk time |
-| --- | ---: |
-| CDU | 32.4 s |
-| HT | 73.7 s |
-| VDU | 48.2 s |
-| FCC | 89.1 s |
-| Utilities | 48.2 s |
-| Storage | 28.2 s |
-| Crude Intake | 48.1 s |
-| Product Dispatch | 69.6 s |
-
-The longer FCC/HT/dispatch routes are intentionally meaningful at this scale,
-but must be reassessed during functional migration and human playtesting. Work
-Package 1 does not add a vehicle or compensate with teleportation.
-
-## Save and migration strategy
-
-Construction and player saves use absolute coordinates. Work Package 1 first
-enlarged the world around existing positions. v0.30.3 then deliberately replaced
-the active prototype build footprint with the canonical Operations Hub bounds.
-`BuildController` and `SaveSystem` both delegate footprint and placement-height
-checks to `WorldLayout`; neither owns a second active bounds constant.
-
-The former x `-20..20`, z `10.5..38.5`, base-y `0.16` contract is isolated as
-migration data. A format-v2 save is translated only when every player-built
-placement, including its rotated footprint and expected old height, fits that
-legacy contract. The all-or-nothing offset `(120, 0.61, -34)` preserves relative
-layout, rotation, connection and stable-ID data. Mixed or ambiguous layouts are
-not heuristically moved. Fixed CI/PD positions are not stored as construction,
-and reload rebuilds exactly one of each from their canonical anchors. Player
-position remains unchanged; the save schema remains version 2.
-
-Player save validation now uses the canonical 600 x 400 m site and y `-5..40`.
-Collision walls stop normal travel at north/east/west/shore edges, and a player
-who falls below y `-20` or is externally moved outside canonical x/z bounds is
-returned to the southwest spawn. Existing valid saves keep their absolute
-positions unless they match the explicit Area 02 migration above.
-Invalid/corrupt coordinates still use the existing validated save-recovery
-behavior.
-
-## v0.30.4 readability cleanup
-
-The obsolete Pilot-side Crude Intake sign is removed from canonical wayfinding;
-the Starter Site, Pilot process and Main Refinery gate remain. The
-Operations–Storage pedestrian connection now uses two flush 5 m rectangles that
-meet at a shared edge instead of overlapping, eliminating the visual wedge and
-coplanar-intersection read without adding collision geometry.
-
-Build Mode keeps its simple single-panel design. Its visible starter order is
-Tank, Pump, Manual Valve, Heater, Distillation Column and Diesel Treater. Crude
-Feed Header and Product Routing Header remain implemented routing tools but are
-hidden until `first_atmospheric_production`; the existing post-production gate
-is sufficient for this small cleanup and does not create a new progression
-system.
-
-In debug builds, `F7` toggles the HUD with live player coordinates, site bounds
-and current canonical area ID. `F8` independently toggles world-space area ID,
-dimension and elevation labels, which default off. These aids are graybox
-diagnostics, not final player navigation UI.
-
-## Major-area plan
-
-The broad geography should make the material story readable rather than forcing
-a perfectly straight process line:
-
-| Area | Current role | Graybox requirement |
-| --- | --- | --- |
-| Pilot / Training Area | Existing manual first loop | Near the site approach; compact, legible and visibly smaller than the refinery it unlocks. |
-| CI-101 and Crude Intake | Physical delivery boundary | Road/service access and a clear handoff into crude storage. |
-| Crude Storage | Feed hold-up and route source | Tank-farm room, safe walk-up access and corridor space toward Area 02. |
-| Area 02 / Main Process | Player-built CDU trains and HT-201 | Generous build pads, pipe corridors, service access and room for parallel trains/redesign. |
-| Utilities Yard | GF-101, PG/PU, MCC, IA, CT and CWP | Dedicated support zone, visibly separate from process trains but with direct service-road access. |
-| Product Tank Farm | Product storage/routing | Meaningful space, maintenance access and a clear physical route to LAB and PD-101. |
-| LAB-101 | Sampling and analysis | A recognizable reachable facility near product operations, never a duplicate sale terminal. |
-| PD-101 / Dispatch | Canonical product-to-money boundary | Road-facing export edge with product-pump access; normal sales happen here. |
-| LS-201 / Future Control Room | Local operations seed and future central supervision | LS-201 remains usable in the field; reserve a separate Control Room shell with a credible view/access to the plant. |
-| Maintenance / Workshop | Repair, inspection and future service identity | Road/service access and proximity to active plant without blocking process routes. |
-| VDU/FCC pads | Implemented secondary processing | Reserve typed feed/output storage space, utility access and future expansion around their current simplified gameplay. |
-| Locked expansion land | Future Naphtha, utilities/steam and other approved-later choices | Fence/gate it clearly; leave it empty enough to remain a meaningful expansion resource. |
-
-The intended high-level visual reading is:
-
-`Crude In -> Storage -> Process -> Product Storage -> Dispatch / Money Out`
-
-Utilities should form a logical support area rather than appearing randomly
-inside process equipment. The Control Room should have clear access to the main
-plant without occupying an active process pad.
-
-## Field accessibility
-
-Every functional or planned field interaction needs a human-scale approach:
-
-- pumps, manual valves, filters and local reset/service points;
-- sample points, tank interfaces and product-dispatch equipment;
-- PG/MCC/GF/IA/CT/CWP utility equipment;
-- visible process ports used for building and piping;
-- enough clearance to inspect, connect, repair and walk away safely.
-
-Do not create visually dense but unserviceable process blocks. Keep functional
-equipment distinct from decorative placeholders, especially while migrating
-the current scene.
+The player has no swimming mechanic and cannot remain permanently trapped below
+the quay or outside the site.
 
 ## Graybox implementation rules
 
-Use primitive meshes, block buildings, simple materials, labels, basic roads,
-simple fences/barriers, collision and landmark silhouettes. Do not spend this
-phase on detailed props, decorative pipe clutter, final textures, final
-lighting, vegetation polish or replacing every placeholder model.
+Use primitive meshes, flat development materials, block shells, simple water,
+roads, retaining masses, barriers, collision and restrained labels. Landmark
+silhouettes have no unit IDs, process ports, construction state or persistence.
+Do not add final ships, vegetation, decorative pipe clutter, detailed buildings,
+production textures, final lighting or final refinery assets during Graybox.
 
-When relocating an implemented system, preserve its canonical ID/semantics when
-saves or model registration require it; preserve ports, interactions and
-process-network behavior; do not duplicate functional machines just to make an
-area look populated. Run the affected integration and save tests after each
-meaningful migration slice.
+When a functional migration is approved later, preserve canonical equipment
+IDs/semantics, process ports, interactions, topology and saves; never duplicate
+functional equipment to populate a destination visually.
 
-## Graybox completion checks
+## Human Graybox approval route
 
-Before broad world geography is locked, play a fresh game through the existing
-Pilot -> CI-101 -> Area 02 -> LAB -> PD-101 loop and verify:
+Before functional migration continues, play at 1280 x 720:
 
-- orientation, travel, access and service approaches are understandable;
-- the Utilities Yard, LAB and PD-101 are discoverable at real scale;
-- working equipment, ports and pipes remain accessible and connected;
-- roads and corridors leave room for parallel trains, VDU/FCC and future pads;
-- edges are safe and restricted/locked areas communicate their purpose;
-- the site feels intentionally industrial, not compressed to eliminate walking.
+1. Spawn at Harbor and verify Pilot containment, obvious sea direction and an
+   understandable inland/uphill route.
+2. Walk Harbor -> Lower -> Main -> Upper on the main road. Judge distance,
+   ramp feel, landmark reading and empty-space purpose.
+3. Return without HUD instructions; downhill should naturally recover Harbor.
+4. Walk each placeholder area and judge future build/service room.
+5. Confirm a bicycle would help Harbor-to-Upper later, but is unnecessary
+   between neighboring equipment.
+6. Recheck the unchanged Pilot and active Area 02 loop, ports and Build Mode.
 
-After correcting scale and navigation issues, freeze the broad geography before
-systematic final asset replacement. See `ROADMAP.md` for milestone order and
-`AGENTS.md` for Codex migration/scope rules.
+Do not begin functional logistics/process migration until this macro world is
+human-approved.

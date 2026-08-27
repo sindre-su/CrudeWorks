@@ -11,13 +11,15 @@ For long-term design, Graybox direction and scope, see `CRUDEWORKS_VISION.md`,
   coordination. It does not own macro-world geometry, bounds, Area 02 material
   or topology rules.
 - `scripts/world_layout.gd`: sole authority for canonical world coordinates,
-  area/road specifications, Area 02 platform/elevation/build bounds/fixed edge
-  anchors, spawn and player/save bounds. Its old build rectangle is isolated as
-  migration-only data.
-- `scripts/world_builder.gd`: primitive macro terrain, platforms, roads,
-  flush paths, modular ramps, boundaries, non-gameplay landmark silhouettes,
-  starter wayfinding, collision and retained prototype pads. It consumes
-  `WorldLayout` and owns no gameplay or persisted process state.
+  four terrace specifications, area purpose/footprint/elevation/access, the
+  Harbor-to-Upper road sequence, Area 02 build bounds/fixed compatibility
+  anchors, final Harbor logistics reservations, spawn and player/save/recovery
+  bounds. Old world/build rectangles are migration-only data.
+- `scripts/world_builder.gd`: primitive macro terrain, terrace/retaining masses,
+  Harbor/quay, roads, flush paths, vehicle-grade ramps, boundaries,
+  non-gameplay landmark shells, starter wayfinding, collision and retained
+  compatibility pads. It consumes `WorldLayout` and owns no gameplay or
+  persisted process state.
 - `scripts/graybox_sign.gd`: reusable two-line physical development sign with
   fixed board margins and locally mounted, non-billboard text.
 - `scripts/process_model.gd`: fixed Pilot training process, economy and original
@@ -128,20 +130,33 @@ utility/trip state and stable identifiers; it rebuilds derived state and restore
 pumps stopped. Existing v0.27/v0.28-compatible saves remain supported through
 validated migration/fallback paths.
 
-The 600 x 400 m world retains the old Pilot and player coordinates. In v0.30.3,
-the `operations_hub` area at x `80..160`, z `-40..20`, surface `+0.75 m` became
-the active Area 02 platform. One 4 m safety margin derives the build rectangle
-x `84..156`, z `-36..16`; `WorldBuilder`, `BuildController` and `SaveSystem`
-all consume that contract. CI-101 and PD-101 instantiate once from canonical
-west/east support anchors and derive whole-unit rotation from their functional
-port side toward the platform center.
+v0.31.0 replaces the broad flat 600 x 400 m plan with canonical 240 x 405 m
+player bounds and a 230 x 395 m meaningful terrace footprint. Harbor, Lower,
+Main and Upper are at 0, +5, +10 and +16 m. Four flat main-road sections and
+three <=10% collision ramps form one continuous inward/uphill navigation
+sequence. Raised terrace masses leave a canonical road notch so ramps meet each
+flat without colliding with a hidden vertical retaining face.
+
+The functional `operations_hub` remains unchanged at x `80..160`, z `-40..20`,
+surface `+0.75 m` as an explicit Harbor compatibility pocket. One 4 m safety
+margin still derives build rectangle x `84..156`, z `-36..16`;
+`WorldBuilder`, `BuildController` and `SaveSystem` all consume that contract.
+CI-101 and PD-101 still instantiate once from its west/east support anchors and
+derive whole-unit rotation from their functional port side toward the platform
+center. Separate `crude_intake` and `product_dispatch` areas reserve their exact
+final Harbor destinations but render only non-gameplay masses with no IDs,
+ports, inventory or persistence.
 
 Format-v2 development saves whose complete construction set still validates
 inside the old x `-20..20`, z `10.5..38.5` footprint at its old placement
 height receive one all-or-nothing translation `(120, 0.61, -34)`. This keeps
 relative layout, rotations, connections and IDs. Mixed/ambiguous layouts are
 not guessed, fixed CI/PD are rebuilt from their stable IDs rather than persisted
-positions, and player position is never translated. No schema bump was needed.
+positions. No schema bump was needed. Valid saved player positions in the old
+600 x 400 m world but outside v0.31.0 bounds recover to the Harbor spawn during
+migration without changing construction or process state. Deep water at z
+`76+`, world exits and falls below y `-20` use the same runtime safe recovery;
+unknown positions outside both current and legacy bounds remain corrupt.
 
 Graybox relocation must preserve stable IDs/semantics where saves and process
 routes depend on them, retain process-network ports and interactions, and avoid
@@ -149,14 +164,14 @@ placing visual duplicate equipment that looks functional but has no model state.
 
 ## Scope boundary
 
-The v0.28.2 process foundation remains frozen in v0.30.4. The existing fixed
+The v0.28.2 process foundation remains frozen in v0.31.0. The existing fixed
 Pilot is now verified as one complete fresh-save world loop without relocating
 its stable IDs or absolute coordinates. CI-101/PD-101 and Area 02 building are
-spatially integrated, but Main CDU, VDU, FCC, HT-201, routing, storage, LAB,
-utilities, controls, alarms and maintenance remain functionally compact and
-await deliberate migration. New major process families, detailed hydraulics
-and detailed thermal simulation require an explicit post-Graybox gameplay
-decision.
+retained as functional compatibility, while Main CDU, VDU, FCC, HT-201,
+routing, storage, LAB, utilities, controls, alarms and maintenance remain
+functionally compact and await deliberate migration after human approval of the
+terraced world. New major process families, detailed hydraulics and detailed
+thermal simulation require an explicit post-Graybox gameplay decision.
 
 `EquipmentCatalog.ORDER` is the full hotbar contract, while `BuildController`
 derives a visible order from deferred equipment. The first six slots are Tank,

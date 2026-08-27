@@ -19,15 +19,15 @@ The game must be:
 
 ## Current project phase — authoritative
 
-**GRAYBOX READABILITY & BUILD MENU CLEANUP COMPLETE** at version `0.30.4`.
-The Pilot loop, visual-stability work and Area 02 spatial contract remain
-proven. Pilot-side wayfinding is deliberately minimal; pedestrian links use
-simple non-overlapping rectangles; and the first six build choices teach the
-physical starter flow. Functional routing headers are deferred from the early
-menu by the existing first-atmospheric-production gate, not removed. Broader
-Main Refinery equipment, Utilities, storage, LAB, CDU/HT/VDU/FCC and dedicated
-logistics-pad migration has not started. The immediate priority is the
-specified v0.30.4 human retest; do not begin v0.31 until it is accepted.
+**HARBOR & TERRACED WORLD RESCALE COMPLETE** at version `0.31.0`, pending human
+macro-world approval. The meaningful world now progresses Harbor -> Lower ->
+Main -> Upper at 0/5/10/16 m through one primary road. Pilot, the v0.30.3 Area
+02 spatial contract, v0.30.4 build menu and all process behavior remain proven.
+Functional CI/PD stay once on the active Area 02 compatibility anchors while
+their exact final Harbor areas are non-gameplay reservations. Broader Main
+Refinery equipment, Utilities, storage, LAB, CDU/HT/VDU/FCC and logistics
+migration has not started. Do not begin functional migration until a real
+1280 x 720 Harbor-to-Upper walk approves scale, navigation and terrace feel.
 
 Use the documents for their distinct roles:
 
