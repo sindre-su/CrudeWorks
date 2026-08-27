@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.30.1 – Graybox Traversal & Readability Cleanup**
+**Prototypeversjon: 0.30.2 – Visual Stability & Pilot World Coherence**
 
 CrudeWorks is a first-person refinery-builder prototype. The player starts with
 a manual Pilot process, unlocks Area 02, builds directed refinery routes,
@@ -10,12 +10,13 @@ approved diesel.
 
 ## Current phase
 
-**v0.30.1 — GRAYBOX TRAVERSAL & READABILITY CLEANUP.** Human-found collision
-lips, ramp seams, malformed-looking transitions, sign drift, weak surface
-separation, entrance geometry and label clutter are corrected without changing
-the complete Pilot loop. Temporary primitive district silhouettes now support
-navigation with area labels off. Main Refinery has not been migrated; a human
-retest is the final gate before its first small entry/feed slice.
+**v0.30.2 — VISUAL STABILITY & PILOT WORLD COHERENCE.** The duplicate coplanar
+macro-ground render layer is removed, physical signs have correct front-to-back
+layering and canonical target-derived directions, and construction overlays are
+visible only in Build Mode. The human-test slice now ends at `PILOT COMPLETE`;
+the preserved Main Refinery progression is enabled by advancing the configured
+playable stage. Main Refinery equipment has not been migrated, and a final human
+WASD retest remains the gate before its first small entry/feed slice.
 
 Quick orientation:
 

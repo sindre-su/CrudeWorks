@@ -141,7 +141,7 @@ placing visual duplicate equipment that looks functional but has no model state.
 
 ## Scope boundary
 
-The v0.28.2 process foundation remains frozen in v0.30.1. The existing fixed
+The v0.28.2 process foundation remains frozen in v0.30.2. The existing fixed
 Pilot is now verified as one complete fresh-save world loop without relocating
 its stable IDs or absolute coordinates. Main CDU, VDU, FCC, HT-201, routing,
 storage, LAB, PD-101, utilities, controls, alarms and maintenance are still

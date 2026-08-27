@@ -2,7 +2,7 @@
 
 ## Current baseline
 
-Version 0.30.1 retains the tested v0.28.2 process foundation, v0.29.0 canonical
+Version 0.30.2 retains the tested v0.28.2 process foundation, v0.29.0 canonical
 600 x 400 m world and v0.30.0 functional Pilot. The corrective pass makes
 ground, roads and pedestrian overlays essentially flush, removes colliding
 Pilot/build-pad lips, aligns ramp top faces exactly to grade, replaces the
@@ -38,7 +38,7 @@ running sales pump before it can invoke the existing dispatch transaction.
 
 ## Current priority
 
-**Human-retest v0.30.1 traversal and the functional Pilot, then integrate the
+**Human-retest v0.30.2 visual stability and the functional Pilot, then integrate the
 Main Refinery in small slices.** Automated coverage now walks the complete
 spawn → Pilot → Crude Intake → gate → Operations → CDU route without jumping,
 but a real 1280 × 720 WASD retest must confirm seam feel, sign reading,
@@ -94,7 +94,7 @@ requires a post-graybox player-value decision, not process completeness alone.
 | Standard gross output | ~5,000 kr | 300 L Naphtha, 350 L Diesel, 350 L Heavy Residue at target |
 | HT-201 / PU-101 / VDU-301 / FCC-401 | 800 / 700 / 1,200 / 2,200 kr | Reachable after a successful first physical delivery; exact feel still needs human QA |
 
-v0.30.1 retains the existing equipment prices and fixed Utilities Yard at
+v0.30.2 retains the existing equipment prices and fixed Utilities Yard at
 no purchase cost. IA-101 and CWP-101 add 35 kW, so one first atmospheric train
 uses 70 kW before commissioning, 80 kW with LAB/LS, and 100 kW with Sour
 treatment. PU-101 still doubles generation to 200 kW for concurrent trains and
@@ -126,7 +126,7 @@ maintenance/parking approaches, entrances, fences/gates, safe edges and
 reliable out-of-bounds recovery. Reserve routes that can support future simple
 site transport without implementing transport now.
 
-**Status: traversal cleanup complete in v0.30.1.** Main/service roads,
+**Status: visual-stability cleanup complete in v0.30.2.** Main/service roads,
 near-flush pedestrian overlays, lip-free modular ramps, a coherent open starter
 gate, perimeter collision and Nordic coastal borders exist. Detailed parking
 and dressing remain later graybox refinement.
@@ -138,7 +138,7 @@ Tank Farm, LAB-101 and PD-101 into their intended zones. Preserve IDs,
 interactions, ports, process topology and saves where practical. Do not place
 visual duplicates of functional equipment.
 
-**Status: Pilot slice complete and traversal-clean in v0.30.1.** Starter gameplay is integrated
+**Status: Pilot slice complete and visually stable in v0.30.2.** Starter gameplay is integrated
 without relocation. CI-101, crude/main storage, CDU/HT, Utilities, LAB, PD-101,
 VDU and FCC migration remains pending and must proceed in smaller validated
 slices.

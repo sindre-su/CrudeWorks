@@ -22,6 +22,7 @@ const PLAYER_RECOVERY_COOLDOWN_SECONDS := 1.0
 
 @export var persistence_enabled := true
 @export var save_path := SaveSystemScript.DEFAULT_PATH
+@export_enum("pilot_slice", "main_refinery") var playable_stage := "pilot_slice"
 
 var process_model
 var built_refinery_model
@@ -160,10 +161,14 @@ func _process(delta: float) -> void:
 	if process_model.objective_complete and not build_mode_unlocked:
 		build_mode_unlocked = true
 		build_controller.set_unlocked(true)
-		build_area_label.text = "BYGGEOMRÅDE 02\nÅPENT — TRYKK B"
+		build_area_label.text = "PILOT TEST BUILD AREA\nOPEN IN BUILD MODE"
 		build_area_label.modulate = Color("78e08f")
-		_show_notification("NYTT OMRÅDE LÅST OPP — trykk B for byggemodus.", 8.0)
+		_show_notification(
+			"PILOT COMPLETE — construction testing is available with B. Main Refinery commissioning follows in the next development stage.",
+			8.0
+		)
 		_schedule_save()
+	world_builder.set_build_visualization_visible(build_controller.active)
 	_update_process_visuals(delta)
 	_update_user_interface()
 	_update_world_debug_overlay()
@@ -205,7 +210,7 @@ func _build_environment() -> void:
 	add_child(world_builder)
 	world_builder.build_world()
 	build_area_label = world_builder.prototype_build_area_label
-	build_area_label.text = "BYGGEOMRÅDE 02\nLÅST — FULLFØR PILOT"
+	build_area_label.text = "PILOT TEST BUILD AREA\nLOCKED — COMPLETE PILOT"
 	build_area_label.modulate = Color("9ce8c1")
 
 
@@ -646,7 +651,7 @@ func _update_user_interface() -> void:
 		ProcessModelScript.DIESEL_SPEC_OFF_SPEC:
 			quality_status = "OFF-SPEC"
 
-	if build_mode_unlocked:
+	if build_mode_unlocked and playable_stage == "main_refinery":
 		hud_label.text = built_refinery_model.summary_text() + "\nPenger        %d kr" % process_model.money
 		objective_label.text = built_refinery_model.objective_text()
 		alarm_label.text = built_refinery_model.alarm_text()
@@ -669,9 +674,23 @@ func _update_user_interface() -> void:
 			+ "Penger        %d kr" % process_model.money
 		)
 		objective_label.text = process_model.pilot_objective_text()
+		if process_model.objective_complete:
+			objective_label.text = (
+				"PILOT COMPLETE\n"
+				+ "Main Refinery commissioning becomes available in the next development stage."
+			)
 		var alarms: Array[String] = process_model.active_alarms()
 		alarm_label.text = "\n".join(alarms)
-		help_label.text = "WASD  Gå\nMus  Se\nShift  Løp\nSpace  Hopp\nCtrl / C  Huk\nE  Bruk utstyr\nR  Start batch på nytt\nEsc  Frigjør mus"
+		if build_mode_unlocked and not built_refinery_model.alarm_text().is_empty():
+			# The Pilot-stage cap hides only the premature Area 02 objective. It
+			# must not suppress real alarms from equipment the player builds for
+			# construction validation after the Pilot sale.
+			alarm_label.text = built_refinery_model.alarm_text()
+		help_label.text = (
+			"WASD  Gå\nMus  Se\nShift  Løp\nSpace  Hopp\nCtrl / C  Huk\nE  Bruk utstyr"
+			+ ("\nB  Byggemodus" if build_mode_unlocked else "")
+			+ "\nR  Start batch på nytt\nEsc  Frigjør mus"
+		)
 
 	var focused = player.focused_unit()
 	prompt_label.text = ""
@@ -1875,8 +1894,9 @@ func _apply_snapshot(snapshot: Dictionary) -> Dictionary:
 	build_mode_unlocked = process_model.objective_complete
 	build_controller.set_unlocked(build_mode_unlocked)
 	if build_mode_unlocked:
-		build_area_label.text = "BYGGEOMRÅDE 02\nÅPENT — TRYKK B"
+		build_area_label.text = "PILOT TEST BUILD AREA\nOPEN IN BUILD MODE"
 		build_area_label.modulate = Color("78e08f")
+	world_builder.set_build_visualization_visible(build_controller.active)
 	player.position = Vector3(
 		float(snapshot["player"]["position"][0]),
 		float(snapshot["player"]["position"][1]),

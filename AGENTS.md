@@ -19,13 +19,13 @@ The game must be:
 
 ## Current project phase — authoritative
 
-**GRAYBOX TRAVERSAL & READABILITY CLEANUP COMPLETE** at version `0.30.1`. The
-fixed Pilot loop remains proven inside the canonical Graybox World, while
-human-found collision lips, ramp seams, sign drift, entrance readability,
-surface ambiguity and debug-label clutter have been corrected. Main Refinery
-equipment and areas have not been migrated. The immediate priority is the
-specified human traversal/Pilot retest; only then should the smallest approved
-Main Refinery entry/feed migration begin.
+**VISUAL STABILITY & PILOT WORLD COHERENCE COMPLETE** at version `0.30.2`. The
+fixed Pilot loop remains proven inside the canonical Graybox World. Duplicate
+macro-ground rendering, sign layering/direction, intrusive starter geometry,
+always-on construction visualization and premature player-facing Area 02
+guidance have been corrected. Main Refinery equipment and areas have not been
+migrated. The immediate priority is the specified human traversal/Pilot retest;
+only then should the smallest approved Main Refinery entry/feed migration begin.
 
 Use the documents for their distinct roles:
 

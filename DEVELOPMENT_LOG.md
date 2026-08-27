@@ -1,5 +1,33 @@
 # CrudeWorks Development Log
 
+## v0.30.2 — Visual Stability & Pilot World Coherence
+
+- Removed the release-blocking macro-ground depth conflict. `TerrainBuffer`
+  now provides collision only, while `IndustrialGround` is the single rendered
+  600 × 400 m ground layer; their former top faces were exactly coplanar at
+  `y = 0`. Controlled shadow-off, candidate-surface and placeholder-caster
+  isolation distinguished the surface conflict from directional shadows.
+- Rebuilt reusable sign depth as viewer → text → board → post, reduced the
+  normal board/text scale and disabled graybox navigation-helper shadows.
+- Moved starter wayfinding placement, facing and target IDs into canonical
+  `WorldLayout` data. Pilot and Crude Intake now derive left arrows from the
+  actual target center relative to the readable board face; the Main gate
+  derives straight ahead.
+- Identified the unexplained yellow Pilot wedge as the obsolete two-metre
+  starter approach strip and removed it. The actual build pad, bounds and sign
+  remain intact but are shown only while Build Mode is active.
+- Added a configurable `pilot_slice` completion cap. Human testing now ends at
+  `PILOT COMPLETE` instead of displaying the unmigrated CI-101 objective;
+  selecting `main_refinery` restores the unchanged underlying progression.
+- Preserved legacy CI-101/PD-101 IDs, ground-level coordinates, gameplay and
+  saves. Their mismatch with elevated canonical destination pads remains
+  explicit v0.31+ migration debt.
+- Added deterministic coverage for one rendered macro ground, sign hierarchy,
+  canonical directions, contextual build visualization and reversible Pilot
+  completion. Render inspection covered signs, Pilot, Build Mode and completion;
+  a continuous 1,800-frame route around Pilot/open ground showed no rapid
+  dark/diagonal ground flashes.
+
 ## v0.30.1 — Graybox Traversal & Readability Cleanup
 
 - Corrected the human-playtest traversal defects without changing process,

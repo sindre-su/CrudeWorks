@@ -50,9 +50,12 @@ func _test_fresh_world_context(main) -> void:
 		main.world_builder.orientation_nodes.has("starter_site")
 		and main.world_builder.orientation_nodes.has("crude_intake")
 		and main.world_builder.orientation_nodes.has("pilot_process_chain")
-		and main.world_builder.orientation_nodes.has("main_refinery_gate")
-		and main.world_builder.path_nodes.has("starter_pilot_path"),
-		"starter region has physical Pilot/Crude orientation, a gate and a short approach path"
+		and main.world_builder.orientation_nodes.has("main_refinery_gate"),
+		"starter region has physical Pilot/Crude orientation and a Main Refinery gate"
+	)
+	_expect(
+		main.world_builder.build_visual_nodes.all(func(node: Node3D) -> bool: return not node.visible),
+		"fresh Pilot operation hides construction-only ground and boundary visualization"
 	)
 	_expect(
 		main.world_builder.area_labels.all(func(label: Label3D) -> bool: return not label.visible),
@@ -152,6 +155,32 @@ func _test_successful_pilot_operation(main) -> void:
 		main.build_mode_unlocked and main.build_controller.unlocked,
 		"successful Pilot sale leaves the player ready for later Main Refinery progression"
 	)
+	_expect(
+		"PILOT COMPLETE" in main.objective_label.text
+		and "CI-101" not in main.objective_label.text
+		and "next development stage" in main.objective_label.text,
+		"default human-test stage ends coherently without directing the player into unmigrated Area 02"
+	)
+	main.playable_stage = "main_refinery"
+	main._update_user_interface()
+	_expect(
+		"CI-101" in main.objective_label.text,
+		"advancing the configured playable stage restores the preserved Area 02 progression"
+	)
+	main.playable_stage = "pilot_slice"
+	main._update_user_interface()
+	main.build_controller.set_build_mode(true)
+	main._process(0.0)
+	_expect(
+		main.world_builder.build_visual_nodes.all(func(node: Node3D) -> bool: return node.visible),
+		"Build Mode reveals the retained construction pad and bounds"
+	)
+	main.build_controller.set_build_mode(false)
+	main._process(0.0)
+	_expect(
+		main.world_builder.build_visual_nodes.all(func(node: Node3D) -> bool: return not node.visible),
+		"leaving Build Mode hides construction visualization again"
+	)
 
 
 func _test_post_sale_building(main) -> void:
@@ -187,6 +216,10 @@ func _test_disk_round_trip_and_resume(main) -> void:
 	main.player.position = Vector3(4.0, 0.1, 17.0)
 	main.player.rotation.y = 0.75
 	var snapshot: Dictionary = main._build_snapshot()
+	_expect(
+		not snapshot.has("playable_stage") and not snapshot.has("build_visualization_visible"),
+		"development-stage and construction-overlay visibility do not pollute gameplay saves"
+	)
 	var write_result: Dictionary = SaveSystemScript.write_snapshot(TEST_PATH, snapshot)
 	var read_result: Dictionary = SaveSystemScript.read_snapshot(TEST_PATH)
 	_expect(write_result["ok"] and read_result["ok"], "active Pilot state writes and reads through the real save system")
@@ -222,6 +255,10 @@ func _test_disk_round_trip_and_resume(main) -> void:
 	_expect(
 		restored.process_model.objective_complete and restored.process_model.batch_sold,
 		"Pilot completion and sold-batch progression survive reload"
+	)
+	_expect(
+		restored.world_builder.build_visual_nodes.all(func(node: Node3D) -> bool: return not node.visible),
+		"construction visualization restores hidden until Build Mode is deliberately activated"
 	)
 	_expect(
 		restored.process_model.money == int(snapshot["pilot"]["money"]),

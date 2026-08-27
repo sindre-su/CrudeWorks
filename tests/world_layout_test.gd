@@ -16,6 +16,7 @@ func _run_tests() -> void:
 	_test_canonical_bounds()
 	_test_area_configuration()
 	_test_road_configuration()
+	_test_wayfinding_configuration()
 	_test_surface_standard()
 	_test_spawn_and_legacy_coordinates()
 	_test_world_builder()
@@ -136,6 +137,27 @@ func _test_surface_standard() -> void:
 	_expect(semantic_colors.size() == 7, "graybox surface roles use distinct flat development colors")
 
 
+func _test_wayfinding_configuration() -> void:
+	var expected_arrows := {
+		"starter_site": "←",
+		"crude_intake": "←",
+		"main_refinery_gate": "↑",
+	}
+	for sign_id: String in expected_arrows:
+		var spec := WorldLayoutScript.wayfinding_spec_by_id(sign_id)
+		_expect(not spec.is_empty(), "%s has canonical wayfinding metadata" % sign_id)
+		_expect(
+			WorldLayoutScript.wayfinding_arrow(spec) == expected_arrows[sign_id],
+			"%s direction is derived from board approach and its canonical target center" % sign_id
+		)
+	_expect(
+		WorldLayoutScript.wayfinding_arrow(
+			WorldLayoutScript.wayfinding_spec_by_id("pilot_process_chain")
+		).is_empty(),
+		"non-directional Pilot process marker does not invent a route arrow"
+	)
+
+
 func _test_spawn_and_legacy_coordinates() -> void:
 	var spawn := WorldLayoutScript.NEW_GAME_SPAWN
 	_expect(WorldLayoutScript.player_position_is_valid(spawn), "new-game spawn is inside canonical player bounds")
@@ -168,6 +190,13 @@ func _test_world_builder() -> void:
 	_expect(builder.path_nodes.size() == WorldLayoutScript.PATH_SPECS.size(), "world builder emits every configured pedestrian path")
 	_expect(builder.landmark_nodes.size() == 6, "world builder emits the six restrained navigation landmark groups")
 	_expect(builder.has_node("TerrainBuffer"), "world builder creates traversable macro terrain")
+	var terrain_buffer: StaticBody3D = builder.get_node("TerrainBuffer")
+	_expect(
+		terrain_buffer.find_children("*", "MeshInstance3D", true, false).is_empty()
+		and terrain_buffer.find_children("*", "CollisionShape3D", true, false).size() == 1,
+		"macro terrain collision has no duplicate rendered surface at base grade"
+	)
+	_expect(builder.get_node("IndustrialGround") is MeshInstance3D, "one authoritative macro ground surface is rendered")
 	_expect(builder.has_node("SouthernSea"), "world builder creates the southern sea edge")
 	for boundary_name: String in ["NorthBoundary", "WestBoundary", "EastBoundary", "SouthShoreBoundary"]:
 		_expect(builder.has_node(boundary_name), "%s collision boundary exists" % boundary_name)
@@ -209,6 +238,33 @@ func _test_world_builder() -> void:
 			and sign.label.position.z < -0.06,
 			"%s keeps text mounted in front of its board without billboard drift" % sign.name
 		)
+		if sign.has_node("Post"):
+			_expect(
+				sign.label.position.z < sign.get_node("Board").position.z
+				and sign.get_node("Post").position.z > sign.get_node("Board").position.z,
+				"%s keeps viewer → text → board → post physical depth order" % sign.name
+			)
+	_expect(
+		Vector2(builder.orientation_nodes["starter_site"].get_meta("board_size")).x <= 3.0,
+		"starter sign remains human-scale rather than filling the approach view"
+	)
+	for sign_id: String in ["starter_site", "crude_intake"]:
+		var sign = builder.orientation_nodes[sign_id]
+		var spec := WorldLayoutScript.wayfinding_spec_by_id(sign_id)
+		_expect(
+			String(sign.get_meta("target_area_id")) == String(spec["target_area_id"])
+			and String(sign.get_meta("wayfinding_arrow")) == WorldLayoutScript.wayfinding_arrow(spec),
+			"%s rendered sign consumes canonical target metadata" % sign_id
+		)
+	_expect(
+		builder.build_visual_nodes.all(func(node: Node3D) -> bool: return not node.visible),
+		"construction pad, bounds and sign default hidden outside Build Mode"
+	)
+	builder.set_build_visualization_visible(true)
+	_expect(
+		builder.build_visual_nodes.all(func(node: Node3D) -> bool: return node.visible),
+		"construction visualization can be enabled without changing build validation"
+	)
 	_expect(
 		builder.area_labels.all(func(label: Label3D) -> bool: return not label.visible),
 		"distant area labels default OFF for uncluttered human navigation testing"

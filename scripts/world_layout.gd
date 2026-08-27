@@ -231,11 +231,6 @@ const ROAD_SPECS := [
 
 const PATH_SPECS := [
 	{
-		"id": "starter_pilot_path",
-		"center": Vector2(-10.0, 3.0),
-		"dimensions": Vector2(2.0, 6.0),
-	},
-	{
 		"id": "operations_storage_path_x",
 		"center": Vector2(172.5, -10.0),
 		"dimensions": Vector2(15.0, 3.0),
@@ -244,6 +239,43 @@ const PATH_SPECS := [
 		"id": "operations_storage_path_z",
 		"center": Vector2(180.0, -2.5),
 		"dimensions": Vector2(3.0, 15.0),
+	},
+]
+
+## Physical signs derive their displayed direction from this canonical placement
+## and the target area's center. The arrow is relative to a player facing the
+## readable side of the board, rather than a hardcoded compass instruction.
+const WAYFINDING_SPECS := [
+	{
+		"id": "starter_site",
+		"position": Vector3(-3.0, 0.0, 8.2),
+		"yaw_degrees": 90.0,
+		"primary": "PILOT AREA",
+		"target_area_id": "pilot_plant",
+		"board_size": Vector2(3.0, 0.8),
+	},
+	{
+		"id": "crude_intake",
+		"position": Vector3(-17.0, 0.0, 9.0),
+		"yaw_degrees": -90.0,
+		"primary": "CRUDE INTAKE",
+		"target_area_id": "crude_intake",
+		"board_size": Vector2(3.4, 0.8),
+	},
+	{
+		"id": "pilot_process_chain",
+		"position": Vector3(14.5, 0.0, 6.8),
+		"yaw_degrees": 180.0,
+		"primary": "PILOT PROCESS",
+		"board_size": Vector2(3.2, 0.8),
+	},
+	{
+		"id": "main_refinery_gate",
+		"position": Vector3(34.0, 0.0, -10.0),
+		"yaw_degrees": 90.0,
+		"primary": "MAIN REFINERY",
+		"target_area_id": "operations_hub",
+		"board_size": Vector2(3.8, 0.8),
 	},
 ]
 
@@ -276,6 +308,37 @@ static func area_by_id(area_id: String) -> Dictionary:
 		if String(area["id"]) == area_id:
 			return area
 	return {}
+
+
+static func wayfinding_spec_by_id(sign_id: String) -> Dictionary:
+	for spec: Dictionary in WAYFINDING_SPECS:
+		if String(spec["id"]) == sign_id:
+			return spec
+	return {}
+
+
+static func wayfinding_arrow(spec: Dictionary) -> String:
+	var target_area_id := String(spec.get("target_area_id", ""))
+	if target_area_id.is_empty():
+		return ""
+	var target_area := area_by_id(target_area_id)
+	if target_area.is_empty():
+		return ""
+	var sign_position: Vector3 = spec["position"]
+	var target_center: Vector2 = target_area["center"]
+	var target_direction := Vector3(
+		target_center.x - sign_position.x,
+		0.0,
+		target_center.y - sign_position.z
+	).normalized()
+	var sign_basis := Basis(Vector3.UP, deg_to_rad(float(spec["yaw_degrees"])))
+	var board_front := sign_basis * Vector3.FORWARD
+	var viewer_forward := -board_front
+	var viewer_right := viewer_forward.cross(Vector3.UP).normalized()
+	var lateral := target_direction.dot(viewer_right)
+	if absf(lateral) < 0.2:
+		return "↑"
+	return "→" if lateral > 0.0 else "←"
 
 
 static func area_id_at(point: Vector2) -> String:

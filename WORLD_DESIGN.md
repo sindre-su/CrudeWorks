@@ -14,7 +14,7 @@ add new process families, detailed assets, vehicle gameplay or a complete
 Control Room.
 
 **Implementation status:** Graybox World Program Work Package 1, v0.30.0 Pilot
-Integration and v0.30.1 Traversal & Readability Cleanup are complete. The macro
+Integration, v0.30.1 Traversal Cleanup and v0.30.2 Visual Stability are complete. The macro
 world, canonical coordinates, area footprints, roads, boundaries, modular
 ramps, physical signs and collision skeleton are implemented. The fixed Pilot
 is proven in its canonical southwest footprint; broader Main Refinery equipment
@@ -114,9 +114,8 @@ without implying final signage or art.
 ## v0.30 functional starter integration
 
 The new-game player still spawns at `(-10, 0.1, 8)` facing the existing fixed
-Pilot equipment. A short 2 m primitive approach strip reinforces the process
-entry without becoming a navigation system. Short mounted graybox structures
-provide restrained physical orientation:
+Pilot equipment. Short mounted graybox structures provide restrained physical
+orientation:
 
 - separate Starter Site/Pilot and Crude Intake boards establish the two routes;
 - a short Pilot board identifies the process line;
@@ -138,7 +137,7 @@ economy and progression behavior is unchanged.
 The Pilot platform remains ground-level as an explicit compatibility exception.
 Raising it now would bury or relocate functional equipment and invalidate the
 safe absolute-coordinate strategy. Main-world scale and the measured long
-routes remain provisional pending the human v0.30.1 retest.
+routes remain provisional pending the human v0.30.2 retest.
 
 ## v0.30.1 traversal and readability standard
 
@@ -163,6 +162,33 @@ FCC, HT, Utilities and Storage. They have no equipment IDs, process ports,
 construction state or persistence entry and do not represent final dimensions.
 The deterministic collision route now covers spawn, Pilot, both Crude Intake
 directions, the open Main gate, Operations and CDU without a jump.
+
+## v0.30.2 visual stability and Pilot coherence
+
+`TerrainBuffer` is collision-only and `IndustrialGround` is the sole rendered
+macro-ground layer. The former pair shared the exact `y = 0` top plane over the
+full site and could alternate by rendered triangle during camera movement.
+Directional-shadow-off and placeholder-shadow isolation did not remove the
+candidate surface conflict; removing the duplicate visual layer did. Navigation
+signs and landmark placeholders do not cast development-only shadows.
+
+Wayfinding placement, board facing and target area IDs now live together in
+`WorldLayout`. Pilot and Crude arrows are derived relative to a player viewing
+the readable board face; the Main gate resolves to straight ahead. The reusable
+sign uses a smaller default board and the physical order viewer → text → board
+→ post. The confusing yellow starter approach strip was removed after render
+inspection identified it as obsolete route dressing rather than build logic.
+
+The retained prototype build pad, boundary lines and build sign are visual only
+outside placement validation and default hidden. They appear while Build Mode
+is active and are not persisted. The default `pilot_slice` playable stage ends
+with `PILOT COMPLETE`; switching the stage configuration to `main_refinery`
+restores the unchanged Area 02 objective architecture.
+
+Legacy fixed CI-101/PD-101 remain at their original compact ground-level
+coordinates while their canonical destination areas are elevated graybox pads.
+This visible mismatch is intentional v0.31+ migration debt. v0.30.2 does not
+move IDs, equipment, process state, absolute save coordinates or connections.
 
 ## Implemented road skeleton
 

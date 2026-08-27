@@ -6,8 +6,9 @@ extends Node3D
 
 const MAX_TEXT_LENGTH := 24
 const MAX_LINES := 2
-const DEFAULT_BOARD_SIZE := Vector2(4.2, 1.2)
+const DEFAULT_BOARD_SIZE := Vector2(3.2, 0.8)
 const BOARD_THICKNESS := 0.12
+const POST_THICKNESS := 0.14
 const TEXT_OFFSET := 0.007
 
 var primary_text := ""
@@ -36,8 +37,12 @@ func configure(
 	if include_posts:
 		_create_static_box(
 			"Post",
-			Vector3(0.0, board_center_y * 0.5, 0.0),
-			Vector3(0.14, board_center_y, 0.14),
+			Vector3(
+				0.0,
+				board_center_y * 0.5,
+				BOARD_THICKNESS * 0.5 + POST_THICKNESS * 0.5
+			),
+			Vector3(POST_THICKNESS, board_center_y, POST_THICKNESS),
 			Color("#3f4749")
 		)
 	_create_static_box(
@@ -54,8 +59,8 @@ func configure(
 	# physical orientation instead of drifting independently toward the camera.
 	label.position = Vector3(0.0, board_center_y, -BOARD_THICKNESS * 0.5 - TEXT_OFFSET)
 	label.rotation_degrees.y = 180.0
-	label.font_size = 32
-	label.pixel_size = 0.008
+	label.font_size = 30
+	label.pixel_size = 0.007
 	label.modulate = Color("#f1e4bc")
 	label.outline_modulate = Color("#172126")
 	label.outline_size = 5
@@ -87,6 +92,9 @@ func _create_static_box(node_name: String, box_position: Vector3, size: Vector3,
 	var mesh := BoxMesh.new()
 	mesh.size = size
 	mesh_instance.mesh = mesh
+	# Graybox navigation helpers should not introduce large or unstable moving
+	# shadow regions in the playable world.
+	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var material := StandardMaterial3D.new()
 	material.albedo_color = color
 	material.roughness = 0.9
