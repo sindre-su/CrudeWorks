@@ -4,6 +4,7 @@ const MainScene = preload("res://scenes/main.tscn")
 const SaveSystemScript = preload("res://scripts/save_system.gd")
 const ProcessModelScript = preload("res://scripts/process_model.gd")
 const MaterialBalanceScript = preload("res://scripts/material_balance.gd")
+const WorldLayoutScript = preload("res://scripts/world_layout.gd")
 
 const TEST_PATH := "user://crudeworks_save_system_test.json"
 const LEGACY_PATH := "user://crudeworks_save_system_legacy_test.json"
@@ -24,6 +25,7 @@ func _run_tests() -> void:
 	var source_main = await _create_partial_paid_refinery()
 	var snapshot: Dictionary = source_main._build_snapshot()
 	_test_schema_validation(snapshot, source_main)
+	_test_area02_spatial_migration(snapshot)
 	_test_canonical_area02_save_states(snapshot)
 	_test_optional_delivery_report_validation(snapshot)
 	_test_disk_round_trip(snapshot)
@@ -178,7 +180,34 @@ func _test_pilot_quality_save_states() -> void:
 	)
 	main.persistence_enabled = false
 	main.queue_free()
-	restored.queue_free()
+
+
+func _test_area02_spatial_migration(snapshot: Dictionary) -> void:
+	var legacy := snapshot.duplicate(true)
+	var translation := WorldLayoutScript.legacy_area02_translation()
+	legacy["game_version"] = "0.30.2"
+	for placement: Dictionary in legacy["construction"]["units"]:
+		placement["position"][0] = float(placement["position"][0]) - translation.x
+		placement["position"][1] = float(placement["position"][1]) - translation.y
+		placement["position"][2] = float(placement["position"][2]) - translation.z
+	var migration := SaveSystemScript.migrate_snapshot(legacy)
+	_expect(
+		migration["ok"]
+		and migration["data"].get("spatial_migrations", []).has("area02_v0303")
+		and SaveSystemScript.validate_snapshot(migration["data"])["ok"],
+		"v0.30.2 construction receives one explicit valid Area 02 spatial migration"
+	)
+	if migration["ok"]:
+		for index in snapshot["construction"]["units"].size():
+			_expect(
+				migration["data"]["construction"]["units"][index]["position"]
+				== snapshot["construction"]["units"][index]["position"],
+				"legacy placement %d translates deterministically without changing relative layout" % index
+			)
+	_expect(
+		legacy["player"] == migration["data"]["player"],
+		"Area 02 construction migration does not silently move the saved player"
+	)
 
 
 func _simulate_pilot(model, duration_seconds: float) -> void:
@@ -518,7 +547,7 @@ func _test_area02_autosave_stress() -> void:
 		main._process(10.0)
 		_expect(SaveSystemScript.read_snapshot(AUTOSAVE_STRESS_PATH)["ok"], "continued first-batch autosave %d remains valid" % [checkpoint + 5])
 	var heavy_tank = main.build_controller.registered_unit_by_id("built_tank_8")
-	var sales_pump_result: Dictionary = main._create_built_unit("pump", Vector3(14.0, 0.86, 23.0), 0, 10, false)
+	var sales_pump_result: Dictionary = main._create_built_unit("pump", _area02_fixture(Vector3(14.0, 0.86, 23.0)), 0, 10, false)
 	var sales_pump = sales_pump_result.get("unit")
 	var dispatch_terminal = main.build_controller.registered_unit_by_id("built_product_dispatch_0")
 	main.build_controller._connect_ports(heavy_tank.get_port("output"), sales_pump.get_port("input"))
@@ -622,6 +651,23 @@ func _test_main_round_trip(snapshot: Dictionary, source_main) -> void:
 	_expect(restored.process_model.money == source_main.process_model.money, "load replaces economy exactly without charging or refunding")
 	_expect(restored.build_serial_number == 9, "maximum build serial is restored")
 	_expect(_player_built_count(restored) == 9 and _player_equipment_count(restored) == 9, "all built nodes and model states restore once")
+	var restored_intakes: Array[Dictionary] = restored.build_controller.registered_units.filter(
+		func(entry: Dictionary): return entry["node"].unit_id == "built_crude_intake_0"
+	)
+	var restored_dispatches: Array[Dictionary] = restored.build_controller.registered_units.filter(
+		func(entry: Dictionary): return entry["node"].unit_id == "built_product_dispatch_0"
+	)
+	_expect(
+		restored_intakes.size() == 1
+		and restored_dispatches.size() == 1
+		and Vector2(restored_intakes[0]["node"].position.x, restored_intakes[0]["node"].position.z).is_equal_approx(
+			WorldLayoutScript.area02_anchor("crude_intake")
+		)
+		and Vector2(restored_dispatches[0]["node"].position.x, restored_dispatches[0]["node"].position.z).is_equal_approx(
+			WorldLayoutScript.area02_anchor("product_dispatch")
+		),
+		"load keeps exactly one canonical CI-101 and PD-101 instead of duplicating fixed logistics"
+	)
 	_expect(restored.built_refinery_model.network.connection_count() == 7 and restored.build_controller.connections.size() == 7, "logical topology and seven visual pipes restore together")
 	_expect(
 		restored.build_controller.registered_unit_by_id("built_header_9") != null
@@ -672,7 +718,7 @@ func _test_main_round_trip(snapshot: Dictionary, source_main) -> void:
 	restored.batch_report_visible = false
 	restored.player.set_input_blocked(false)
 	restored.build_controller.set_input_blocked(false)
-	restored._on_build_placement_requested("tank", Vector3(-11.0, 1.96, 28.0), 0)
+	restored._on_build_placement_requested("tank", _area02_fixture(Vector3(-11.0, 1.96, 28.0)), 0)
 	_expect(restored.build_controller.registered_unit_by_id("built_tank_10") != null, "next placement uses a non-colliding serial after load")
 
 
@@ -682,12 +728,12 @@ func _test_vacuum_intent_and_processing_round_trip() -> void:
 	root.add_child(source)
 	await process_frame
 	for entry in [
-		["tank", Vector3(-11.0, 1.96, 27.0), 0, 1],
-		["pump", Vector3(-7.0, 0.86, 27.0), 0, 2],
-		["vacuum_distillation", Vector3(-2.0, 2.76, 27.0), 0, 3],
-		["tank", Vector3(5.0, 1.96, 22.0), 0, 4],
-		["tank", Vector3(5.0, 1.96, 27.0), 0, 5],
-		["power_unit", Vector3(-10.0, 1.36, 17.0), 0, 6],
+		["tank", _area02_fixture(Vector3(-11.0, 1.96, 27.0)), 0, 1],
+		["pump", _area02_fixture(Vector3(-7.0, 0.86, 27.0)), 0, 2],
+		["vacuum_distillation", _area02_fixture(Vector3(-2.0, 2.76, 27.0)), 0, 3],
+		["tank", _area02_fixture(Vector3(5.0, 1.96, 22.0)), 0, 4],
+		["tank", _area02_fixture(Vector3(5.0, 1.96, 27.0)), 0, 5],
+		["power_unit", _area02_fixture(Vector3(-10.0, 1.36, 17.0)), 0, 6],
 	]:
 		_expect(source._create_built_unit(entry[0], entry[1], entry[2], entry[3], false)["ok"], "headless VDU fixture restores a buildable unit")
 	var model = source.built_refinery_model
@@ -737,12 +783,12 @@ func _test_fcc_processing_round_trip() -> void:
 	root.add_child(source)
 	await process_frame
 	for entry in [
-		["tank", Vector3(-13.0, 1.96, 35.0), 0, 1],
-		["pump", Vector3(-9.0, 0.86, 35.0), 0, 2],
-		["catalytic_cracking", Vector3(-3.0, 2.86, 35.0), 0, 3],
-		["tank", Vector3(5.0, 1.96, 30.0), 0, 4],
-		["tank", Vector3(5.0, 1.96, 35.0), 0, 5],
-		["tank", Vector3(12.0, 1.96, 30.0), 0, 6],
+		["tank", _area02_fixture(Vector3(-13.0, 1.96, 35.0)), 0, 1],
+		["pump", _area02_fixture(Vector3(-9.0, 0.86, 35.0)), 0, 2],
+		["catalytic_cracking", _area02_fixture(Vector3(-3.0, 2.86, 35.0)), 0, 3],
+		["tank", _area02_fixture(Vector3(5.0, 1.96, 30.0)), 0, 4],
+		["tank", _area02_fixture(Vector3(5.0, 1.96, 35.0)), 0, 5],
+		["tank", _area02_fixture(Vector3(12.0, 1.96, 30.0)), 0, 6],
 	]:
 		_expect(source._create_built_unit(entry[0], entry[1], entry[2], entry[3], false)["ok"], "headless FCC fixture creates normal buildable equipment")
 	var model = source.built_refinery_model
@@ -802,15 +848,15 @@ func _test_startup_confirmation(main) -> void:
 
 
 func _place_full_refinery(main) -> void:
-	main._on_build_placement_requested("tank", Vector3(-10.0, 1.96, 14.0), 0)
-	main._on_build_placement_requested("pump", Vector3(-6.0, 0.86, 14.0), 1)
-	main._on_build_placement_requested("valve", Vector3(-3.5, 0.71, 14.0), 2)
-	main._on_build_placement_requested("heater", Vector3(-0.5, 1.66, 14.0), 3)
-	main._on_build_placement_requested("column", Vector3(4.0, 3.36, 14.0), 0)
-	main._on_build_placement_requested("tank", Vector3(9.0, 1.96, 13.0), 1)
-	main._on_build_placement_requested("tank", Vector3(9.0, 1.96, 18.0), 2)
-	main._on_build_placement_requested("tank", Vector3(9.0, 1.96, 23.0), 3)
-	main._on_build_placement_requested("header", Vector3(-10.0, 0.96, 28.0), 0)
+	main._on_build_placement_requested("tank", _area02_fixture(Vector3(-10.0, 1.96, 14.0)), 0)
+	main._on_build_placement_requested("pump", _area02_fixture(Vector3(-6.0, 0.86, 14.0)), 1)
+	main._on_build_placement_requested("valve", _area02_fixture(Vector3(-3.5, 0.71, 14.0)), 2)
+	main._on_build_placement_requested("heater", _area02_fixture(Vector3(-0.5, 1.66, 14.0)), 3)
+	main._on_build_placement_requested("column", _area02_fixture(Vector3(4.0, 3.36, 14.0)), 0)
+	main._on_build_placement_requested("tank", _area02_fixture(Vector3(9.0, 1.96, 13.0)), 1)
+	main._on_build_placement_requested("tank", _area02_fixture(Vector3(9.0, 1.96, 18.0)), 2)
+	main._on_build_placement_requested("tank", _area02_fixture(Vector3(9.0, 1.96, 23.0)), 3)
+	main._on_build_placement_requested("header", _area02_fixture(Vector3(-10.0, 0.96, 28.0)), 0)
 
 
 func _connect_full_refinery(main) -> void:
@@ -853,6 +899,10 @@ func _player_equipment_count(main) -> int:
 		if not String(state.get("type", "")) in ["crude_intake", "product_dispatch"]:
 			count += 1
 	return count
+
+
+func _area02_fixture(legacy_position: Vector3) -> Vector3:
+	return legacy_position + WorldLayoutScript.legacy_area02_translation()
 
 
 func _cleanup_test_files() -> void:

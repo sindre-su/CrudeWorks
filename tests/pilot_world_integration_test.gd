@@ -93,6 +93,42 @@ func _test_fresh_world_context(main) -> void:
 		not main.build_mode_unlocked and not main.build_controller.unlocked,
 		"Main Refinery construction remains locked during the fresh Pilot loop"
 	)
+	var intake = main.build_controller.registered_unit_by_id("built_crude_intake_0")
+	var dispatch = main.build_controller.registered_unit_by_id("built_product_dispatch_0")
+	_expect(
+		is_instance_valid(intake) and is_instance_valid(dispatch)
+		and Vector2(intake.position.x, intake.position.z) == WorldLayoutScript.area02_anchor("crude_intake")
+		and Vector2(dispatch.position.x, dispatch.position.z) == WorldLayoutScript.area02_anchor("product_dispatch"),
+		"stable CI-101 and PD-101 instances use canonical Area 02 edge anchors"
+	)
+	if is_instance_valid(intake) and is_instance_valid(dispatch):
+		var intake_output_direction := Vector2(
+			intake.output_port.global_position.x - intake.global_position.x,
+			intake.output_port.global_position.z - intake.global_position.z
+		).normalized()
+		_expect(
+			intake_output_direction.dot(WorldLayoutScript.area02_inward_direction("crude_intake")) > 0.99,
+			"CI-101 output port faces from crude logistics into Area 02"
+		)
+		var dispatch_inputs_inward := true
+		for port in dispatch.ports_of_kind("input"):
+			var input_direction := Vector2(
+				port.global_position.x - dispatch.global_position.x,
+				port.global_position.z - dispatch.global_position.z
+			).normalized()
+			# Ports share the inward face but are laterally spaced, so their
+			# center-to-port vectors intentionally are not parallel.
+			if input_direction.dot(WorldLayoutScript.area02_inward_direction("product_dispatch")) <= 0.5:
+				dispatch_inputs_inward = false
+		_expect(dispatch_inputs_inward, "every PD-101 product input faces inward while its logistics face points outward")
+	var intake_count := 0
+	var dispatch_count := 0
+	for entry: Dictionary in main.build_controller.registered_units:
+		if entry["node"].unit_id == "built_crude_intake_0":
+			intake_count += 1
+		if entry["node"].unit_id == "built_product_dispatch_0":
+			dispatch_count += 1
+	_expect(intake_count == 1 and dispatch_count == 1, "CI-101 and PD-101 stable IDs are unique")
 	_expect(
 		main.process_model.crude_volume_l == 1000.0
 		and main.liquid_levels["raw_tank"]["node"].visible,
@@ -184,11 +220,11 @@ func _test_successful_pilot_operation(main) -> void:
 
 
 func _test_post_sale_building(main) -> void:
-	var tank_position := Vector3(-10.0, 1.96, 17.0)
-	var pump_position := Vector3(-5.0, 0.86, 17.0)
+	var tank_position := Vector3(110.0, WorldLayoutScript.placement_center_y(3.6), -17.0)
+	var pump_position := Vector3(115.0, WorldLayoutScript.placement_center_y(1.4), -17.0)
 	_expect(
 		main.build_controller._position_is_valid(tank_position, Vector2(3.6, 3.6)),
-		"active prototype build pad accepts a relevant starter tank in the enlarged world"
+		"canonical Area 02 platform accepts a relevant starter tank"
 	)
 	main._on_build_placement_requested("tank", tank_position, 1)
 	main._on_build_placement_requested("pump", pump_position, 2)
@@ -206,8 +242,8 @@ func _test_post_sale_building(main) -> void:
 		"player-built OUT-to-IN connection works in the retained active build area"
 	)
 	_expect(
-		not main.build_controller._position_is_valid(Vector3(-10.0, 1.96, 17.0), Vector2(3.6, 3.6))
-		and not main.build_controller._position_is_valid(Vector3(30.0, 1.96, 17.0), Vector2(3.6, 3.6)),
+		not main.build_controller._position_is_valid(tank_position, Vector2(3.6, 3.6))
+		and not main.build_controller._position_is_valid(Vector3(170.0, tank_position.y, -17.0), Vector2(3.6, 3.6)),
 		"placement feedback still rejects overlap and out-of-bounds construction"
 	)
 
@@ -236,8 +272,8 @@ func _test_disk_round_trip_and_resume(main) -> void:
 	_expect(restore_result["ok"], "fresh Main instance accepts the Pilot world snapshot")
 	_expect(
 		is_instance_valid(restored_tank) and is_instance_valid(restored_pump)
-		and restored_tank.position.is_equal_approx(Vector3(-10.0, 1.96, 17.0))
-		and restored_pump.position.is_equal_approx(Vector3(-5.0, 0.86, 17.0))
+		and restored_tank.position.is_equal_approx(Vector3(110.0, WorldLayoutScript.placement_center_y(3.6), -17.0))
+		and restored_pump.position.is_equal_approx(Vector3(115.0, WorldLayoutScript.placement_center_y(1.4), -17.0))
 		and restored_tank.rotation_quadrants == 1
 		and restored_pump.rotation_quadrants == 2,
 		"equipment IDs, absolute positions and rotations restore without relocation or duplication"

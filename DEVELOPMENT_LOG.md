@@ -1,5 +1,37 @@
 # CrudeWorks Development Log
 
+## v0.30.3 — Area 02 Spatial Coherence
+
+- Root cause: the rendered elevated Operations Hub, runtime build rectangle,
+  blue build-pad mesh, ghost/save y placement and fixed CI-101/PD-101 positions
+  were separate spatial definitions. The v0.29 world therefore showed one Area
+  02 while construction and logistics still used the compact prototype.
+- Made `WorldLayout.operations_hub` the single active Area 02 contract. Its
+  x `80..160`, z `-40..20`, `+0.75 m` platform derives a 4 m inset build zone,
+  placement height, overlay and validation. The old x `-20..20`, z
+  `10.5..38.5` bounds remain explicitly migration-only.
+- Replaced `PrototypeBuildPad` with a Build Mode-only `Area02BuildOverlay` whose
+  footprint and boundary lines derive directly from canonical validation.
+  Repeated off/on toggles restore the same state; no blue legacy zone remains.
+- Moved the existing functional `built_crude_intake_0` and
+  `built_product_dispatch_0` to west/east platform-edge support anchors. Their
+  whole functional transforms derive from the refinery-facing port direction:
+  CI output points east/inward, every PD product input lies on the west/inward
+  face, and outbound blank/logistics faces point away from Area 02.
+- Preserved endpoint IDs, interactions, contract/dispatch behavior, topology
+  and save format. Qualifying v0.30.2 construction receives one all-or-nothing
+  `(120, 0.61, -34)` translation; relative layout, rotations, pipes and IDs are
+  preserved while player position is unchanged. Fixed CI/PD are rebuilt once
+  at their canonical anchors, preventing legacy duplicates.
+- Added deterministic regressions for the platform/build/overlay contract,
+  legacy-zone rejection, reversible toggles, valid/invalid placement, CI/PD
+  anchors and real port orientation, stable-ID uniqueness, save migration and
+  duplicate-free load. Render inspection at 1280 × 720 covered Build Mode off,
+  Build Mode on and both endpoint approaches.
+- Broader Main Refinery, Utilities, Storage, LAB, CDU/HT/VDU/FCC and dedicated
+  logistics-pad migration remains out of scope. No process mechanic, economy
+  value, progression rule, material yield or save schema changed.
+
 ## v0.30.2 — Visual Stability & Pilot World Coherence
 
 - Removed the release-blocking macro-ground depth conflict. `TerrainBuffer`

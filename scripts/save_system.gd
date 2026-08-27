@@ -163,7 +163,17 @@ static func migrate_snapshot(snapshot) -> Dictionary:
 		return _result(false, "Lagringen mangler versjonsnummer.")
 	var version := int(snapshot["format_version"])
 	if version == FORMAT_VERSION:
-		return {"ok": true, "message": "Lagringen bruker gjeldende format.", "data": snapshot.duplicate(true)}
+		var current: Dictionary = snapshot.duplicate(true)
+		var spatially_migrated := _migrate_legacy_area02_construction(current)
+		return {
+			"ok": true,
+			"message": (
+				"Area 02-konstruksjon er flyttet til den kanoniske plattformen."
+				if spatially_migrated
+				else "Lagringen bruker gjeldende format."
+			),
+			"data": current,
+		}
 	if version != 1:
 		return _result(false, "Lagringsversjonen støttes ikke.")
 	if typeof(snapshot.get("built_refinery")) != TYPE_DICTIONARY:
@@ -197,7 +207,44 @@ static func migrate_snapshot(snapshot) -> Dictionary:
 		report["product_revenue"] = report.get("revenue", 0)
 		report["delivery_bonus"] = 0
 	migrated["format_version"] = FORMAT_VERSION
+	_migrate_legacy_area02_construction(migrated)
 	return {"ok": true, "message": "Lagringen er oppgradert til format 2.", "data": migrated}
+
+
+static func _migrate_legacy_area02_construction(snapshot: Dictionary) -> bool:
+	var construction = snapshot.get("construction", {})
+	if typeof(construction) != TYPE_DICTIONARY or typeof(construction.get("units")) != TYPE_ARRAY:
+		return false
+	var placements: Array = construction["units"]
+	if placements.is_empty():
+		return false
+	for placement in placements:
+		if typeof(placement) != TYPE_DICTIONARY:
+			return false
+		var equipment_type := String(placement.get("type", ""))
+		var rotation := int(placement.get("rotation_quadrants", -1))
+		var position = placement.get("position")
+		if not EquipmentCatalogScript.is_valid(equipment_type) or not _valid_vector(position, 3):
+			return false
+		var size: Vector3 = EquipmentCatalogScript.definition(equipment_type)["size"]
+		var footprint := Vector2(size.x, size.z) if rotation % 2 == 0 else Vector2(size.z, size.x)
+		var center := Vector2(float(position[0]), float(position[2]))
+		var legacy_y := WorldLayoutScript.LEGACY_AREA_02_PLACEMENT_BASE_Y + size.y * 0.5
+		if (
+			not WorldLayoutScript.placement_inside_legacy_build_bounds(center, footprint)
+			or absf(float(position[1]) - legacy_y) > 0.1
+		):
+			return false
+
+	var translation := WorldLayoutScript.legacy_area02_translation()
+	for placement in placements:
+		var position: Array = placement["position"]
+		position[0] = float(position[0]) + translation.x
+		position[1] = float(position[1]) + translation.y
+		position[2] = float(position[2]) + translation.z
+	snapshot["game_version"] = ProjectSettings.get_setting("application/config/version", "0.30.3")
+	snapshot["spatial_migrations"] = ["area02_v0303"]
+	return true
 
 
 static func _read_and_validate(path: String) -> Dictionary:
@@ -694,7 +741,7 @@ static func _placement_inside_build_area(equipment_type: String, rotation: int, 
 	var size: Vector3 = EquipmentCatalogScript.definition(equipment_type)["size"]
 	var footprint := Vector2(size.x, size.z) if rotation % 2 == 0 else Vector2(size.z, size.x)
 	var center := Vector2(float(position[0]), float(position[2]))
-	var expected_y := 0.16 + size.y * 0.5
+	var expected_y := WorldLayoutScript.placement_center_y(size.y)
 	return (
 		absf(float(position[1]) - expected_y) <= 0.1
 		and WorldLayoutScript.placement_inside_active_build_bounds(center, footprint)

@@ -569,7 +569,7 @@ func _update_ghost() -> void:
 	var size: Vector3 = data["size"]
 	ghost.position = Vector3(
 		roundf(hit_position.x / GRID_SIZE) * GRID_SIZE,
-		0.16 + size.y * 0.5,
+		WorldLayoutScript.placement_center_y(size.y),
 		roundf(hit_position.z / GRID_SIZE) * GRID_SIZE
 	)
 	ghost.rotation.y = deg_to_rad(float(rotation_quadrants * 90))

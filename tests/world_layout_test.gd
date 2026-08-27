@@ -15,6 +15,7 @@ func _init() -> void:
 func _run_tests() -> void:
 	_test_canonical_bounds()
 	_test_area_configuration()
+	_test_area02_spatial_contract()
 	_test_road_configuration()
 	_test_wayfinding_configuration()
 	_test_surface_standard()
@@ -44,7 +45,7 @@ func _test_canonical_bounds() -> void:
 	)
 	_expect(
 		WorldLayoutScript.world_contains_rect(WorldLayoutScript.build_bounds()),
-		"active prototype build bounds remain inside the enlarged world"
+		"canonical Area 02 build bounds remain inside the enlarged world"
 	)
 
 
@@ -82,6 +83,43 @@ func _test_area_configuration() -> void:
 		String(WorldLayoutScript.area_by_id("future_expansion").get("kind", "")) == "reserved",
 		"future expansion is explicit and reserved"
 	)
+
+
+func _test_area02_spatial_contract() -> void:
+	var area := WorldLayoutScript.area02_spec()
+	var platform_rect := WorldLayoutScript.area02_platform_rect()
+	var build_bounds := WorldLayoutScript.build_bounds()
+	_expect(
+		String(area["id"]) == WorldLayoutScript.AREA_02_ID
+		and platform_rect == WorldLayoutScript.area_rect(area),
+		"Area 02 platform footprint derives from one canonical area specification"
+	)
+	_expect(
+		platform_rect.encloses(build_bounds)
+		and build_bounds.position == platform_rect.position + WorldLayoutScript.AREA_02_BUILD_MARGIN
+		and build_bounds.end == platform_rect.end - WorldLayoutScript.AREA_02_BUILD_MARGIN,
+		"Area 02 build bounds are the platform footprint with one canonical safety margin"
+	)
+	_expect(
+		WorldLayoutScript.placement_inside_active_build_bounds(build_bounds.get_center(), Vector2(3.2, 3.2)),
+		"canonical white-platform center is buildable"
+	)
+	_expect(
+		not WorldLayoutScript.placement_inside_active_build_bounds(
+			WorldLayoutScript.LEGACY_AREA_02_BUILD_BOUNDS.get_center(), Vector2(2.0, 2.0)
+		),
+		"legacy CI-to-PD blue zone has no active build authority"
+	)
+	for anchor_id: String in ["crude_intake", "product_dispatch"]:
+		var anchor := WorldLayoutScript.area02_anchor(anchor_id)
+		_expect(
+			platform_rect.has_point(anchor)
+			and not build_bounds.has_point(anchor)
+			and WorldLayoutScript.area02_inward_direction(anchor_id).dot(
+				(platform_rect.get_center() - anchor).normalized()
+			) > 0.999,
+			"%s uses a canonical platform-edge support anchor facing inward" % anchor_id
+		)
 
 
 func _test_road_configuration() -> void:
@@ -176,8 +214,9 @@ func _test_spawn_and_legacy_coordinates() -> void:
 		)
 	for old_placement: Vector2 in [Vector2(-11.0, 15.0), Vector2(0.0, 20.0), Vector2(17.0, 35.0)]:
 		_expect(
-			WorldLayoutScript.placement_inside_active_build_bounds(old_placement, Vector2(2.0, 2.0)),
-			"legacy prototype placement %s remains valid without relocation" % old_placement
+			not WorldLayoutScript.placement_inside_active_build_bounds(old_placement, Vector2(2.0, 2.0))
+			and WorldLayoutScript.placement_inside_legacy_build_bounds(old_placement, Vector2(2.0, 2.0)),
+			"legacy prototype placement %s is migration-only, not actively buildable" % old_placement
 		)
 
 
@@ -214,8 +253,18 @@ func _test_world_builder() -> void:
 				)
 	_expect(
 		builder.get_node("PrototypeProcessPad") is MeshInstance3D
-		and builder.get_node("PrototypeBuildPad") is MeshInstance3D,
-		"flush Pilot and build-pad materials add no separate collision lips"
+		and builder.get_node("Area02BuildOverlay") is MeshInstance3D
+		and not builder.has_node("PrototypeBuildPad"),
+		"Pilot pad remains visual-only and no legacy build-pad node survives"
+	)
+	var build_overlay: MeshInstance3D = builder.get_node("Area02BuildOverlay")
+	var overlay_mesh: BoxMesh = build_overlay.mesh
+	var canonical_build_bounds := WorldLayoutScript.build_bounds()
+	_expect(
+		Vector2(build_overlay.position.x, build_overlay.position.z) == canonical_build_bounds.get_center()
+		and Vector2(overlay_mesh.size.x, overlay_mesh.size.z) == canonical_build_bounds.size
+		and build_overlay.get_meta("canonical_bounds") == canonical_build_bounds,
+		"Build Mode overlay footprint exactly matches canonical build validation"
 	)
 	var signs: Array = [
 		builder.orientation_nodes["starter_site"],
@@ -264,6 +313,14 @@ func _test_world_builder() -> void:
 	_expect(
 		builder.build_visual_nodes.all(func(node: Node3D) -> bool: return node.visible),
 		"construction visualization can be enabled without changing build validation"
+	)
+	builder.set_build_visualization_visible(false)
+	builder.set_build_visualization_visible(true)
+	_expect(
+		builder.build_visualization_visible
+		and builder.build_visual_nodes.all(func(node: Node3D) -> bool: return node.visible)
+		and WorldLayoutScript.build_bounds() == canonical_build_bounds,
+		"repeated Build Mode toggles return every canonical Area 02 visual to one deterministic state"
 	)
 	_expect(
 		builder.area_labels.all(func(label: Label3D) -> bool: return not label.visible),

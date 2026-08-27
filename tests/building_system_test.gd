@@ -3,6 +3,7 @@ extends SceneTree
 const Catalog = preload("res://scripts/equipment_catalog.gd")
 const BuildableUnitScript = preload("res://scripts/buildable_unit.gd")
 const BuildControllerScript = preload("res://scripts/build_controller.gd")
+const WorldLayoutScript = preload("res://scripts/world_layout.gd")
 
 var failures := 0
 
@@ -92,6 +93,12 @@ func _test_catalog() -> void:
 	_expect(Catalog.port_definitions("power_unit").is_empty() and Catalog.definition("power_unit")["cost"] > 0, "Power Unit is a normal purchasable utility with no process ports")
 	var fcc_ports: Array[Dictionary] = Catalog.port_definitions("catalytic_cracking")
 	_expect(Catalog.definition("catalytic_cracking")["cost"] == 2200 and fcc_ports.size() == 4, "FCC-401 is a purchasable normal build-menu unit with one VGO input and three outputs")
+	var dispatch_ports: Array[Dictionary] = Catalog.port_definitions("product_dispatch")
+	_expect(
+		dispatch_ports.size() == 8
+		and dispatch_ports.all(func(port): return port["kind"] == "input" and port["position"].z > 0.0),
+		"PD-101 exposes every product input on one refinery-facing side"
+	)
 
 
 func _ghost_has_port(ghost: Node3D, target_port_id: String) -> bool:
@@ -104,7 +111,7 @@ func _ghost_has_port(ghost: Node3D, target_port_id: String) -> bool:
 func _test_units_and_footprints(world: Node3D) -> void:
 	var heater = BuildableUnitScript.new()
 	heater.configure_buildable("heater", 1)
-	heater.position = Vector3(-8.0, 1.66, 20.0)
+	heater.position = Vector3(112.0, WorldLayoutScript.placement_center_y(3.0), -14.0)
 	world.add_child(heater)
 	_expect(is_instance_valid(heater.input_port), "buildable unit creates an input port")
 	_expect(is_instance_valid(heater.output_port), "buildable unit creates an output port")
@@ -152,7 +159,7 @@ func _test_units_and_footprints(world: Node3D) -> void:
 func _test_placement_and_connections(world: Node3D, controller) -> void:
 	var tank = BuildableUnitScript.new()
 	tank.configure_buildable("tank", 2)
-	tank.position = Vector3(0.0, 1.96, 20.0)
+	tank.position = Vector3(120.0, WorldLayoutScript.placement_center_y(3.6), -14.0)
 	world.add_child(tank)
 	controller.register_unit(tank)
 	_expect(is_instance_valid(tank.liquid_level), "built tank has a visible-fill component")
@@ -166,25 +173,25 @@ func _test_placement_and_connections(world: Node3D, controller) -> void:
 		)
 
 	_expect(
-		not controller._position_is_valid(Vector3(0.5, 1.0, 20.0), Vector2(2.0, 2.0)),
+		not controller._position_is_valid(Vector3(120.5, 1.0, -14.0), Vector2(2.0, 2.0)),
 		"overlapping equipment placement is rejected"
 	)
 	_expect(
-		controller._position_is_valid(Vector3(6.0, 1.0, 20.0), Vector2(2.0, 2.0)),
+		controller._position_is_valid(Vector3(126.0, 1.0, -14.0), Vector2(2.0, 2.0)),
 		"separated equipment placement is accepted"
 	)
 	_expect(
-		controller._position_is_valid(Vector3(17.0, 1.0, 20.0), Vector2(2.0, 2.0)),
-		"expanded Area 02 accepts equipment in the new outward build space"
+		controller._position_is_valid(Vector3(150.0, 1.0, -14.0), Vector2(2.0, 2.0)),
+		"canonical Area 02 accepts equipment near the outward platform margin"
 	)
 	_expect(
-		not controller._position_is_valid(Vector3(21.0, 1.0, 20.0), Vector2(2.0, 2.0)),
+		not controller._position_is_valid(Vector3(158.0, 1.0, -14.0), Vector2(2.0, 2.0)),
 		"placement outside build bounds is rejected"
 	)
 
 	var pump = BuildableUnitScript.new()
 	pump.configure_buildable("pump", 3)
-	pump.position = Vector3(0.0, 0.86, 26.0)
+	pump.position = Vector3(120.0, WorldLayoutScript.placement_center_y(1.4), -8.0)
 	world.add_child(pump)
 	controller.register_unit(pump)
 	_expect(is_instance_valid(pump.pump_rotor), "built pump has a local physical rotor")

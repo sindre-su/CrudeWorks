@@ -2,13 +2,13 @@
 
 ## Current baseline
 
-Version 0.30.2 retains the tested v0.28.2 process foundation, v0.29.0 canonical
-600 x 400 m world and v0.30.0 functional Pilot. The corrective pass makes
-ground, roads and pedestrian overlays essentially flush, removes colliding
-Pilot/build-pad lips, aligns ramp top faces exactly to grade, replaces the
-starter entrance and sign implementation, separates area-label debug and adds
-non-gameplay landmark silhouettes. Pilot equipment keeps its stable IDs and
-legacy absolute coordinates. Main Refinery functional areas remain unmigrated.
+Version 0.30.3 retains the tested v0.28.2 process foundation, v0.29.0 canonical
+600 x 400 m world, v0.30.0 functional Pilot and v0.30.2 visual-stability pass.
+The elevated `operations_hub` is now the single runtime Area 02 spatial source:
+platform, elevation, inset build footprint, Build Mode visualization,
+placement/save validation and CI-101/PD-101 edge anchors agree. Pilot equipment
+keeps its stable IDs and absolute coordinates. Other Main Refinery functional
+areas remain unmigrated.
 
 The underlying foundation has a tested pilot plant and a substantial Area 02 refinery
 slice: free building, directed process networks, multiple independent trains,
@@ -38,11 +38,12 @@ running sales pump before it can invoke the existing dispatch transaction.
 
 ## Current priority
 
-**Human-retest v0.30.2 visual stability and the functional Pilot, then integrate the
-Main Refinery in small slices.** Automated coverage now walks the complete
+**Human-retest the v0.30.3 Area 02 spatial contract, then reassess the next
+small Main Refinery slice.** Automated coverage now walks the complete
 spawn → Pilot → Crude Intake → gate → Operations → CDU route without jumping,
-but a real 1280 × 720 WASD retest must confirm seam feel, sign reading,
-landmarks, equipment spacing and the 10–20 minute Pilot demonstration. Later
+and validates canonical build placement, CI/PD direction and save migration,
+but a real 1280 × 720 WASD retest must confirm build-overlay alignment, port
+access, equipment spacing and the 10–20 minute Pilot demonstration. Later
 graybox acceptance must still
 validate port aiming, pipe/valve readability, alarms, tank levels, LAB-101,
 LS-201, utilities, VDU/FCC placement and pump-condition pacing. Headless tests
@@ -94,7 +95,7 @@ requires a post-graybox player-value decision, not process completeness alone.
 | Standard gross output | ~5,000 kr | 300 L Naphtha, 350 L Diesel, 350 L Heavy Residue at target |
 | HT-201 / PU-101 / VDU-301 / FCC-401 | 800 / 700 / 1,200 / 2,200 kr | Reachable after a successful first physical delivery; exact feel still needs human QA |
 
-v0.30.2 retains the existing equipment prices and fixed Utilities Yard at
+v0.30.3 retains the existing equipment prices and fixed Utilities Yard at
 no purchase cost. IA-101 and CWP-101 add 35 kW, so one first atmospheric train
 uses 70 kW before commissioning, 80 kW with LAB/LS, and 100 kW with Sour
 treatment. PU-101 still doubles generation to 200 kW for concurrent trains and
@@ -138,10 +139,13 @@ Tank Farm, LAB-101 and PD-101 into their intended zones. Preserve IDs,
 interactions, ports, process topology and saves where practical. Do not place
 visual duplicates of functional equipment.
 
-**Status: Pilot slice complete and visually stable in v0.30.2.** Starter gameplay is integrated
-without relocation. CI-101, crude/main storage, CDU/HT, Utilities, LAB, PD-101,
-VDU and FCC migration remains pending and must proceed in smaller validated
-slices.
+**Status: Pilot slice complete and visually stable; Area 02 spatial contract
+complete in v0.30.3.** Starter gameplay remains integrated without relocation.
+The functional CI-101 and PD-101 now occupy canonical upstream/downstream
+support anchors on the Operations Hub and face inward through their real port
+transforms. Crude/main storage, CDU/HT, Utilities, LAB, dedicated logistics
+pads, VDU and FCC migration remains pending and must proceed in smaller
+validated slices.
 
 ### 4. Control Room & Expansion Graybox
 

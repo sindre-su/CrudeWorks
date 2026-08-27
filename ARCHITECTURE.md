@@ -11,8 +11,9 @@ For long-term design, Graybox direction and scope, see `CRUDEWORKS_VISION.md`,
   coordination. It does not own macro-world geometry, bounds, Area 02 material
   or topology rules.
 - `scripts/world_layout.gd`: sole authority for canonical world coordinates,
-  area/road specifications, active placement bounds, spawn and player/save
-  bounds.
+  area/road specifications, Area 02 platform/elevation/build bounds/fixed edge
+  anchors, spawn and player/save bounds. Its old build rectangle is isolated as
+  migration-only data.
 - `scripts/world_builder.gd`: primitive macro terrain, platforms, roads,
   flush paths, modular ramps, boundaries, non-gameplay landmark silhouettes,
   starter wayfinding, collision and retained prototype pads. It consumes
@@ -127,13 +128,20 @@ utility/trip state and stable identifiers; it rebuilds derived state and restore
 pumps stopped. Existing v0.27/v0.28-compatible saves remain supported through
 validated migration/fallback paths.
 
-The 600 x 400 m world was enlarged around the old prototype coordinates.
-Absolute player and construction positions are therefore retained without a
-coordinate migration. `BuildController` and `SaveSystem` consume the same
-active placement bounds from `WorldLayout`; player save validation and
-out-of-bounds recovery consume its canonical world/spawn values. The active
-construction footprint remains the original Area 02 pad until functional
-migration deliberately changes it.
+The 600 x 400 m world retains the old Pilot and player coordinates. In v0.30.3,
+the `operations_hub` area at x `80..160`, z `-40..20`, surface `+0.75 m` became
+the active Area 02 platform. One 4 m safety margin derives the build rectangle
+x `84..156`, z `-36..16`; `WorldBuilder`, `BuildController` and `SaveSystem`
+all consume that contract. CI-101 and PD-101 instantiate once from canonical
+west/east support anchors and derive whole-unit rotation from their functional
+port side toward the platform center.
+
+Format-v2 development saves whose complete construction set still validates
+inside the old x `-20..20`, z `10.5..38.5` footprint at its old placement
+height receive one all-or-nothing translation `(120, 0.61, -34)`. This keeps
+relative layout, rotations, connections and IDs. Mixed/ambiguous layouts are
+not guessed, fixed CI/PD are rebuilt from their stable IDs rather than persisted
+positions, and player position is never translated. No schema bump was needed.
 
 Graybox relocation must preserve stable IDs/semantics where saves and process
 routes depend on them, retain process-network ports and interactions, and avoid
@@ -141,13 +149,14 @@ placing visual duplicate equipment that looks functional but has no model state.
 
 ## Scope boundary
 
-The v0.28.2 process foundation remains frozen in v0.30.2. The existing fixed
+The v0.28.2 process foundation remains frozen in v0.30.3. The existing fixed
 Pilot is now verified as one complete fresh-save world loop without relocating
-its stable IDs or absolute coordinates. Main CDU, VDU, FCC, HT-201, routing,
-storage, LAB, PD-101, utilities, controls, alarms and maintenance are still
-functionally located in the compact prototype neighborhood and await deliberate
-migration. New major process families, detailed hydraulics and detailed thermal
-simulation require an explicit post-Graybox gameplay decision.
+its stable IDs or absolute coordinates. CI-101/PD-101 and Area 02 building are
+spatially integrated, but Main CDU, VDU, FCC, HT-201, routing, storage, LAB,
+utilities, controls, alarms and maintenance remain functionally compact and
+await deliberate migration. New major process families, detailed hydraulics
+and detailed thermal simulation require an explicit post-Graybox gameplay
+decision.
 
 ## Test map
 

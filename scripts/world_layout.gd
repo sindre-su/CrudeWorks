@@ -6,7 +6,15 @@ extends RefCounted
 
 const WORLD_BOUNDS := Rect2(-60.0, -250.0, 600.0, 400.0)
 const TERRAIN_BOUNDS := Rect2(-90.0, -280.0, 660.0, 460.0)
-const ACTIVE_BUILD_BOUNDS := Rect2(-20.0, 10.5, 40.0, 28.0)
+const AREA_02_ID := "operations_hub"
+const AREA_02_BUILD_MARGIN := Vector2(4.0, 4.0)
+const AREA_02_FIXED_ANCHOR_INSET := 2.0
+const BUILD_PLACEMENT_CLEARANCE := 0.02
+
+## Migration-only v0.30.2 construction footprint. It must never drive current
+## placement or visualization.
+const LEGACY_AREA_02_BUILD_BOUNDS := Rect2(-20.0, 10.5, 40.0, 28.0)
+const LEGACY_AREA_02_PLACEMENT_BASE_Y := 0.16
 const PLAYER_Y_RANGE := Vector2(-5.0, 40.0)
 const RECOVERY_MIN_Y := -20.0
 const NEW_GAME_SPAWN := Vector3(-10.0, 0.1, 8.0)
@@ -58,13 +66,17 @@ const AREA_SPECS := [
 	},
 	{
 		"id": "operations_hub",
-		"display_name": "Operations Hub",
+		"display_name": "Area 02 / Operations Hub",
 		"center": Vector2(120.0, -10.0),
 		"dimensions": Vector2(80.0, 60.0),
 		"elevation": PROCESS_PLATFORM_ELEVATION,
 		"kind": "operations",
 		"render_platform": true,
 		"access_sides": ["west", "east"],
+		"buildable": true,
+		"build_margin": AREA_02_BUILD_MARGIN,
+		"upstream_side": "west",
+		"downstream_side": "east",
 	},
 	{
 		"id": "storage",
@@ -281,7 +293,65 @@ const WAYFINDING_SPECS := [
 
 
 static func build_bounds() -> Rect2:
-	return ACTIVE_BUILD_BOUNDS
+	var area := area02_spec()
+	var platform_rect := area_rect(area)
+	var margin: Vector2 = area["build_margin"]
+	return Rect2(platform_rect.position + margin, platform_rect.size - margin * 2.0)
+
+
+static func area02_spec() -> Dictionary:
+	return area_by_id(AREA_02_ID)
+
+
+static func area02_platform_rect() -> Rect2:
+	return area_rect(area02_spec())
+
+
+static func area02_surface_elevation() -> float:
+	return float(area02_spec()["elevation"])
+
+
+static func placement_center_y(equipment_height: float) -> float:
+	return area02_surface_elevation() + BUILD_PLACEMENT_CLEARANCE + equipment_height * 0.5
+
+
+static func area02_anchor(anchor_id: String) -> Vector2:
+	var platform_rect := area02_platform_rect()
+	var center := platform_rect.get_center()
+	match anchor_id:
+		"crude_intake":
+			return Vector2(platform_rect.position.x + AREA_02_FIXED_ANCHOR_INSET, center.y)
+		"product_dispatch":
+			return Vector2(platform_rect.end.x - AREA_02_FIXED_ANCHOR_INSET, center.y)
+	return center
+
+
+static func area02_inward_direction(anchor_id: String) -> Vector2:
+	return (area02_platform_rect().get_center() - area02_anchor(anchor_id)).normalized()
+
+
+static func cardinal_rotation_quadrants(local_facing: Vector2, desired_world_facing: Vector2) -> int:
+	var best_quadrant := 0
+	var best_alignment := -INF
+	var rotated := local_facing.normalized()
+	var desired := desired_world_facing.normalized()
+	for quadrant in 4:
+		var alignment := rotated.dot(desired)
+		if alignment > best_alignment:
+			best_alignment = alignment
+			best_quadrant = quadrant
+		rotated = Vector2(rotated.y, -rotated.x)
+	return best_quadrant
+
+
+static func legacy_area02_translation() -> Vector3:
+	var legacy_center := LEGACY_AREA_02_BUILD_BOUNDS.get_center()
+	var current_center := build_bounds().get_center()
+	return Vector3(
+		current_center.x - legacy_center.x,
+		area02_surface_elevation() + BUILD_PLACEMENT_CLEARANCE - LEGACY_AREA_02_PLACEMENT_BASE_Y,
+		current_center.y - legacy_center.y + 0.5
+	)
 
 
 static func world_contains_xz(point: Vector2) -> bool:
@@ -349,12 +419,23 @@ static func area_id_at(point: Vector2) -> String:
 
 
 static func placement_inside_active_build_bounds(center: Vector2, footprint: Vector2) -> bool:
+	var active_bounds := build_bounds()
 	var half := footprint * 0.5
 	return (
-		center.x - half.x >= ACTIVE_BUILD_BOUNDS.position.x
-		and center.x + half.x <= ACTIVE_BUILD_BOUNDS.end.x
-		and center.y - half.y >= ACTIVE_BUILD_BOUNDS.position.y
-		and center.y + half.y <= ACTIVE_BUILD_BOUNDS.end.y
+		center.x - half.x >= active_bounds.position.x
+		and center.x + half.x <= active_bounds.end.x
+		and center.y - half.y >= active_bounds.position.y
+		and center.y + half.y <= active_bounds.end.y
+	)
+
+
+static func placement_inside_legacy_build_bounds(center: Vector2, footprint: Vector2) -> bool:
+	var half := footprint * 0.5
+	return (
+		center.x - half.x >= LEGACY_AREA_02_BUILD_BOUNDS.position.x
+		and center.x + half.x <= LEGACY_AREA_02_BUILD_BOUNDS.end.x
+		and center.y - half.y >= LEGACY_AREA_02_BUILD_BOUNDS.position.y
+		and center.y + half.y <= LEGACY_AREA_02_BUILD_BOUNDS.end.y
 	)
 
 

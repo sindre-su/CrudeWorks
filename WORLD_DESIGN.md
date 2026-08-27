@@ -14,11 +14,13 @@ add new process families, detailed assets, vehicle gameplay or a complete
 Control Room.
 
 **Implementation status:** Graybox World Program Work Package 1, v0.30.0 Pilot
-Integration, v0.30.1 Traversal Cleanup and v0.30.2 Visual Stability are complete. The macro
-world, canonical coordinates, area footprints, roads, boundaries, modular
-ramps, physical signs and collision skeleton are implemented. The fixed Pilot
-is proven in its canonical southwest footprint; broader Main Refinery equipment
-remains in the compact prototype neighborhood until later migration packages.
+Integration, v0.30.1 Traversal Cleanup, v0.30.2 Visual Stability and v0.30.3
+Area 02 Spatial Coherence are complete. The macro world, canonical coordinates,
+area footprints, roads, boundaries, modular ramps, physical signs and collision
+skeleton are implemented. The fixed Pilot is proven in its canonical southwest
+footprint. Area 02 building plus CI-101/PD-101 now use the Operations Hub
+platform contract; broader Main Refinery equipment remains compact until later
+migration packages.
 
 ## Scale and navigation convention
 
@@ -90,9 +92,9 @@ duplicated in scene scripts:
 
 | Canonical ID | Center x/z | Footprint | Elevation | Work Package 1 role |
 | --- | ---: | ---: | ---: | --- |
-| `crude_intake` | `-10 / 75` | 80 x 70 m | +0.75 m | Empty logistics pad; functional CI-101 is not migrated yet. |
+| `crude_intake` | `-10 / 75` | 80 x 70 m | +0.75 m | Dedicated logistics pad remains empty; CI-101 uses the interim Operations west-edge anchor. |
 | `pilot_plant` | `-10 / -10` | 75 x 75 m | ground | Southwest starter footprint containing the current Pilot neighborhood. |
-| `operations_hub` | `120 / -10` | 80 x 60 m | +0.75 m | Shared Control Room/LAB graybox platform. |
+| `operations_hub` | `120 / -10` | 80 x 60 m | +0.75 m | Canonical Area 02 build platform with CI/PD edge support anchors; Control Room/LAB remain marked subareas. |
 | `control_room` | `105 / -10` | 30 x 22 m | +0.75 m | Marked sub-footprint only; no full control gameplay. |
 | `lab` | `145 / -10` | 24 x 20 m | +0.75 m | Marked sub-footprint only; LAB-101 is not migrated yet. |
 | `storage` | `260 / 5` | 150 x 120 m | +0.75 m | Crude/product tank-farm reserve. |
@@ -102,7 +104,7 @@ duplicated in scene scripts:
 | `vdu` | `120 / -200` | 100 x 90 m | +0.75 m | Secondary-process platform. |
 | `fcc` | `260 / -197.5` | 110 x 95 m | +0.75 m | Secondary-process platform. |
 | `future_expansion` | `430 / -180` | 160 x 130 m | +0.75 m | Explicitly empty and reserved. |
-| `product_dispatch` | `440 / 75` | 90 x 70 m | +0.75 m | Empty road-facing dispatch pad; functional PD-101 is not migrated yet. |
+| `product_dispatch` | `440 / 75` | 90 x 70 m | +0.75 m | Dedicated road-facing pad remains empty; PD-101 uses the interim Operations east-edge anchor. |
 
 Raised platforms have at least one primitive walk-up ramp; Crude Intake has
 north and south approaches, while Operations and Storage have paired approaches
@@ -137,7 +139,7 @@ economy and progression behavior is unchanged.
 The Pilot platform remains ground-level as an explicit compatibility exception.
 Raising it now would bury or relocate functional equipment and invalidate the
 safe absolute-coordinate strategy. Main-world scale and the measured long
-routes remain provisional pending the human v0.30.2 retest.
+routes remain provisional pending the human v0.30.3 retest.
 
 ## v0.30.1 traversal and readability standard
 
@@ -185,10 +187,22 @@ is active and are not persisted. The default `pilot_slice` playable stage ends
 with `PILOT COMPLETE`; switching the stage configuration to `main_refinery`
 restores the unchanged Area 02 objective architecture.
 
-Legacy fixed CI-101/PD-101 remain at their original compact ground-level
-coordinates while their canonical destination areas are elevated graybox pads.
-This visible mismatch is intentional v0.31+ migration debt. v0.30.2 does not
-move IDs, equipment, process state, absolute save coordinates or connections.
+## v0.30.3 Area 02 spatial contract
+
+The elevated white `operations_hub` is the sole active Area 02 platform. Its
+center `(120, -10)`, 80 x 60 m footprint and `+0.75 m` elevation derive the
+runtime build surface. A uniform 4 m edge margin gives build bounds x
+`84..156`, z `-36..16`; the cyan Build Mode overlay, boundary lines, placement
+ghost height, placement validation and save validation all consume these values.
+
+CI-101 is the existing functional fixed unit at west support anchor `(82, -10)`
+and PD-101 is the existing unit at east support anchor `(158, -10)`. Both sit on
+the platform support strip outside player construction bounds. Whole-unit
+rotation is derived from each functional port side and the vector toward Area
+02: crude flows east from CI, while PD product inputs face west and its
+logistics face points outward. The separately reserved Crude Intake and Product
+Dispatch macro pads remain future migration destinations; moving the complete
+storage/logistics chain there is broader than this corrective package.
 
 ## Implemented road skeleton
 
@@ -226,19 +240,28 @@ Package 1 does not add a vehicle or compensate with teleportation.
 
 ## Save and migration strategy
 
-Construction and player saves use absolute coordinates. Work Package 1 enlarges
-the world around all previously valid positions instead of translating saved
-objects. The active prototype build/placement bounds therefore remain x
-`-20..20`, z `10.5..38.5` until functional-area migration deliberately expands
-or replaces them. `BuildController` and `SaveSystem` both delegate footprint
-checks to `WorldLayout`; neither owns a second bounds constant.
+Construction and player saves use absolute coordinates. Work Package 1 first
+enlarged the world around existing positions. v0.30.3 then deliberately replaced
+the active prototype build footprint with the canonical Operations Hub bounds.
+`BuildController` and `SaveSystem` both delegate footprint and placement-height
+checks to `WorldLayout`; neither owns a second active bounds constant.
+
+The former x `-20..20`, z `10.5..38.5`, base-y `0.16` contract is isolated as
+migration data. A format-v2 save is translated only when every player-built
+placement, including its rotated footprint and expected old height, fits that
+legacy contract. The all-or-nothing offset `(120, 0.61, -34)` preserves relative
+layout, rotation, connection and stable-ID data. Mixed or ambiguous layouts are
+not heuristically moved. Fixed CI/PD positions are not stored as construction,
+and reload rebuilds exactly one of each from their canonical anchors. Player
+position remains unchanged; the save schema remains version 2.
 
 Player save validation now uses the canonical 600 x 400 m site and y `-5..40`.
 Collision walls stop normal travel at north/east/west/shore edges, and a player
 who falls below y `-20` or is externally moved outside canonical x/z bounds is
 returned to the southwest spawn. Existing valid saves keep their absolute
-positions with no silent relocation. Invalid/corrupt coordinates still use the
-existing validated save-recovery behavior.
+positions unless they match the explicit Area 02 migration above.
+Invalid/corrupt coordinates still use the existing validated save-recovery
+behavior.
 
 In debug builds, `F7` toggles the HUD with live player coordinates, site bounds
 and current canonical area ID. `F8` independently toggles world-space area ID,

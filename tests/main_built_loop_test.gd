@@ -1,6 +1,7 @@
 extends SceneTree
 
 const MainScene = preload("res://scenes/main.tscn")
+const WorldLayoutScript = preload("res://scripts/world_layout.gd")
 
 var failures := 0
 
@@ -449,8 +450,8 @@ func _test_product_header_save_round_trip() -> void:
 	main._process(0.0)
 	_place_full_refinery(main)
 	_connect_full_refinery(main)
-	main._on_build_placement_requested("product_header", Vector3(4.0, 0.96, 27.0), 0)
-	main._on_build_placement_requested("tank", Vector3(10.0, 1.96, 28.0), 0)
+	main._on_build_placement_requested("product_header", _area02_fixture(Vector3(4.0, 0.96, 27.0)), 0)
+	main._on_build_placement_requested("tank", _area02_fixture(Vector3(10.0, 1.96, 28.0)), 0)
 	var column = _unit(main, "built_column_5")
 	var diesel_a = _unit(main, "built_tank_7")
 	var header = _unit(main, "built_product_header_12")
@@ -584,17 +585,17 @@ func _test_out_of_bounds_recovery() -> void:
 
 
 func _place_full_refinery(main) -> void:
-	main._on_build_placement_requested("tank", Vector3(-10.0, 1.96, 14.0), 0)
-	main._on_build_placement_requested("pump", Vector3(-6.0, 0.86, 14.0), 0)
-	main._on_build_placement_requested("valve", Vector3(-3.5, 0.71, 14.0), 0)
-	main._on_build_placement_requested("heater", Vector3(-0.5, 1.66, 14.0), 0)
-	main._on_build_placement_requested("column", Vector3(4.0, 3.36, 14.0), 0)
-	main._on_build_placement_requested("tank", Vector3(9.0, 1.96, 13.0), 0)
-	main._on_build_placement_requested("tank", Vector3(9.0, 1.96, 18.0), 0)
-	main._on_build_placement_requested("tank", Vector3(9.0, 1.96, 23.0), 0)
-	main._create_built_unit("pump", Vector3(14.0, 0.86, 13.0), 0, 9, false)
-	main._create_built_unit("pump", Vector3(14.0, 0.86, 18.0), 0, 10, false)
-	main._create_built_unit("pump", Vector3(14.0, 0.86, 23.0), 0, 11, false)
+	main._on_build_placement_requested("tank", _area02_fixture(Vector3(-10.0, 1.96, 14.0)), 0)
+	main._on_build_placement_requested("pump", _area02_fixture(Vector3(-6.0, 0.86, 14.0)), 0)
+	main._on_build_placement_requested("valve", _area02_fixture(Vector3(-3.5, 0.71, 14.0)), 0)
+	main._on_build_placement_requested("heater", _area02_fixture(Vector3(-0.5, 1.66, 14.0)), 0)
+	main._on_build_placement_requested("column", _area02_fixture(Vector3(4.0, 3.36, 14.0)), 0)
+	main._on_build_placement_requested("tank", _area02_fixture(Vector3(9.0, 1.96, 13.0)), 0)
+	main._on_build_placement_requested("tank", _area02_fixture(Vector3(9.0, 1.96, 18.0)), 0)
+	main._on_build_placement_requested("tank", _area02_fixture(Vector3(9.0, 1.96, 23.0)), 0)
+	main._create_built_unit("pump", _area02_fixture(Vector3(14.0, 0.86, 13.0)), 0, 9, false)
+	main._create_built_unit("pump", _area02_fixture(Vector3(14.0, 0.86, 18.0)), 0, 10, false)
+	main._create_built_unit("pump", _area02_fixture(Vector3(14.0, 0.86, 23.0)), 0, 11, false)
 
 
 func _connect_full_refinery(main) -> void:
@@ -646,6 +647,10 @@ func _unit(main, unit_id: String):
 		if entry["node"].unit_id == unit_id:
 			return entry["node"]
 	return null
+
+
+func _area02_fixture(legacy_position: Vector3) -> Vector3:
+	return legacy_position + WorldLayoutScript.legacy_area02_translation()
 
 
 func _expect(condition: bool, description: String) -> void:

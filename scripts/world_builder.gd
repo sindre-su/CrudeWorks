@@ -20,7 +20,8 @@ const COLOR_BUILD_PAD := Color("#526775")
 const COLOR_FIXED_STRUCTURE := Color("#444c51")
 const SURFACE_VISUAL_THICKNESS := 0.02
 
-var prototype_build_area_label: Label3D
+var area02_build_area_label: Label3D
+var area02_build_overlay: MeshInstance3D
 var area_nodes: Dictionary = {}
 var road_nodes: Dictionary = {}
 var path_nodes: Dictionary = {}
@@ -232,40 +233,44 @@ func _build_prototype_pads() -> void:
 		COLOR_PROTOTYPE_PAD
 	)
 	process_pad.set_meta("surface_role", "pilot_process")
-	var build_pad := _create_visual_box(
-		"PrototypeBuildPad",
-		Vector3(0.0, WorldLayoutScript.BASE_GRADE_ELEVATION + 0.009, 24.5),
-		Vector3(44.0, 0.018, 30.0),
+	var build_bounds := WorldLayoutScript.build_bounds()
+	var build_center := build_bounds.get_center()
+	var build_elevation := WorldLayoutScript.area02_surface_elevation()
+	area02_build_overlay = _create_visual_box(
+		"Area02BuildOverlay",
+		Vector3(build_center.x, build_elevation + 0.011, build_center.y),
+		Vector3(build_bounds.size.x, 0.02, build_bounds.size.y),
 		COLOR_BUILD_PAD
 	)
-	build_pad.set_meta("surface_role", "buildable_area")
-	build_visual_nodes.append(build_pad)
+	area02_build_overlay.set_meta("surface_role", "buildable_area")
+	area02_build_overlay.set_meta("canonical_bounds", build_bounds)
+	build_visual_nodes.append(area02_build_overlay)
 
-	for x_position: float in [-21.5, 21.5]:
+	for x_position: float in [build_bounds.position.x, build_bounds.end.x]:
 		var boundary := _create_visual_box(
-			"BuildBoundaryX",
-			Vector3(x_position, 0.022, 24.5),
-			Vector3(0.18, 0.03, 29.0),
+			"Area02BuildBoundaryX",
+			Vector3(x_position, build_elevation + 0.026, build_center.y),
+			Vector3(0.18, 0.03, build_bounds.size.y),
 			Color("#7896a3")
 		)
 		build_visual_nodes.append(boundary)
-	for z_position: float in [10.2, 38.8]:
+	for z_position: float in [build_bounds.position.y, build_bounds.end.y]:
 		var boundary := _create_visual_box(
-			"BuildBoundaryZ",
-			Vector3(0.0, 0.022, z_position),
-			Vector3(43.0, 0.03, 0.18),
+			"Area02BuildBoundaryZ",
+			Vector3(build_center.x, build_elevation + 0.026, z_position),
+			Vector3(build_bounds.size.x, 0.03, 0.18),
 			Color("#7896a3")
 		)
 		build_visual_nodes.append(boundary)
 
 	var build_sign = GrayboxSignScript.new()
 	build_sign.name = "Orientation_build_area"
-	build_sign.position = Vector3(0.0, 0.0, 39.5)
+	build_sign.position = Vector3(build_center.x, build_elevation, build_bounds.end.y + 1.2)
 	add_child(build_sign)
-	build_sign.configure("BUILD AREA 02", "LOCKED — COMPLETE PILOT", "", Vector2(5.2, 1.2))
+	build_sign.configure("AREA 02 BUILD ZONE", "LOCKED — COMPLETE PILOT", "", Vector2(5.2, 1.2))
 	orientation_nodes["build_area"] = build_sign
 	build_visual_nodes.append(build_sign)
-	prototype_build_area_label = build_sign.label
+	area02_build_area_label = build_sign.label
 
 
 func _build_starter_orientation() -> void:

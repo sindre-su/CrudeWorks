@@ -161,7 +161,7 @@ func _process(delta: float) -> void:
 	if process_model.objective_complete and not build_mode_unlocked:
 		build_mode_unlocked = true
 		build_controller.set_unlocked(true)
-		build_area_label.text = "PILOT TEST BUILD AREA\nOPEN IN BUILD MODE"
+		build_area_label.text = "AREA 02 BUILD ZONE\nOPEN IN BUILD MODE"
 		build_area_label.modulate = Color("78e08f")
 		_show_notification(
 			"PILOT COMPLETE — construction testing is available with B. Main Refinery commissioning follows in the next development stage.",
@@ -209,8 +209,8 @@ func _build_environment() -> void:
 	world_builder.name = "GrayboxWorld"
 	add_child(world_builder)
 	world_builder.build_world()
-	build_area_label = world_builder.prototype_build_area_label
-	build_area_label.text = "PILOT TEST BUILD AREA\nLOCKED — COMPLETE PILOT"
+	build_area_label = world_builder.area02_build_area_label
+	build_area_label.text = "AREA 02 BUILD ZONE\nLOCKED — COMPLETE PILOT"
 	build_area_label.modulate = Color("9ce8c1")
 
 
@@ -323,8 +323,8 @@ func _build_build_system() -> void:
 
 
 func _build_site_logistics() -> void:
-	_create_fixed_logistics_unit("crude_intake", Vector3(-23.0, 1.3, 34.5))
-	_create_fixed_logistics_unit("product_dispatch", Vector3(23.0, 1.4, 34.5))
+	_create_fixed_logistics_unit("crude_intake")
+	_create_fixed_logistics_unit("product_dispatch")
 	var generator = _create_box_unit(
 		"area02_generator", "PG-101 GENERATOR", Vector3(-24.0, 1.2, 19.0),
 		Vector3(2.6, 2.4, 2.2), Color("c99b32")
@@ -361,10 +361,26 @@ func _build_site_logistics() -> void:
 	cooling_pump.create_alarm_beacon(Vector3(0.0, 1.07, 0.0))
 
 
-func _create_fixed_logistics_unit(equipment_type: String, position_3d: Vector3) -> void:
+func _create_fixed_logistics_unit(equipment_type: String) -> void:
+	var definition := EquipmentCatalogScript.definition(equipment_type)
+	var anchor := WorldLayoutScript.area02_anchor(equipment_type)
 	var unit = BuildableUnitScript.new()
 	unit.configure_buildable(equipment_type, 0)
-	unit.position = position_3d
+	unit.position = Vector3(
+		anchor.x,
+		WorldLayoutScript.placement_center_y(float(definition["size"].y)),
+		anchor.y
+	)
+	var facing_port_id := "output" if equipment_type == "crude_intake" else "diesel"
+	var facing_port: Dictionary = EquipmentCatalogScript.port_definition(equipment_type, facing_port_id)
+	var local_port_position: Vector3 = facing_port["position"]
+	unit.rotation_quadrants = WorldLayoutScript.cardinal_rotation_quadrants(
+		Vector2(local_port_position.x, local_port_position.z),
+		WorldLayoutScript.area02_inward_direction(equipment_type)
+	)
+	unit.rotation.y = deg_to_rad(float(unit.rotation_quadrants * 90))
+	unit.set_meta("canonical_area_id", WorldLayoutScript.AREA_02_ID)
+	unit.set_meta("canonical_anchor_id", equipment_type)
 	add_child(unit)
 	built_refinery_model.register_unit(unit.unit_id, unit.equipment_type, unit.display_name)
 	build_controller.register_fixed_unit(unit)
@@ -1894,7 +1910,7 @@ func _apply_snapshot(snapshot: Dictionary) -> Dictionary:
 	build_mode_unlocked = process_model.objective_complete
 	build_controller.set_unlocked(build_mode_unlocked)
 	if build_mode_unlocked:
-		build_area_label.text = "PILOT TEST BUILD AREA\nOPEN IN BUILD MODE"
+		build_area_label.text = "AREA 02 BUILD ZONE\nOPEN IN BUILD MODE"
 		build_area_label.modulate = Color("78e08f")
 	world_builder.set_build_visualization_visible(build_controller.active)
 	player.position = Vector3(

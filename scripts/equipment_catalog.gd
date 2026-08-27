@@ -257,10 +257,10 @@ static func port_definitions(equipment_type: String) -> Array[Dictionary]:
 			_port("diesel", "input", "diesel", "DIESEL", Vector3(-0.35, y, z)),
 			_port("heavy", "input", "heavy", "TUNGREST", Vector3(0.35, y, z)),
 			_port("vacuum_gas_oil", "input", "vacuum_gas_oil", "VGO", Vector3(1.05, y, z)),
-			_port("vacuum_residue", "input", "vacuum_residue", "VAKUUMREST", Vector3(-1.05, y, -z)),
-			_port("gasoline_blendstock", "input", "gasoline_blendstock", "GASOLINE", Vector3(-0.35, y, -z)),
-			_port("lpg", "input", "lpg", "LPG", Vector3(0.35, y, -z)),
-			_port("light_cycle_oil", "input", "light_cycle_oil", "LCO", Vector3(1.05, y, -z)),
+			_port("vacuum_residue", "input", "vacuum_residue", "VAKUUMREST", Vector3(-1.05, y + 0.48, z)),
+			_port("gasoline_blendstock", "input", "gasoline_blendstock", "GASOLINE", Vector3(-0.35, y + 0.48, z)),
+			_port("lpg", "input", "lpg", "LPG", Vector3(0.35, y + 0.48, z)),
+			_port("light_cycle_oil", "input", "light_cycle_oil", "LCO", Vector3(1.05, y + 0.48, z)),
 		]
 	if equipment_type == "catalytic_cracking":
 		return [

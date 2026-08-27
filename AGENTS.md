@@ -19,13 +19,15 @@ The game must be:
 
 ## Current project phase — authoritative
 
-**VISUAL STABILITY & PILOT WORLD COHERENCE COMPLETE** at version `0.30.2`. The
-fixed Pilot loop remains proven inside the canonical Graybox World. Duplicate
-macro-ground rendering, sign layering/direction, intrusive starter geometry,
-always-on construction visualization and premature player-facing Area 02
-guidance have been corrected. Main Refinery equipment and areas have not been
-migrated. The immediate priority is the specified human traversal/Pilot retest;
-only then should the smallest approved Main Refinery entry/feed migration begin.
+**AREA 02 SPATIAL COHERENCE COMPLETE** at version `0.30.3`. The fixed Pilot
+loop and v0.30.2 visual-stability corrections remain proven. The elevated
+`operations_hub` specification in `WorldLayout` now derives the active Area 02
+platform, elevation, build bounds/overlay/validation and fixed CI-101/PD-101
+edge anchors/orientation. Legacy construction bounds exist only for one
+validated deterministic save migration. Broader Main Refinery equipment,
+Utilities, storage, LAB, CDU/HT/VDU/FCC and dedicated logistics-pad migration
+has not started. The immediate priority is the specified v0.30.3 human retest;
+do not begin v0.31 until that spatial contract is accepted.
 
 Use the documents for their distinct roles:
 

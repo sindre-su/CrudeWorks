@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.30.2 – Visual Stability & Pilot World Coherence**
+**Prototypeversjon: 0.30.3 – Area 02 Spatial Coherence**
 
 CrudeWorks is a first-person refinery-builder prototype. The player starts with
 a manual Pilot process, unlocks Area 02, builds directed refinery routes,
@@ -10,13 +10,15 @@ approved diesel.
 
 ## Current phase
 
-**v0.30.2 — VISUAL STABILITY & PILOT WORLD COHERENCE.** The duplicate coplanar
-macro-ground render layer is removed, physical signs have correct front-to-back
-layering and canonical target-derived directions, and construction overlays are
-visible only in Build Mode. The human-test slice now ends at `PILOT COMPLETE`;
-the preserved Main Refinery progression is enabled by advancing the configured
-playable stage. Main Refinery equipment has not been migrated, and a final human
-WASD retest remains the gate before its first small entry/feed slice.
+**v0.30.3 — AREA 02 SPATIAL COHERENCE.** The elevated white Operations Hub is
+now the runtime Area 02 footprint. Its canonical specification derives the
+platform, +0.75 m surface, 4 m inset build bounds, Build Mode overlay,
+placement/save validation and the upstream/downstream CI-101/PD-101 anchors.
+The old blue prototype zone is migration-only. The fixed endpoints retain their
+IDs and behavior, while qualifying v0.30.2 player construction receives one
+explicit deterministic translation onto the new platform. The Pilot slice and
+v0.30.2 visual-stability fixes remain unchanged; broader Main Refinery
+migration has not started.
 
 Quick orientation:
 
@@ -174,6 +176,10 @@ En siste kjent god backup beholdes, og
 ukjent eller skadet lagringsdata avvises før den kan endre spillet.
 Lagringer fra versjon 0.6 oppgraderes til dagens format og beholder eksisterende
 batch som Standard-råolje uten å gi en ny batch eller bonus.
+Utviklingslagringer der alle spillerbygg fortsatt ligger på den gamle v0.30.2-
+flaten, flyttes samlet og deterministisk til den kanoniske Area 02-plattformen.
+Relative posisjoner, rotasjoner, rør og stabile ID-er bevares; spilleren flyttes
+ikke, og save-formatet er fortsatt versjon 2.
 
 ## Styring
 
