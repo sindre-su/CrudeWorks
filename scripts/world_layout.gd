@@ -12,8 +12,9 @@ const RECOVERY_MIN_Y := -20.0
 const NEW_GAME_SPAWN := Vector3(-10.0, 0.1, 8.0)
 const NEW_GAME_YAW_DEGREES := -18.0
 
-const ROAD_ELEVATION := 0.02
-const PEDESTRIAN_PATH_ELEVATION := 0.12
+const BASE_GRADE_ELEVATION := 0.0
+const ROAD_ELEVATION := 0.012
+const PEDESTRIAN_PATH_ELEVATION := 0.018
 const PROCESS_PLATFORM_ELEVATION := 0.75
 
 const AREA_SPECS := [
@@ -43,7 +44,7 @@ const AREA_SPECS := [
 		"elevation": PROCESS_PLATFORM_ELEVATION,
 		"kind": "logistics",
 		"render_platform": true,
-		"access_side": "south",
+		"access_sides": ["north", "south"],
 	},
 	{
 		"id": "pilot_plant",

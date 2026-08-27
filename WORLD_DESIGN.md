@@ -13,12 +13,12 @@ whether field work is accessible and where the refinery can grow. It does not
 add new process families, detailed assets, vehicle gameplay or a complete
 Control Room.
 
-**Implementation status:** Graybox World Program Work Package 1 and v0.30.0
-Functional Pilot Integration are complete. The macro world, canonical
-coordinates, area footprints, roads, boundaries, labels and collision skeleton
-are implemented. The fixed Pilot is proven in its canonical southwest
-footprint; broader Main Refinery equipment remains in the compact prototype
-neighborhood until later area-migration packages.
+**Implementation status:** Graybox World Program Work Package 1, v0.30.0 Pilot
+Integration and v0.30.1 Traversal & Readability Cleanup are complete. The macro
+world, canonical coordinates, area footprints, roads, boundaries, modular
+ramps, physical signs and collision skeleton are implemented. The fixed Pilot
+is proven in its canonical southwest footprint; broader Main Refinery equipment
+remains in the compact prototype neighborhood until later migration packages.
 
 ## Scale and navigation convention
 
@@ -60,8 +60,10 @@ east/west and world z is north/south:
 - the canonical new-game/recovery spawn is `(-10, 0.1, 8)` in the southwest
   Pilot/starter region.
 
-Road surface is nominally `+0.02 m`, pedestrian path/marker height is
-`+0.12 m`, and raised industrial platforms are nominally `+0.75 m`. The Pilot
+Base collision grade is `0.00 m`. Road and pedestrian colors are thin,
+non-colliding visual overlays centered at approximately `+0.012 m` and
+`+0.018 m`; their exposed difference is under one centimetre and cannot stop a
+player. Raised industrial platforms remain nominally `+0.75 m`. The Pilot
 footprint intentionally remains ground-level in Work Package 1 because its
 working equipment still uses the original absolute y coordinates. It will be
 re-evaluated when that functional area is migrated, rather than silently moving
@@ -102,9 +104,10 @@ duplicated in scene scripts:
 | `future_expansion` | `430 / -180` | 160 x 130 m | +0.75 m | Explicitly empty and reserved. |
 | `product_dispatch` | `440 / 75` | 90 x 70 m | +0.75 m | Empty road-facing dispatch pad; functional PD-101 is not migrated yet. |
 
-Raised platforms have at least one primitive walk-up ramp; Operations and
-Storage have paired approaches so the Control/LAB-to-tank-farm route does not
-require a long perimeter detour. Yellow perimeter lines, billboard labels,
+Raised platforms have at least one primitive walk-up ramp; Crude Intake has
+north and south approaches, while Operations and Storage have paired approaches
+so the Control/LAB-to-tank-farm route does not require a long perimeter detour.
+Muted perimeter lines and optional debug labels,
 canonical IDs, dimensions and elevation make the planned areas inspectable
 without implying final signage or art.
 
@@ -112,13 +115,14 @@ without implying final signage or art.
 
 The new-game player still spawns at `(-10, 0.1, 8)` facing the existing fixed
 Pilot equipment. A short 2 m primitive approach strip reinforces the process
-entry without becoming a navigation system. Three mounted graybox structures
+entry without becoming a navigation system. Short mounted graybox structures
 provide restrained physical orientation:
 
-- a Starter Site board points toward the Pilot and south toward Crude Intake;
-- a Pilot board shows `Tank > Pump > Valve > Heater > Separation > Tanks`;
-- an open pedestrian-width transition gate points east toward the future Main
-  Refinery and states that it follows the Pilot sale.
+- separate Starter Site/Pilot and Crude Intake boards establish the two routes;
+- a short Pilot board identifies the process line;
+- a physical build-area board reports its existing locked/open state;
+- an open six-metre Main Refinery gate uses fence rails, posts and one short
+  mounted title instead of placeholder blocks and explanatory prose.
 
 These are collidable physical signs/structures, not giant floating UI markers.
 The larger refinery remains visible and traversable but is not operationally
@@ -134,7 +138,31 @@ economy and progression behavior is unchanged.
 The Pilot platform remains ground-level as an explicit compatibility exception.
 Raising it now would bury or relocate functional equipment and invalidate the
 safe absolute-coordinate strategy. Main-world scale and the measured long
-routes remain provisional pending the human v0.30 playtest.
+routes remain provisional pending the human v0.30.1 retest.
+
+## v0.30.1 traversal and readability standard
+
+Normal ground movement uses one continuous terrain collider. Roads,
+pedestrian routes, the ground-level Pilot footprint and the active build pad
+are semantic visual overlays rather than stacked collision slabs. Raised-area
+ramps are simple orthogonal rectangular strips whose top faces meet base and
+platform grade exactly; their former centered thickness created the observed
+5–15 cm catches. No arbitrary polygon connector generator is used.
+
+Flat graybox colors now distinguish natural ground, main road, service road,
+pedestrian route, process platform, active build pad, fixed structure and
+future/locked land. The palette remains development-only and texture-free.
+
+One reusable `GrayboxSign` limits signs to two short lines, fixed board sizes
+and locally mounted text with safe depth offset. Text no longer billboards away
+from its board. Area labels default off and can be toggled with `F8`; the core
+coordinate/area/bounds HUD is independent on `F7`.
+
+Non-functional primitive silhouettes provide navigation identity for CDU, VDU,
+FCC, HT, Utilities and Storage. They have no equipment IDs, process ports,
+construction state or persistence entry and do not represent final dimensions.
+The deterministic collision route now covers spawn, Pilot, both Crude Intake
+directions, the open Main gate, Operations and CDU without a jump.
 
 ## Implemented road skeleton
 
@@ -143,7 +171,7 @@ Product Dispatch. Two 5 m north-south service roads at x `62.5` and x `342.5`
 connect the southern logistics edge to the process areas. A 5 m cross road at
 z `-57.5` and a short orthogonal jog between z `-152.5`/`-147.5` connect the
 lower, middle and staggered northern rows without passing under a platform. Short
-primitive access links connect the logistics pads. A 3 m, `+0.12 m` pedestrian
+primitive access links connect the logistics pads. A 3 m, near-flush pedestrian
 link connects the Operations and Storage ramps. These are broad circulation
 reserves; final parking, additional footpaths, gates and road dressing remain
 later Graybox work.
@@ -186,9 +214,10 @@ returned to the southwest spawn. Existing valid saves keep their absolute
 positions with no silent relocation. Invalid/corrupt coordinates still use the
 existing validated save-recovery behavior.
 
-In debug builds, the HUD reports live player coordinates, site bounds and the
-current canonical area ID. World-space labels expose area ID, dimensions and
-elevation. These aids are graybox diagnostics, not final player navigation UI.
+In debug builds, `F7` toggles the HUD with live player coordinates, site bounds
+and current canonical area ID. `F8` independently toggles world-space area ID,
+dimension and elevation labels, which default off. These aids are graybox
+diagnostics, not final player navigation UI.
 
 ## Major-area plan
 

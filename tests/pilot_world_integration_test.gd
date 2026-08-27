@@ -48,11 +48,30 @@ func _test_fresh_world_context(main) -> void:
 	)
 	_expect(
 		main.world_builder.orientation_nodes.has("starter_site")
+		and main.world_builder.orientation_nodes.has("crude_intake")
 		and main.world_builder.orientation_nodes.has("pilot_process_chain")
 		and main.world_builder.orientation_nodes.has("main_refinery_gate")
 		and main.world_builder.path_nodes.has("starter_pilot_path"),
-		"starter region has physical orientation signs, a process-chain board and a short approach path"
+		"starter region has physical Pilot/Crude orientation, a gate and a short approach path"
 	)
+	_expect(
+		main.world_builder.area_labels.all(func(label: Label3D) -> bool: return not label.visible),
+		"fresh human-test view starts without distant area-label clutter"
+	)
+	var area_label_toggle := InputEventKey.new()
+	area_label_toggle.keycode = KEY_F8
+	area_label_toggle.pressed = true
+	main._unhandled_input(area_label_toggle)
+	_expect(main.world_builder.area_labels_visible, "F8 enables area labels independently for development inspection")
+	main._unhandled_input(area_label_toggle)
+	_expect(not main.world_builder.area_labels_visible, "F8 restores the uncluttered area-label view")
+	var debug_was_visible: bool = main.world_debug_label.visible
+	var core_debug_toggle := InputEventKey.new()
+	core_debug_toggle.keycode = KEY_F7
+	core_debug_toggle.pressed = true
+	main._unhandled_input(core_debug_toggle)
+	_expect(main.world_debug_label.visible != debug_was_visible, "F7 toggles core coordinates and bounds independently")
+	main._unhandled_input(core_debug_toggle)
 	var expected_ids := [
 		"raw_tank", "pump", "feed_valve", "heater", "column",
 		"light_tank", "diesel_tank", "heavy_tank", "sales_terminal",
@@ -170,7 +189,7 @@ func _test_disk_round_trip_and_resume(main) -> void:
 	var snapshot: Dictionary = main._build_snapshot()
 	var write_result: Dictionary = SaveSystemScript.write_snapshot(TEST_PATH, snapshot)
 	var read_result: Dictionary = SaveSystemScript.read_snapshot(TEST_PATH)
-	_expect(write_result["ok"] and read_result["ok"], "active v0.30 Pilot state writes and reads through the real save system")
+	_expect(write_result["ok"] and read_result["ok"], "active Pilot state writes and reads through the real save system")
 	if not read_result["ok"]:
 		return
 

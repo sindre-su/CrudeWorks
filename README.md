@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.30.0 – Functional Pilot Integration**
+**Prototypeversjon: 0.30.1 – Graybox Traversal & Readability Cleanup**
 
 CrudeWorks is a first-person refinery-builder prototype. The player starts with
 a manual Pilot process, unlocks Area 02, builds directed refinery routes,
@@ -10,13 +10,12 @@ approved diesel.
 
 ## Current phase
 
-**v0.30.0 — FUNCTIONAL PILOT INTEGRATION.** A fresh player now enters the
-canonical southwest starter region with minimal physical orientation and can
-operate, troubleshoot, store and sell through the complete existing Pilot
-loop, then build and save/reload safely. The Main Refinery has not been
-migrated. Human 1280 × 720 playtesting is the next gate before broader area
-movement; this is not the phase for another process unit, vehicle gameplay, a
-full Control Room or final art.
+**v0.30.1 — GRAYBOX TRAVERSAL & READABILITY CLEANUP.** Human-found collision
+lips, ramp seams, malformed-looking transitions, sign drift, weak surface
+separation, entrance geometry and label clutter are corrected without changing
+the complete Pilot loop. Temporary primitive district silhouettes now support
+navigation with area labels off. Main Refinery has not been migrated; a human
+retest is the final gate before its first small entry/feed slice.
 
 Quick orientation:
 
@@ -124,6 +123,9 @@ Den første komplette «vertical slice»-en inneholder:
 - fysisk integrert Pilot-start med kort ganglinje, monterte retnings-/prosesskilt,
   åpen overgang mot det senere hovedraffineriet og testet fresh-save
   produksjon, salg, bygging og reload/resume
+- nær-flush graybox-underlag, ramper uten små kantkollisjoner, gjenbrukbare
+  fysiske skilt, tydelig materialhierarki og ikke-funksjonelle
+  distriktslandemerker for menneskelig navigasjonstest
 
 Alle objekter er foreløpig bygget av Godots primitive 3D-former. Det gjør at vi
 kan teste gameplay før vi bruker tid på modeller og grafikk.
@@ -189,6 +191,8 @@ batch som Standard-råolje uten å gi en ny batch eller bonus.
 | 1 / 2 / 3 | Velg Standard, Tung eller Sour råolje når leveransevinduet er åpent |
 | 1 / 2 / 3 | LS-201: start/stopp pumpe, endre temperaturmål eller flowmål |
 | Esc | Frigjør musepekeren |
+| F7 | Utvikling: vis/skjul koordinater, aktivt område og world bounds |
+| F8 | Utvikling: vis/skjul fjerne graybox-arealmerker |
 
 ### Byggemodus
 
@@ -344,6 +348,7 @@ CrudeWorks/
     ├── buildable_unit.gd
     ├── crude_contract_catalog.gd
     ├── equipment_catalog.gd
+    ├── graybox_sign.gd
     ├── interactive_unit.gd
     ├── lab_analysis_panel.gd
     ├── main.gd

@@ -16,6 +16,7 @@ func _run_tests() -> void:
 	_test_canonical_bounds()
 	_test_area_configuration()
 	_test_road_configuration()
+	_test_surface_standard()
 	_test_spawn_and_legacy_coordinates()
 	_test_world_builder()
 	await _test_platform_walkability()
@@ -112,6 +113,29 @@ func _test_road_configuration() -> void:
 		_expect(minf(dimensions.x, dimensions.y) >= 2.0, "%s keeps human-scale walking clearance" % path_id)
 
 
+func _test_surface_standard() -> void:
+	_expect(
+		is_zero_approx(WorldLayoutScript.BASE_GRADE_ELEVATION)
+		and WorldLayoutScript.ROAD_ELEVATION <= 0.02
+		and WorldLayoutScript.PEDESTRIAN_PATH_ELEVATION <= 0.03,
+		"base, roads and pedestrian routes share a near-flush canonical grade"
+	)
+	_expect(
+		absf(WorldLayoutScript.PEDESTRIAN_PATH_ELEVATION - WorldLayoutScript.ROAD_ELEVATION) <= 0.01,
+		"road-to-path visual grade change cannot create a gameplay-sized seam"
+	)
+	var semantic_colors := {
+		WorldBuilderScript.COLOR_GROUND.to_html(): true,
+		WorldBuilderScript.COLOR_MAIN_ROAD.to_html(): true,
+		WorldBuilderScript.COLOR_SERVICE_ROAD.to_html(): true,
+		WorldBuilderScript.COLOR_PATH.to_html(): true,
+		WorldBuilderScript.COLOR_PLATFORM.to_html(): true,
+		WorldBuilderScript.COLOR_BUILD_PAD.to_html(): true,
+		WorldBuilderScript.COLOR_RESERVED.to_html(): true,
+	}
+	_expect(semantic_colors.size() == 7, "graybox surface roles use distinct flat development colors")
+
+
 func _test_spawn_and_legacy_coordinates() -> void:
 	var spawn := WorldLayoutScript.NEW_GAME_SPAWN
 	_expect(WorldLayoutScript.player_position_is_valid(spawn), "new-game spawn is inside canonical player bounds")
@@ -142,6 +166,7 @@ func _test_world_builder() -> void:
 	_expect(builder.area_nodes.size() == WorldLayoutScript.AREA_SPECS.size(), "world builder emits every configured area marker")
 	_expect(builder.road_nodes.size() == WorldLayoutScript.ROAD_SPECS.size(), "world builder emits every configured road")
 	_expect(builder.path_nodes.size() == WorldLayoutScript.PATH_SPECS.size(), "world builder emits every configured pedestrian path")
+	_expect(builder.landmark_nodes.size() == 6, "world builder emits the six restrained navigation landmark groups")
 	_expect(builder.has_node("TerrainBuffer"), "world builder creates traversable macro terrain")
 	_expect(builder.has_node("SouthernSea"), "world builder creates the southern sea edge")
 	for boundary_name: String in ["NorthBoundary", "WestBoundary", "EastBoundary", "SouthShoreBoundary"]:
@@ -158,6 +183,52 @@ func _test_world_builder() -> void:
 					area_node.has_node("AccessRamp_%s" % String(access_side).capitalize()),
 					"%s raised platform has %s walk access" % [area_id, String(access_side)]
 				)
+	_expect(
+		builder.get_node("PrototypeProcessPad") is MeshInstance3D
+		and builder.get_node("PrototypeBuildPad") is MeshInstance3D,
+		"flush Pilot and build-pad materials add no separate collision lips"
+	)
+	var signs: Array = [
+		builder.orientation_nodes["starter_site"],
+		builder.orientation_nodes["crude_intake"],
+		builder.orientation_nodes["pilot_process_chain"],
+		builder.orientation_nodes["build_area"],
+		builder.orientation_nodes["main_refinery_gate"].get_node("GateSign"),
+	]
+	for sign in signs:
+		_expect(
+			sign.has_meta("graybox_sign")
+			and int(sign.get_meta("line_count")) <= 2
+			and sign.primary_text.length() <= 24
+			and sign.secondary_text.length() <= 24,
+			"%s obeys reusable sign line and length limits" % sign.name
+		)
+		_expect(
+			sign.label.billboard == BaseMaterial3D.BILLBOARD_DISABLED
+			and not sign.label.no_depth_test
+			and sign.label.position.z < -0.06,
+			"%s keeps text mounted in front of its board without billboard drift" % sign.name
+		)
+	_expect(
+		builder.area_labels.all(func(label: Label3D) -> bool: return not label.visible),
+		"distant area labels default OFF for uncluttered human navigation testing"
+	)
+	builder.set_area_labels_visible(true)
+	_expect(
+		builder.area_labels.all(func(label: Label3D) -> bool: return label.visible),
+		"area labels can be enabled independently from core world debug"
+	)
+	for area_id: String in ["cdu", "vdu", "fcc", "ht", "utilities", "storage"]:
+		var landmark: Node3D = builder.landmark_nodes[area_id]
+		_expect(
+			bool(landmark.get_meta("navigation_placeholder"))
+			and not bool(landmark.get_meta("gameplay_equipment"))
+			and not landmark.has_meta("unit_id")
+			and not WorldLayoutScript.build_bounds().has_point(
+				Vector2(landmark.global_position.x, landmark.global_position.z)
+			),
+			"%s landmark remains non-gameplay, non-persisted graybox geometry" % area_id
+		)
 	builder.queue_free()
 
 
@@ -239,8 +310,55 @@ func _test_platform_walkability() -> void:
 		"open starter transition gate preserves player-sized access toward the Main Refinery"
 	)
 
+	await _walk_route(
+		walker,
+		[
+			Vector2(-10.0, 8.0),
+			Vector2(-10.0, 34.0),
+			Vector2(-10.0, 46.0),
+			Vector2(-10.0, 34.0),
+			Vector2(-10.0, 20.0),
+			Vector2(24.0, 20.0),
+			Vector2(24.0, -10.0),
+			Vector2(40.0, -10.0),
+			Vector2(74.0, -10.0),
+			Vector2(85.0, -10.0),
+			Vector2(74.0, -10.0),
+			Vector2(62.5, -10.0),
+			Vector2(62.5, -105.0),
+			Vector2(76.0, -105.0),
+		],
+		10.0
+	)
+	_expect(
+		WorldLayoutScript.area_id_at(Vector2(walker.global_position.x, walker.global_position.z)) == "cdu"
+		and walker.global_position.y >= 0.6,
+		"spawn → Pilot → Crude Intake → gate → Operations → CDU route is continuous without jumping"
+	)
+
 	walker.queue_free()
 	builder.queue_free()
+
+
+func _walk_route(walker: CharacterBody3D, waypoints: Array[Vector2], speed: float) -> void:
+	walker.global_position = Vector3(waypoints[0].x, 0.1, waypoints[0].y)
+	walker.velocity = Vector3.ZERO
+	await physics_frame
+	for waypoint_index in range(1, waypoints.size()):
+		var target := waypoints[waypoint_index]
+		var starting_distance := Vector2(walker.global_position.x, walker.global_position.z).distance_to(target)
+		var max_frames := int(ceil(starting_distance / speed * 90.0)) + 90
+		for frame_index in max_frames:
+			var current := Vector2(walker.global_position.x, walker.global_position.z)
+			var direction := target - current
+			if direction.length() <= 0.2:
+				break
+			direction = direction.normalized()
+			walker.velocity.x = direction.x * speed
+			walker.velocity.z = direction.y * speed
+			walker.velocity.y = -0.5 if walker.is_on_floor() else walker.velocity.y - 18.0 / 60.0
+			walker.move_and_slide()
+			await physics_frame
 
 
 func _ramp_route(area: Dictionary, side: String) -> Array[Vector2]:

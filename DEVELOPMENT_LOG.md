@@ -1,5 +1,34 @@
 # CrudeWorks Development Log
 
+## v0.30.1 — Graybox Traversal & Readability Cleanup
+
+- Corrected the human-playtest traversal defects without changing process,
+  economy, progression, equipment IDs, map coordinates or save schema.
+- Moved the canonical terrain collider to exact base grade and converted the
+  Pilot/build pads, roads and pedestrian surfaces into near-flush semantic
+  visual overlays. The former 12–14 cm Pilot/build-pad colliders were the main
+  hidden catches.
+- Recalculated each simple rectangular ramp so its exposed top face meets both
+  base and `+0.75 m` platform grade exactly. Added a north Crude Intake ramp for
+  the intended direct starter route; no arbitrary polygon connectors remain.
+- Rebuilt the Main Refinery entrance as fence–six-metre opening–fence with
+  visible posts and one short overhead board.
+- Added reusable `GrayboxSign` geometry with two-line limits, predictable board
+  size, local non-billboard text and safe depth offset. Starter, Crude Intake,
+  Pilot, build-area and gate text now use it.
+- Strengthened flat semantic colors for terrain, main/service roads, paths,
+  platforms, buildable and reserved areas. Added non-gameplay primitive CDU,
+  VDU, FCC, HT, Utilities and Storage silhouettes for player-height orientation.
+- Split development visibility: `F7` controls core coordinate/bounds HUD and
+  `F8` controls area labels, which default off.
+- Extended deterministic coverage for canonical elevations, semantic colors,
+  sign constraints, placeholder isolation, every raised ramp and a no-jump
+  spawn → Pilot → Crude Intake → gate → Operations → CDU CharacterBody route.
+- Render-inspected spawn, starter signs, Pilot/Crude route, gate, Operations
+  approach, CDU sightline and a raised-platform transition at 1280 × 720.
+- Main Refinery gameplay migration remains out of scope. A human WASD retest is
+  still required before v0.31.
+
 ## v0.30.0 — Functional Pilot Integration
 
 - Proved the existing fixed Pilot as one complete fresh-save gameplay slice in

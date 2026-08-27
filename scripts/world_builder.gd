@@ -2,26 +2,32 @@ class_name GrayboxWorldBuilder
 extends Node3D
 
 const WorldLayoutScript := preload("res://scripts/world_layout.gd")
+const GrayboxSignScript := preload("res://scripts/graybox_sign.gd")
 
-const COLOR_GROUND := Color("#38453b")
+const COLOR_GROUND := Color("#405347")
 const COLOR_BUFFER := Color("#26352f")
 const COLOR_SEA := Color("#214d61")
 const COLOR_FOREST := Color("#1e3228")
-const COLOR_ROAD := Color("#293038")
-const COLOR_MAIN_ROAD := Color("#343d46")
-const COLOR_PATH := Color("#4b5752")
-const COLOR_PLATFORM := Color("#687079")
-const COLOR_RESERVED := Color("#535968")
-const COLOR_LOGISTICS := Color("#596b63")
-const COLOR_BOUNDARY := Color("#d9b44a")
-const COLOR_PROTOTYPE_PAD := Color("#354b46")
-const COLOR_BUILD_PAD := Color("#273c4b")
+const COLOR_SERVICE_ROAD := Color("#414a50")
+const COLOR_MAIN_ROAD := Color("#252c31")
+const COLOR_PATH := Color("#897955")
+const COLOR_PLATFORM := Color("#899197")
+const COLOR_RESERVED := Color("#50545b")
+const COLOR_LOGISTICS := Color("#717c78")
+const COLOR_BOUNDARY := Color("#9c906b")
+const COLOR_PROTOTYPE_PAD := Color("#65736d")
+const COLOR_BUILD_PAD := Color("#526775")
+const COLOR_FIXED_STRUCTURE := Color("#444c51")
+const SURFACE_VISUAL_THICKNESS := 0.02
 
 var prototype_build_area_label: Label3D
 var area_nodes: Dictionary = {}
 var road_nodes: Dictionary = {}
 var path_nodes: Dictionary = {}
 var orientation_nodes: Dictionary = {}
+var landmark_nodes: Dictionary = {}
+var area_labels: Array[Label3D] = []
+var area_labels_visible := false
 
 
 func build_world() -> void:
@@ -33,6 +39,8 @@ func build_world() -> void:
 	_build_paths()
 	_build_prototype_pads()
 	_build_starter_orientation()
+	_build_landmark_placeholders()
+	set_area_labels_visible(area_labels_visible)
 
 
 func _build_environment() -> void:
@@ -62,7 +70,11 @@ func _build_macro_terrain() -> void:
 	var terrain_size := WorldLayoutScript.TERRAIN_BOUNDS.size
 	_create_static_box(
 		"TerrainBuffer",
-		Vector3(terrain_center.x, -0.28, terrain_center.y),
+		Vector3(
+			terrain_center.x,
+			WorldLayoutScript.BASE_GRADE_ELEVATION - 0.25,
+			terrain_center.y
+		),
 		Vector3(terrain_size.x, 0.5, terrain_size.y),
 		COLOR_BUFFER
 	)
@@ -71,8 +83,8 @@ func _build_macro_terrain() -> void:
 	var world_size := WorldLayoutScript.WORLD_BOUNDS.size
 	_create_visual_box(
 		"IndustrialGround",
-		Vector3(world_center.x, -0.015, world_center.y),
-		Vector3(world_size.x, 0.04, world_size.y),
+		Vector3(world_center.x, WorldLayoutScript.BASE_GRADE_ELEVATION - 0.004, world_center.y),
+		Vector3(world_size.x, 0.008, world_size.y),
 		COLOR_GROUND
 	)
 
@@ -146,6 +158,10 @@ func _build_area_platforms() -> void:
 		area_root.set_meta("area_id", area_id)
 		add_child(area_root)
 		area_nodes[area_id] = area_root
+		area_root.set_meta(
+			"surface_role",
+			"future_locked" if String(area["kind"]) == "reserved" else "process_platform"
+		)
 
 		if bool(area["render_platform"]):
 			if elevation > 0.05:
@@ -162,8 +178,8 @@ func _build_area_platforms() -> void:
 			else:
 				_create_visual_box(
 					"GroundLevelFootprint",
-					Vector3(center.x, 0.015, center.y),
-					Vector3(dimensions.x, 0.03, dimensions.y),
+					Vector3(center.x, WorldLayoutScript.BASE_GRADE_ELEVATION + 0.006, center.y),
+					Vector3(dimensions.x, 0.012, dimensions.y),
 					platform_color,
 					area_root
 				)
@@ -177,14 +193,16 @@ func _build_roads() -> void:
 		var road_id := String(road["id"])
 		var center: Vector2 = road["center"]
 		var dimensions: Vector2 = road["dimensions"]
-		var color := COLOR_MAIN_ROAD if String(road["class"]) == "main" else COLOR_ROAD
+		var road_class := String(road["class"])
+		var color := COLOR_MAIN_ROAD if road_class == "main" else COLOR_SERVICE_ROAD
 		var road_node := _create_visual_box(
 			road_id,
 			Vector3(center.x, WorldLayoutScript.ROAD_ELEVATION, center.y),
-			Vector3(dimensions.x, 0.035, dimensions.y),
+			Vector3(dimensions.x, SURFACE_VISUAL_THICKNESS, dimensions.y),
 			color
 		)
 		road_node.set_meta("road_id", road_id)
+		road_node.set_meta("surface_role", "main_road" if road_class == "main" else "service_road")
 		road_nodes[road_id] = road_node
 
 
@@ -196,63 +214,78 @@ func _build_paths() -> void:
 		var path_node := _create_visual_box(
 			path_id,
 			Vector3(center.x, WorldLayoutScript.PEDESTRIAN_PATH_ELEVATION, center.y),
-			Vector3(dimensions.x, 0.025, dimensions.y),
+			Vector3(dimensions.x, SURFACE_VISUAL_THICKNESS, dimensions.y),
 			COLOR_PATH
 		)
 		path_node.set_meta("path_id", path_id)
+		path_node.set_meta("surface_role", "pedestrian_route")
 		path_nodes[path_id] = path_node
 
 
 func _build_prototype_pads() -> void:
-	_create_static_box(
+	var process_pad := _create_visual_box(
 		"PrototypeProcessPad",
-		Vector3(0.0, 0.03, 0.0),
-		Vector3(31.0, 0.12, 13.0),
+		Vector3(0.0, WorldLayoutScript.BASE_GRADE_ELEVATION + 0.009, 0.0),
+		Vector3(31.0, 0.018, 13.0),
 		COLOR_PROTOTYPE_PAD
 	)
-	_create_static_box(
+	process_pad.set_meta("surface_role", "pilot_process")
+	var build_pad := _create_visual_box(
 		"PrototypeBuildPad",
-		Vector3(0.0, 0.04, 24.5),
-		Vector3(44.0, 0.14, 30.0),
+		Vector3(0.0, WorldLayoutScript.BASE_GRADE_ELEVATION + 0.009, 24.5),
+		Vector3(44.0, 0.018, 30.0),
 		COLOR_BUILD_PAD
 	)
+	build_pad.set_meta("surface_role", "buildable_area")
 
 	for x_position: float in [-21.5, 21.5]:
 		_create_visual_box(
 			"BuildBoundaryX",
-			Vector3(x_position, 0.13, 24.5),
+			Vector3(x_position, 0.022, 24.5),
 			Vector3(0.18, 0.03, 29.0),
-			Color("#58c7e8")
+			Color("#7896a3")
 		)
 	for z_position: float in [10.2, 38.8]:
 		_create_visual_box(
 			"BuildBoundaryZ",
-			Vector3(0.0, 0.13, z_position),
+			Vector3(0.0, 0.022, z_position),
 			Vector3(43.0, 0.03, 0.18),
-			Color("#58c7e8")
+			Color("#7896a3")
 		)
 
-	prototype_build_area_label = _create_world_label(
-		"Active Prototype Build Area",
-		Vector3(0.0, 0.22, 39.5),
-		Color("#75d9ef"),
-		0.42
-	)
-	prototype_build_area_label.visible = true
+	var build_sign = GrayboxSignScript.new()
+	build_sign.name = "Orientation_build_area"
+	build_sign.position = Vector3(0.0, 0.0, 39.5)
+	add_child(build_sign)
+	build_sign.configure("BUILD AREA 02", "LOCKED — COMPLETE PILOT", "", Vector2(5.2, 1.2))
+	orientation_nodes["build_area"] = build_sign
+	prototype_build_area_label = build_sign.label
 
 
 func _build_starter_orientation() -> void:
-	_create_physical_sign(
+	_create_graybox_sign(
 		"starter_site",
 		Vector3(-3.0, 0.0, 8.2),
 		90.0,
-		"STARTER SITE\nPILOT PROCESS  ←\nCRUDE INTAKE  ↓ SOUTH"
+		"STARTER SITE",
+		"PILOT AREA",
+		"←"
 	)
-	_create_physical_sign(
+	_create_graybox_sign(
+		"crude_intake",
+		Vector3(-17.0, 0.0, 9.0),
+		-90.0,
+		"CRUDE INTAKE",
+		"SOUTH ROUTE",
+		"↓"
+	)
+	_create_graybox_sign(
 		"pilot_process_chain",
 		Vector3(14.5, 0.0, 6.8),
-		0.0,
-		"PILOT P-01\nTANK > PUMP > VALVE\n> HEATER > SEPARATION > TANKS"
+		180.0,
+		"PILOT AREA",
+		"PROCESS LINE",
+		"→"
 	)
 	_create_starter_access_gate()
 
@@ -263,77 +296,144 @@ func _create_starter_access_gate() -> void:
 	gate_root.position = Vector3(34.0, 0.0, -10.0)
 	add_child(gate_root)
 	orientation_nodes["main_refinery_gate"] = gate_root
-	_create_static_box(
-		"NorthBollard",
-		Vector3(0.0, 0.65, -1.75),
-		Vector3(0.45, 1.3, 1.35),
-		Color("#b58a36"),
-		gate_root
-	)
-	_create_static_box(
-		"SouthBollard",
-		Vector3(0.0, 0.65, 1.75),
-		Vector3(0.45, 1.3, 1.35),
-		Color("#b58a36"),
-		gate_root
-	)
-	_create_static_box(
-		"ClearanceBeam",
-		Vector3(0.0, 2.35, 0.0),
-		Vector3(0.35, 0.3, 4.8),
-		Color("#535f61"),
-		gate_root
-	)
-	var gate_label := Label3D.new()
-	gate_label.name = "GateLabel"
-	gate_label.text = "MAIN REFINERY  →\nAFTER PILOT SALE"
-	gate_label.position = Vector3(0.0, 2.35, 0.0)
-	gate_label.font_size = 42
-	gate_label.pixel_size = 0.009
-	gate_label.modulate = Color("#f3e4b8")
-	gate_label.outline_size = 8
-	gate_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	gate_label.no_depth_test = false
-	gate_root.add_child(gate_label)
+	_create_fence_section("NorthFence", -9.5, gate_root)
+	_create_fence_section("SouthFence", 9.5, gate_root)
+	for z_position: float in [-3.0, 3.0]:
+		_create_static_box(
+			"GatePost",
+			Vector3(0.0, 1.2, z_position),
+			Vector3(0.45, 2.4, 0.45),
+			Color("#b58a36"),
+			gate_root
+		)
+	var gate_sign = GrayboxSignScript.new()
+	gate_sign.name = "GateSign"
+	gate_sign.position = Vector3(0.0, 2.85, 0.0)
+	gate_sign.rotation_degrees.y = 90.0
+	gate_root.add_child(gate_sign)
+	gate_sign.configure("MAIN REFINERY", "", "→", Vector2(4.4, 0.8), false)
 
 
-func _create_physical_sign(
+func _create_fence_section(node_name: String, local_z: float, parent: Node3D) -> void:
+	var section := Node3D.new()
+	section.name = node_name
+	section.position.z = local_z
+	parent.add_child(section)
+	for z_offset: float in [-4.5, 0.0, 4.5]:
+		_create_static_box(
+			"FencePost",
+			Vector3(0.0, 0.8, z_offset),
+			Vector3(0.18, 1.6, 0.18),
+			COLOR_FIXED_STRUCTURE,
+			section
+		)
+	for rail_y: float in [0.45, 1.15]:
+		_create_static_box(
+			"FenceRail",
+			Vector3(0.0, rail_y, 0.0),
+			Vector3(0.14, 0.12, 9.0),
+			COLOR_FIXED_STRUCTURE,
+			section
+		)
+
+
+func _create_graybox_sign(
 	sign_id: String,
 	position_3d: Vector3,
 	yaw_degrees: float,
-	text: String
+	primary_text: String,
+	secondary_text: String = "",
+	direction: String = ""
 ) -> void:
-	var sign_root := Node3D.new()
+	var sign_root = GrayboxSignScript.new()
 	sign_root.name = "Orientation_%s" % sign_id
 	sign_root.position = position_3d
 	sign_root.rotation_degrees.y = yaw_degrees
 	add_child(sign_root)
 	orientation_nodes[sign_id] = sign_root
-	_create_static_box(
-		"Post",
-		Vector3(0.0, 0.72, 0.0),
-		Vector3(0.16, 1.44, 0.16),
-		Color("#3d4647"),
-		sign_root
-	)
-	_create_static_box(
-		"Board",
-		Vector3(0.0, 1.65, 0.0),
-		Vector3(4.6, 1.45, 0.14),
-		Color("#34464b"),
-		sign_root
-	)
-	var label := Label3D.new()
-	label.name = "SignLabel"
-	label.text = text
-	label.position = Vector3(0.0, 1.65, -0.08)
-	label.font_size = 40
-	label.pixel_size = 0.008
-	label.modulate = Color("#f2e3b5")
-	label.outline_size = 7
-	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	label.no_depth_test = false
-	sign_root.add_child(label)
+	sign_root.configure(primary_text, secondary_text, direction)
+
+
+func _build_landmark_placeholders() -> void:
+	_create_landmark_root("cdu", "tall_column")
+	_create_landmark_root("vdu", "broad_column")
+	_create_landmark_root("fcc", "twin_columns")
+	_create_landmark_root("ht", "reactor_blocks")
+	_create_landmark_root("utilities", "mechanical_block")
+	_create_landmark_root("storage", "tank_group")
+
+
+func _create_landmark_root(area_id: String, silhouette: String) -> void:
+	var area := WorldLayoutScript.area_by_id(area_id)
+	if area.is_empty():
+		return
+	var center: Vector2 = area["center"]
+	var elevation := float(area["elevation"])
+	var root_node := Node3D.new()
+	root_node.name = "Landmark_%s" % area_id
+	root_node.position = Vector3(center.x, elevation, center.y)
+	root_node.set_meta("graybox_landmark", true)
+	root_node.set_meta("navigation_placeholder", true)
+	root_node.set_meta("gameplay_equipment", false)
+	root_node.set_meta("area_id", area_id)
+	add_child(root_node)
+	landmark_nodes[area_id] = root_node
+
+	match silhouette:
+		"tall_column":
+			_create_static_cylinder(
+				"CDUColumn", Vector3(8.0, 16.0, 0.0), 4.0, 32.0, Color("#5c6970"), root_node
+			)
+		"broad_column":
+			_create_static_cylinder(
+				"VDUColumn", Vector3(6.0, 12.5, 0.0), 5.5, 25.0, Color("#697178"), root_node
+			)
+		"twin_columns":
+			_create_static_cylinder(
+				"FCCReactor", Vector3(-7.0, 13.0, 0.0), 4.0, 26.0, Color("#665f59"), root_node
+			)
+			_create_static_cylinder(
+				"FCCRegenerator", Vector3(7.0, 15.0, 0.0), 4.8, 30.0, Color("#75665c"), root_node
+			)
+		"reactor_blocks":
+			_create_static_cylinder(
+				"HTReactor", Vector3(-6.0, 7.0, 0.0), 3.8, 14.0, Color("#626d70"), root_node
+			)
+			_create_static_box(
+				"HTStructure",
+				Vector3(5.0, 4.0, 0.0),
+				Vector3(8.0, 8.0, 9.0),
+				COLOR_FIXED_STRUCTURE,
+				root_node
+			)
+		"mechanical_block":
+			_create_static_box(
+				"UtilitiesMass",
+				Vector3(0.0, 5.5, 0.0),
+				Vector3(18.0, 11.0, 13.0),
+				Color("#59676c"),
+				root_node
+			)
+			for x_offset: float in [-6.0, -2.0, 2.0, 6.0]:
+				_create_visual_box(
+					"CoolingBay",
+					Vector3(x_offset, 7.0, 6.58),
+					Vector3(2.2, 6.0, 0.18),
+					Color("#78858a"),
+					root_node
+				)
+		"tank_group":
+			for tank_position: Vector3 in [Vector3(-12.0, 5.0, 0.0), Vector3(0.0, 5.0, 0.0), Vector3(12.0, 5.0, 0.0)]:
+				_create_static_cylinder(
+					"StorageTank", tank_position, 4.5, 10.0, Color("#68767a"), root_node
+				)
+
+
+func set_area_labels_visible(value: bool) -> void:
+	area_labels_visible = value
+	for label: Label3D in area_labels:
+		if is_instance_valid(label):
+			label.visible = value
 
 
 func _create_access_ramp(area: Dictionary, side: String, parent: Node3D) -> void:
@@ -344,8 +444,15 @@ func _create_access_ramp(area: Dictionary, side: String, parent: Node3D) -> void
 	var ramp_width := 5.0
 	var ramp_thickness := 0.16
 	var angle := atan(elevation / ramp_length)
-	var ramp_position := Vector3(center.x, elevation * 0.5, center.y)
-	var ramp_size := Vector3(ramp_width, ramp_thickness, ramp_length)
+	var slope_length := sqrt(ramp_length * ramp_length + elevation * elevation)
+	# Place the top face exactly between base grade and platform grade. The old
+	# centered slab ended about 8 cm above both surfaces and created a collision lip.
+	var ramp_center_y := (
+		(WorldLayoutScript.BASE_GRADE_ELEVATION + elevation) * 0.5
+		- cos(angle) * ramp_thickness * 0.5
+	)
+	var ramp_position := Vector3(center.x, ramp_center_y, center.y)
+	var ramp_size := Vector3(ramp_width, ramp_thickness, slope_length)
 	var ramp_rotation := Vector3.ZERO
 
 	match side:
@@ -357,11 +464,11 @@ func _create_access_ramp(area: Dictionary, side: String, parent: Node3D) -> void
 			ramp_rotation.x = angle
 		"west":
 			ramp_position.x -= dimensions.x * 0.5 + ramp_length * 0.5
-			ramp_size = Vector3(ramp_length, ramp_thickness, ramp_width)
+			ramp_size = Vector3(slope_length, ramp_thickness, ramp_width)
 			ramp_rotation.z = angle
 		"east":
 			ramp_position.x += dimensions.x * 0.5 + ramp_length * 0.5
-			ramp_size = Vector3(ramp_length, ramp_thickness, ramp_width)
+			ramp_size = Vector3(slope_length, ramp_thickness, ramp_width)
 			ramp_rotation.z = -angle
 
 	var ramp := _create_static_box(
@@ -410,12 +517,17 @@ func _create_area_label(area: Dictionary, parent: Node3D) -> void:
 	]
 	var label := _create_world_label(
 		text,
-		Vector3(center.x, elevation + 1.4, center.y),
+		Vector3(
+			center.x - dimensions.x * 0.5 + 4.0,
+			elevation + 1.4,
+			center.y - dimensions.y * 0.5 + 4.0
+		),
 		Color("#f3e4b8"),
 		0.55,
 		parent
 	)
 	label.name = "AreaLabel"
+	area_labels.append(label)
 
 
 func _platform_color(kind: String) -> Color:
@@ -471,6 +583,37 @@ func _create_visual_box(
 	mesh_instance.material_override = _material(color)
 	parent.add_child(mesh_instance)
 	return mesh_instance
+
+
+func _create_static_cylinder(
+	node_name: String,
+	position: Vector3,
+	radius: float,
+	height: float,
+	color: Color,
+	parent: Node = self
+) -> StaticBody3D:
+	var body := StaticBody3D.new()
+	body.name = node_name
+	body.position = position
+	parent.add_child(body)
+
+	var mesh_instance := MeshInstance3D.new()
+	var mesh := CylinderMesh.new()
+	mesh.top_radius = radius
+	mesh.bottom_radius = radius
+	mesh.height = height
+	mesh_instance.mesh = mesh
+	mesh_instance.material_override = _material(color)
+	body.add_child(mesh_instance)
+
+	var collision := CollisionShape3D.new()
+	var shape := CylinderShape3D.new()
+	shape.radius = radius
+	shape.height = height
+	collision.shape = shape
+	body.add_child(collision)
+	return body
 
 
 func _create_world_label(

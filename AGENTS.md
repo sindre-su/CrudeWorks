@@ -19,13 +19,13 @@ The game must be:
 
 ## Current project phase — authoritative
 
-**FUNCTIONAL PILOT INTEGRATION COMPLETE** at version `0.30.0`. The fixed Pilot
-loop is proven inside the canonical Graybox World with physical starter
-orientation, full production/sale, post-sale building and save/load/resume.
-Main Refinery equipment and areas have not been migrated. The immediate
-priority is a human v0.30 Pilot playtest, followed by the smallest approved
-Main Refinery entry/feed migration—not another process unit or a broad area
-migration in one step.
+**GRAYBOX TRAVERSAL & READABILITY CLEANUP COMPLETE** at version `0.30.1`. The
+fixed Pilot loop remains proven inside the canonical Graybox World, while
+human-found collision lips, ramp seams, sign drift, entrance readability,
+surface ambiguity and debug-label clutter have been corrected. Main Refinery
+equipment and areas have not been migrated. The immediate priority is the
+specified human traversal/Pilot retest; only then should the smallest approved
+Main Refinery entry/feed migration begin.
 
 Use the documents for their distinct roles:
 

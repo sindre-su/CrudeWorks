@@ -99,6 +99,17 @@ func _ready() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not event is InputEventKey or not event.pressed or event.echo:
 		return
+	if event.keycode == KEY_F7:
+		world_debug_label.visible = not world_debug_label.visible
+		_update_world_debug_overlay()
+		_show_notification("World debug: %s" % ("PÅ" if world_debug_label.visible else "AV"), 2.0)
+		get_viewport().set_input_as_handled()
+		return
+	if event.keycode == KEY_F8:
+		world_builder.set_area_labels_visible(not world_builder.area_labels_visible)
+		_show_notification("Area labels: %s" % ("PÅ" if world_builder.area_labels_visible else "AV"), 2.0)
+		get_viewport().set_input_as_handled()
+		return
 	if not startup_choice_state.is_empty():
 		_handle_startup_input(event)
 		get_viewport().set_input_as_handled()
@@ -149,7 +160,7 @@ func _process(delta: float) -> void:
 	if process_model.objective_complete and not build_mode_unlocked:
 		build_mode_unlocked = true
 		build_controller.set_unlocked(true)
-		build_area_label.text = "BYGGEOMRÅDE 02 — ÅPENT\nTrykk B for byggemodus"
+		build_area_label.text = "BYGGEOMRÅDE 02\nÅPENT — TRYKK B"
 		build_area_label.modulate = Color("78e08f")
 		_show_notification("NYTT OMRÅDE LÅST OPP — trykk B for byggemodus.", 8.0)
 		_schedule_save()
@@ -194,7 +205,7 @@ func _build_environment() -> void:
 	add_child(world_builder)
 	world_builder.build_world()
 	build_area_label = world_builder.prototype_build_area_label
-	build_area_label.text = "BYGGEOMRÅDE 02\nFullfør pilotoppdraget for å låse opp"
+	build_area_label.text = "BYGGEOMRÅDE 02\nLÅST — FULLFØR PILOT"
 	build_area_label.modulate = Color("9ce8c1")
 
 
@@ -1864,7 +1875,7 @@ func _apply_snapshot(snapshot: Dictionary) -> Dictionary:
 	build_mode_unlocked = process_model.objective_complete
 	build_controller.set_unlocked(build_mode_unlocked)
 	if build_mode_unlocked:
-		build_area_label.text = "BYGGEOMRÅDE 02 — ÅPENT\nTrykk B for byggemodus"
+		build_area_label.text = "BYGGEOMRÅDE 02\nÅPENT — TRYKK B"
 		build_area_label.modulate = Color("78e08f")
 	player.position = Vector3(
 		float(snapshot["player"]["position"][0]),
