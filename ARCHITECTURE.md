@@ -12,8 +12,8 @@ For long-term design, Graybox direction and scope, see `CRUDEWORKS_VISION.md`,
   or topology rules.
 - `scripts/world_layout.gd`: sole authority for canonical world coordinates,
   natural grade and progression districts, area purpose/footprint/elevation/
-  access, the Harbor-to-Upper road sequence, Area 02 build bounds/fixed compatibility
-  anchors, final Harbor logistics reservations, spawn and player/save/recovery
+  access, the Harbor-to-Upper road sequence, Area 02 build bounds, functional
+  Harbor logistics anchors/directions, spawn and player/save/recovery
   bounds. Old world/build rectangles are migration-only data.
 - `scripts/world_builder.gd`: one primitive multi-material terrain mesh with
   shaped local pads, Harbor/quay, integrated roads/paths, boundaries,
@@ -49,8 +49,9 @@ For long-term design, Graybox direction and scope, see `CRUDEWORKS_VISION.md`,
 Pilot: heat -> open valve -> start pump -> distill -> sell approved diesel ->
 unlock Area 02.
 
-Area 02: build directed route -> receive CI-101 delivery -> transfer to crude
-storage -> establish generator/MCC/IA/CW availability -> heat -> open manual
+Post-Pilot: receive the free Harbor CI-101 delivery -> follow wayfinding to
+Area 02 -> build the directed pump/storage route -> transfer crude -> establish
+generator/MCC/IA/CW availability -> heat -> open manual
 valve -> pump -> CDU fractions -> optional HT-201 treatment and selected product
 storage -> sample/analyse at LAB-101 where required -> send physical product
 through sales pump -> PD-101 -> canonical inventory removal and payment.
@@ -130,7 +131,7 @@ utility/trip state and stable identifiers; it rebuilds derived state and restore
 pumps stopped. Existing v0.27/v0.28-compatible saves remain supported through
 validated migration/fallback paths.
 
-v0.31.3 uses 214 x 268 m player bounds and 214 x 264 m visible land. Harbor is
+v0.31.4 uses 214 x 268 m player bounds and 214 x 264 m visible land. Harbor is
 flat through z `-42`; one continuous terrain grade then reaches +10.5 m at z
 `-200`. Lower/Main/Upper are planning districts with local pads at +3.5/+7.0/
 +10.5 m, not map-wide shelves. `IndustrialGround` is one multi-material mesh;
@@ -141,22 +142,28 @@ The functional `operations_hub` remains unchanged at x `80..160`, z `-40..20`,
 surface `+0.75 m` as an explicit Harbor compatibility pocket. One 4 m safety
 margin still derives build rectangle x `84..156`, z `-36..16`;
 `WorldBuilder`, `BuildController` and `SaveSystem` all consume that contract.
-`WorldLayout` records the Area 02 fork at `(56, -10)`: its Harbor-facing
-directional sign derives `AREA 02 / PROCESS YARD →` from this `operations_hub`
+`WorldLayout` records the Pilot/CI decision at `(48, 5)` and the Area 02 fork at
+`(56, -10)`: their signs derive direction from the live destination centers.
+The Area 02 Harbor-facing directional sign derives
+`AREA 02 / PROCESS YARD →` from this `operations_hub`
 center and the physical entrance has one non-directional gateway marker. The
 later inland transition gate intentionally has no destination sign.
-CI-101 and PD-101 still instantiate once from its west/east support anchors and
-derive whole-unit rotation from their functional port side toward the platform
-center. Separate `crude_intake` and `product_dispatch` areas reserve their exact
-final Harbor destinations but render only non-gameplay masses with no IDs,
-ports, inventory or persistence.
+CI-101 and PD-101 instantiate once at Harbor area centers `(31, 49)` and
+`(138, 49)`. `main.gd` derives whole-unit cardinal rotation from the CI output
+face or PD input face toward each area's declared inland process target. Their
+mesh, collision, interaction and ports share that transform. `WorldBuilder`
+creates no duplicate logistics reserve masses.
 
 Format-v2 development saves whose complete construction set still validates
 inside the old x `-20..20`, z `10.5..38.5` footprint at its old placement
 height receive one all-or-nothing translation `(120, 0.61, -34)`. This keeps
 relative layout, rotations, connections and IDs. Mixed/ambiguous layouts are
-not guessed, fixed CI/PD are rebuilt from their stable IDs rather than persisted
-positions. No schema bump was needed. Valid saved player positions in the old
+not guessed. Fixed CI/PD transforms were never serialized: format-v2 snapshots
+store their process-network IDs/edges, while fresh runtime creation places one
+of each at Harbor. Logical edges survive and visual pipes rebuild from the new
+ports; legacy development layouts can show long straight pipes until manually
+reconnected. Player-built equipment is not translated for this migration. No
+schema bump was needed. Valid saved player positions in the old
 600 x 400 m world or v0.31.0 bounds but outside v0.31.1 recover to Harbor
 without changing construction or process state. Visible land ends at the
 physical Harbor edge at z `64`; deep water at z `64.5+`, world exits and falls
@@ -169,10 +176,10 @@ placing visual duplicate equipment that looks functional but has no model state.
 
 ## Scope boundary
 
-The v0.28.2 process foundation remains frozen through v0.31.3. The existing fixed
+The v0.28.2 process foundation remains frozen through v0.31.4. The existing fixed
 Pilot is now verified as one complete fresh-save world loop without relocating
-its stable IDs or absolute coordinates. CI-101/PD-101 and Area 02 building are
-retained as functional compatibility, while Main CDU, VDU, FCC, HT-201,
+its stable IDs or absolute coordinates. CI-101/PD-101 now occupy Harbor while
+Area 02 building remains unchanged; Main CDU, VDU, FCC, HT-201,
 routing, storage, LAB, utilities, controls, alarms and maintenance remain
 functionally compact and await deliberate migration after human approval of the
 natural-grade world. New major process families, detailed hydraulics and detailed

@@ -11,7 +11,6 @@ const LEGACY_WORLD_BOUNDS_V0310 := Rect2(-60.0, -325.0, 240.0, 405.0)
 const LEGACY_WORLD_BOUNDS_V0304 := Rect2(-60.0, -250.0, 600.0, 400.0)
 const AREA_02_ID := "operations_hub"
 const AREA_02_BUILD_MARGIN := Vector2(4.0, 4.0)
-const AREA_02_FIXED_ANCHOR_INSET := 2.0
 const BUILD_PLACEMENT_CLEARANCE := 0.02
 
 ## Migration-only v0.30.2 construction footprint. It must never drive current
@@ -41,7 +40,7 @@ const TERRACE_SPECS := [
 		"center": Vector2(65.0, 11.0),
 		"dimensions": Vector2(214.0, 106.0),
 		"elevation": 0.0,
-		"purpose": "Spawn, Pilot, logistics and active compatibility systems",
+		"purpose": "Spawn, Pilot and functional Harbor logistics",
 	},
 	{
 		"id": "lower_plant",
@@ -117,11 +116,12 @@ const AREA_SPECS := [
 		"elevation": 0.0,
 		"kind": "logistics",
 		"terrace": "harbor",
-		"purpose": "Reserved final CI-101 Harbor anchor",
+		"purpose": "Functional CI-101 Harbor intake",
 		"road_access": "main_spine_harbor",
+		"process_route_target_id": "crude_storage",
 		"render_platform": false,
 		"terrain_pad": false,
-		"functional_state": "reserved_anchor",
+		"functional_state": "functional",
 	},
 	{
 		"id": "pilot_plant",
@@ -145,7 +145,7 @@ const AREA_SPECS := [
 		"elevation": PROCESS_PLATFORM_ELEVATION,
 		"kind": "operations",
 		"terrace": "harbor",
-		"purpose": "Temporary active Area 02 and functional CI/PD compatibility pocket",
+		"purpose": "Active Area 02 construction and process yard",
 		"road_access": "area02_access",
 		"render_platform": true,
 		"access_sides": ["west", "east"],
@@ -253,11 +253,12 @@ const AREA_SPECS := [
 		"elevation": 0.0,
 		"kind": "logistics",
 		"terrace": "harbor",
-		"purpose": "Reserved final PD-101 Harbor anchor",
+		"purpose": "Functional PD-101 Harbor dispatch",
 		"road_access": "harbor_logistics_lane",
+		"process_route_target_id": "product_storage",
 		"render_platform": false,
 		"terrain_pad": false,
-		"functional_state": "reserved_anchor",
+		"functional_state": "functional",
 	},
 	{
 		"id": "product_storage",
@@ -400,11 +401,18 @@ const PATH_SPECS := [
 	},
 ]
 
-## A directional sign belongs before or at the road choice it describes. The
-## Harbor approach reaches this fork before the inland transition gate: turning
-## east takes the player to the active Area 02 yard; continuing north goes to
-## later, non-functional refinery districts.
+## A directional sign belongs before or at the road choice it describes. Pilot
+## access first meets the Harbor spine beside the real CI-101 zone. Farther
+## inland, the Harbor approach reaches the Area 02 fork before the transition
+## gate: turning east reaches the active yard; north continues to later districts.
 const WAYFINDING_DECISION_SPECS := [
+	{
+		"id": "crude_intake_junction",
+		"position": Vector2(48.0, 5.0),
+		"approach_road_id": "pilot_access",
+		"branch_road_id": "main_spine_harbor",
+		"destination_area_id": "crude_intake",
+	},
 	{
 		"id": "area02_junction",
 		"position": Vector2(56.0, -10.0),
@@ -441,6 +449,17 @@ const WAYFINDING_SPECS := [
 		"yaw_degrees": 180.0,
 		"primary": "PILOT PROCESS",
 		"board_size": Vector2(3.2, 0.8),
+	},
+	{
+		"id": "crude_intake_junction",
+		"role": "directional",
+		"decision_point_id": "crude_intake_junction",
+		"position": Vector3(44.5, 0.0, 9.5),
+		"yaw_degrees": 90.0,
+		"primary": "CRUDE INTAKE",
+		"secondary": "CI-101",
+		"target_area_id": "crude_intake",
+		"board_size": Vector2(3.6, 0.9),
 	},
 	{
 		"id": "area02_junction",
@@ -486,21 +505,6 @@ static func area02_surface_elevation() -> float:
 
 static func placement_center_y(equipment_height: float) -> float:
 	return area02_surface_elevation() + BUILD_PLACEMENT_CLEARANCE + equipment_height * 0.5
-
-
-static func area02_anchor(anchor_id: String) -> Vector2:
-	var platform_rect := area02_platform_rect()
-	var center := platform_rect.get_center()
-	match anchor_id:
-		"crude_intake":
-			return Vector2(platform_rect.position.x + AREA_02_FIXED_ANCHOR_INSET, center.y)
-		"product_dispatch":
-			return Vector2(platform_rect.end.x - AREA_02_FIXED_ANCHOR_INSET, center.y)
-	return center
-
-
-static func area02_inward_direction(anchor_id: String) -> Vector2:
-	return (area02_platform_rect().get_center() - area02_anchor(anchor_id)).normalized()
 
 
 static func cardinal_rotation_quadrants(local_facing: Vector2, desired_world_facing: Vector2) -> int:
@@ -625,6 +629,24 @@ static func harbor_logistics_anchor(area_id: String) -> Vector2:
 	if String(area.get("terrace", "")) != "harbor":
 		return Vector2.ZERO
 	return area.get("center", Vector2.ZERO)
+
+
+static func harbor_logistics_position(area_id: String, equipment_height: float) -> Vector3:
+	var anchor := harbor_logistics_anchor(area_id)
+	return Vector3(
+		anchor.x,
+		terrain_elevation_at(anchor) + BUILD_PLACEMENT_CLEARANCE + equipment_height * 0.5,
+		anchor.y
+	)
+
+
+static func harbor_process_direction(area_id: String) -> Vector2:
+	var logistics_area := area_by_id(area_id)
+	var target_area := area_by_id(String(logistics_area.get("process_route_target_id", "")))
+	if logistics_area.is_empty() or target_area.is_empty():
+		return Vector2.ZERO
+	var target_center: Vector2 = target_area["center"]
+	return (target_center - harbor_logistics_anchor(area_id)).normalized()
 
 
 static func wayfinding_spec_by_id(sign_id: String) -> Dictionary:

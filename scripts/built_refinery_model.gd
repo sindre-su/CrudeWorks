@@ -1960,7 +1960,7 @@ func objective_text() -> String:
 		return prefix + "motta gratis Standard råolje ved CI-101"
 	if float(pending_intake_delivery.get("volume_l", 0.0)) > 0.001:
 		if network.crude_intake_routes().is_empty():
-			return prefix + "bygg CI-101 → pumpe → råoljetank"
+			return prefix + "gå til Area 02: bygg pumpe → råoljetank og koble Harbor CI-101"
 		if electrical_bus.tripped:
 			return prefix + "start nok generasjon og reset MCC-101"
 		if not _electrical_supply_available():

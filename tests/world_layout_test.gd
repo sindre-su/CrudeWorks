@@ -4,6 +4,7 @@ const WorldLayoutScript = preload("res://scripts/world_layout.gd")
 const WorldBuilderScript = preload("res://scripts/world_builder.gd")
 const BuildControllerScript = preload("res://scripts/build_controller.gd")
 const SaveSystemScript = preload("res://scripts/save_system.gd")
+const EquipmentCatalogScript = preload("res://scripts/equipment_catalog.gd")
 
 var failures := 0
 
@@ -162,8 +163,25 @@ func _test_area_configuration() -> void:
 	_expect(
 		WorldLayoutScript.harbor_logistics_anchor("crude_intake") == Vector2(31.0, 49.0)
 		and WorldLayoutScript.harbor_logistics_anchor("product_dispatch") == Vector2(138.0, 49.0),
-		"final CI/PD Harbor anchors are exact canonical reservations"
+		"functional CI/PD Harbor anchors are exact canonical logistics positions"
 	)
+	for logistics_id: String in ["crude_intake", "product_dispatch"]:
+		var logistics_area := WorldLayoutScript.area_by_id(logistics_id)
+		var anchor := WorldLayoutScript.harbor_logistics_anchor(logistics_id)
+		var equipment_size: Vector3 = EquipmentCatalogScript.definition(logistics_id)["size"]
+		var footprint := Rect2(
+			anchor - Vector2(equipment_size.x, equipment_size.z) * 0.5,
+			Vector2(equipment_size.x, equipment_size.z)
+		)
+		_expect(
+			String(logistics_area.get("functional_state", "")) == "functional"
+			and WorldLayoutScript.area_rect(logistics_area).has_point(anchor)
+			and WorldLayoutScript.area_rect(logistics_area).encloses(footprint)
+			and is_equal_approx(WorldLayoutScript.terrain_elevation_at(anchor), 0.0)
+			and WorldLayoutScript.SHORELINE_Z - footprint.end.y >= 4.0
+			and WorldLayoutScript.harbor_process_direction(logistics_id).y < -0.5,
+			"%s is functional, grounded, player-accessible and refinery-facing clear of Harbor water" % logistics_id
+		)
 
 
 func _test_area02_spatial_contract() -> void:
@@ -191,15 +209,10 @@ func _test_area02_spatial_contract() -> void:
 		),
 		"legacy CI-to-PD blue zone has no active build authority"
 	)
-	for anchor_id: String in ["crude_intake", "product_dispatch"]:
-		var anchor := WorldLayoutScript.area02_anchor(anchor_id)
+	for logistics_id: String in ["crude_intake", "product_dispatch"]:
 		_expect(
-			platform_rect.has_point(anchor)
-			and not build_bounds.has_point(anchor)
-			and WorldLayoutScript.area02_inward_direction(anchor_id).dot(
-				(platform_rect.get_center() - anchor).normalized()
-			) > 0.999,
-			"%s uses a canonical platform-edge support anchor facing inward" % anchor_id
+			not platform_rect.has_point(WorldLayoutScript.harbor_logistics_anchor(logistics_id)),
+			"%s no longer has active spatial authority at the Area 02 platform edge" % logistics_id
 		)
 
 
@@ -294,6 +307,7 @@ func _test_surface_standard() -> void:
 func _test_wayfinding_configuration() -> void:
 	var expected_arrows := {
 		"starter_site": "←",
+		"crude_intake_junction": "→",
 		"area02_junction": "→",
 	}
 	for sign_id: String in expected_arrows:
@@ -306,6 +320,23 @@ func _test_wayfinding_configuration() -> void:
 	_expect(
 		WorldLayoutScript.wayfinding_spec_by_id("crude_intake").is_empty(),
 		"obsolete Crude Intake sign has no remaining Pilot wayfinding authority"
+	)
+	var intake_sign := WorldLayoutScript.wayfinding_spec_by_id("crude_intake_junction")
+	var intake_decision := WorldLayoutScript.wayfinding_decision_by_id("crude_intake_junction")
+	var pilot_access := WorldLayoutScript.road_rect(
+		WorldLayoutScript.road_by_id(String(intake_decision["approach_road_id"]))
+	)
+	var harbor_spine := WorldLayoutScript.road_rect(
+		WorldLayoutScript.road_by_id(String(intake_decision["branch_road_id"]))
+	)
+	var intake_decision_position: Vector2 = intake_decision["position"]
+	_expect(
+		String(intake_sign.get("target_area_id", "")) == "crude_intake"
+		and String(intake_sign.get("decision_point_id", "")) == String(intake_decision["id"])
+		and pilot_access.grow(0.01).has_point(intake_decision_position)
+		and harbor_spine.grow(0.01).has_point(intake_decision_position)
+		and Vector2(intake_sign["position"].x, intake_sign["position"].z).distance_to(intake_decision_position) <= 7.0,
+		"one CI-101 sign sits at the actual Pilot-access/Harbor-road decision point"
 	)
 	_expect(
 		WorldLayoutScript.wayfinding_arrow(
@@ -454,10 +485,10 @@ func _test_world_builder() -> void:
 	_expect(builder.landmark_nodes.size() == 10, "world builder emits restrained process and central-core landmarks")
 	_expect(
 		builder.harbor_nodes.has("quay_edge")
-		and builder.harbor_nodes.has("crude_intake")
-		and builder.harbor_nodes.has("product_dispatch")
-		and builder.harbor_nodes.has("warehouse"),
-		"Harbor has a quay, two non-functional logistics reservations and one orienting warehouse mass"
+		and builder.harbor_nodes.has("warehouse")
+		and not builder.harbor_nodes.has("crude_intake")
+		and not builder.harbor_nodes.has("product_dispatch"),
+		"Harbor keeps quay and warehouse context without duplicate CI/PD reserve masses"
 	)
 	_expect(
 		builder.harbor_nodes["quay_edge"].get_meta("canonical_spec") == WorldLayoutScript.HARBOR_QUAY_SPEC
@@ -542,6 +573,7 @@ func _test_world_builder() -> void:
 	var signs: Array = [
 		builder.orientation_nodes["starter_site"],
 		builder.orientation_nodes["pilot_process_chain"],
+		builder.orientation_nodes["crude_intake_junction"],
 		builder.orientation_nodes["area02_junction"],
 		builder.orientation_nodes["area02_entrance"],
 		builder.orientation_nodes["build_area"],
@@ -570,7 +602,7 @@ func _test_world_builder() -> void:
 		Vector2(builder.orientation_nodes["starter_site"].get_meta("board_size")).x <= 3.0,
 		"starter sign remains human-scale rather than filling the approach view"
 	)
-	for sign_id: String in ["starter_site", "area02_junction"]:
+	for sign_id: String in ["starter_site", "crude_intake_junction", "area02_junction"]:
 		var sign = builder.orientation_nodes[sign_id]
 		var spec := WorldLayoutScript.wayfinding_spec_by_id(sign_id)
 		_expect(

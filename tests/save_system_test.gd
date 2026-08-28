@@ -704,12 +704,12 @@ func _test_main_round_trip(snapshot: Dictionary, source_main) -> void:
 		restored_intakes.size() == 1
 		and restored_dispatches.size() == 1
 		and Vector2(restored_intakes[0]["node"].position.x, restored_intakes[0]["node"].position.z).is_equal_approx(
-			WorldLayoutScript.area02_anchor("crude_intake")
+			WorldLayoutScript.harbor_logistics_anchor("crude_intake")
 		)
 		and Vector2(restored_dispatches[0]["node"].position.x, restored_dispatches[0]["node"].position.z).is_equal_approx(
-			WorldLayoutScript.area02_anchor("product_dispatch")
+			WorldLayoutScript.harbor_logistics_anchor("product_dispatch")
 		),
-		"load keeps exactly one canonical CI-101 and PD-101 instead of duplicating fixed logistics"
+		"legacy snapshots deterministically instantiate exactly one CI-101 and PD-101 at Harbor"
 	)
 	_expect(restored.built_refinery_model.network.connection_count() == 7 and restored.build_controller.connections.size() == 7, "logical topology and seven visual pipes restore together")
 	_expect(

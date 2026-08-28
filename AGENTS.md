@@ -19,20 +19,22 @@ The game must be:
 
 ## Current project phase — authoritative
 
-**WAYFINDING DECISION-POINT CLEANUP COMPLETE** at version `0.31.3`, pending
-human macro-world approval. Playable land is 214 x 264 m and rises continuously
+**HARBOR FUNCTIONAL MIGRATION COMPLETE** at version `0.31.4`, pending human
+WASD approval. Playable land is 214 x 264 m and rises continuously
 from Harbor at 0 m to Upper Plant at +10.5 m through one primary road. At the
-first Harbor road fork, a directional `AREA 02 / PROCESS YARD →` sign derives
-its branch arrow from the live Operations Hub center. The inland transition gate
+Pilot-access junction, one `CRUDE INTAKE / CI-101 →` sign directs the first
+post-Pilot objective. At the next Harbor fork, `AREA 02 / PROCESS YARD →`
+derives its branch arrow from the live Operations Hub center. The inland gate
 has no destination sign; its route is later/deeper refinery progression. A
 single non-directional Area 02 gateway marker identifies the yard itself.
 Pilot, the v0.30.3 Area 02 spatial contract, v0.30.4 build menu and all process
 behavior remain proven.
-Functional CI/PD stay once on the active Area 02 compatibility anchors while
-their exact final Harbor areas are non-gameplay reservations. Broader Main
-Refinery equipment, Utilities, storage, LAB, CDU/HT/VDU/FCC and logistics
-migration has not started. Do not begin functional migration until a real
-1280 x 720 Harbor-to-Upper walk approves scale, navigation and natural grade.
+Functional CI-101 and PD-101 now exist once at their canonical Harbor anchors;
+their old Area 02 support positions and non-gameplay reserve masses are gone.
+Normal progression continues Pilot -> Harbor CI -> Area 02, while `pilot_slice`
+remains an explicit debug profile. Broader Utilities, storage, LAB,
+CDU/HT/VDU/FCC and logistics migration remains paused until a real 1280 x 720
+Pilot -> CI -> Area 02 pass approves this slice.
 
 Use the documents for their distinct roles:
 

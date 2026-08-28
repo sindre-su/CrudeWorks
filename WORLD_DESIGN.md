@@ -6,16 +6,17 @@ This is the authoritative spatial brief for the CrudeWorks V1 Graybox World.
 It translates `CRUDEWORKS_VISION.md` into a compact, traversable refinery
 geography without prescribing final art, final equipment count or vehicles.
 
-**Implementation status: v0.31.3 Wayfinding Decision-Point Cleanup.** The
+**Implementation status: v0.31.4 Harbor Functional Migration.** The
 world reads Harbor -> Lower Plant -> Main Plant -> Upper Plant, but those names
 now describe progression districts rather than four giant physical shelves.
 One continuous terrain mesh rises inland and contains locally level industrial
 pads, roads, paths and the Pilot process surface.
 
-This milestone changes world design only. Pilot, Area 02 building, functional
-CI-101/PD-101 and every process, utility, LAB, storage, economy and progression
-system remain functionally where they were. The Process Scope Freeze remains in
-force until human playtesting approves the world.
+The first functional migration slice is now active: stable CI-101 and PD-101
+exist once at their Harbor zones, while Pilot, Area 02 building and every other
+process, utility, LAB and storage system remain in place. Normal fresh-game
+progression continues from Pilot through Harbor CI to Area 02. The Process Scope
+Freeze remains in force.
 
 ## Scale and coordinate convention
 
@@ -61,9 +62,9 @@ within that mesh, not stacked floor overlays.
 | Area ID | Center x/z | Footprint | Elevation | Role |
 | --- | ---: | ---: | ---: | --- |
 | `pilot_plant` | `-10 / 5` | 55 x 42 m | 0 m | Contained functional tutorial. |
-| `crude_intake` | `31 / 49` | 26 x 18 m | 0 m | Final non-functional CI reservation. |
-| `product_dispatch` | `138 / 49` | 34 x 18 m | 0 m | Final non-functional PD reservation. |
-| `operations_hub` | `120 / -10` | 80 x 60 m | +0.75 m | Unchanged functional Area 02 compatibility pocket. |
+| `crude_intake` | `31 / 49` | 26 x 18 m | 0 m | Functional CI-101 intake. |
+| `product_dispatch` | `138 / 49` | 34 x 18 m | 0 m | Functional PD-101 dispatch. |
+| `operations_hub` | `120 / -10` | 80 x 60 m | +0.75 m | Unchanged functional Area 02 process yard. |
 | `crude_storage` | `-15 / -75` | 38 x 26 m | +3.5 m | Future crude tank block. |
 | `cdu` | `26 / -75` | 28 x 26 m | +3.5 m | First atmospheric block. |
 | `ht` | `78 / -75` | 28 x 26 m | +3.5 m | Treatment block. |
@@ -93,7 +94,14 @@ fallback for genuine boundary escape. The old separate south boundary and
 segmented parallel quay barrier were removed; Harbor has one barrier for one
 purpose.
 
-The first meaningful Harbor decision is the main-road / `area02_access` fork at
+Leaving Pilot, the `pilot_access` / main-road junction at `(48, 5)` has one
+west-approach `CRUDE INTAKE / CI-101 →` sign. It derives its direction from the
+live CI area center and supports the real post-Pilot objective without a HUD
+waypoint. CI's process output faces north/inland; its opposite logistics side
+faces the sea. PD's product inlet face points north/inland, leaving its outbound
+side toward Harbor.
+
+The next meaningful Harbor decision is the main-road / `area02_access` fork at
 `(56, -10)`: continuing north reaches the inland grade, while turning east
 reaches the active Area 02 yard. A complete Harbor-facing sign sits just before
 that fork at `(45.5, 0, -4)` and reads `AREA 02 / PROCESS YARD →`; its arrow is
@@ -117,26 +125,34 @@ industrial pads and the Pilot process pad are material regions in that mesh.
 Area footprints and the full Area 02 build overlay are metadata/boundary-only,
 so they cannot form coplanar duplicate floors.
 
-## Functional compatibility and SPEC DEVIATIONS
+## Functional migration and SPEC DEVIATIONS
 
-The long-term layout places CI-101 and PD-101 at the Harbor reservations above.
-Moving them now would separate them from the active Area 02 build surface before
-storage and routing are migrated. Functional CI-101 and PD-101 therefore remain
-once at the unchanged Operations Hub support anchors. Harbor reserve masses are
-non-gameplay geometry with no stable unit IDs, ports, inventory or persistence.
+CI-101 moved from `(82, 2.07, -10)`, rotation `270°`, to
+`(31, 1.32, 49)`, rotation `0°`. PD-101 moved from `(158, 2.17, -10)`,
+rotation `270°`, to `(138, 1.42, 49)`, rotation `180°`. The runtime derives the
+new whole-unit rotation from each Harbor area's process-route target rather than
+rotating only meshes. Ports, collision, labels and interaction therefore share
+the same transform. Old Area 02 support definitions and Harbor reserve masses
+have no runtime authority.
 
-The following are intentionally not migrated in v0.31.3:
+The following remain intentionally unmigrated in v0.31.4:
 
 - fixed Utilities and LS-201;
 - player-built storage, trains and product tanks;
 - LAB-101 and HT-201;
 - VDU-301 and FCC-401;
-- active Area 02 construction;
-- functional CI-101 and PD-101.
+- active Area 02 construction.
+
+The fixed CI/PD transforms were never serialized. Saves store their stable IDs
+only through process-network edges, so format 2 remains valid and startup
+deterministically creates exactly one unit at each Harbor anchor. Player-built
+absolute positions do not move. Saved logical edges are preserved and their
+visual pipes are rebuilt from the new Harbor ports; old development layouts may
+therefore show long straight graybox pipes until the player reconnects them.
 
 ## Save and recovery behavior
 
-Area 02 bounds, height and fixed endpoint anchors are unchanged. Existing
+Area 02 bounds, height and player construction are unchanged. Existing
 v0.30.2 construction migration remains supported. Valid players left in the
 larger v0.31.0 world but outside v0.31.1 bounds recover to Harbor without
 changing process, economy or construction. Runtime recovery still handles
@@ -145,18 +161,20 @@ recognized legacy bounds remain corrupt rather than guessed.
 
 ## Human approval route
 
-Before functional migration continues:
+Before the next functional migration continues:
 
-1. Inspect spawn, Pilot containment, shoreline and the single Harbor edge.
-2. At the first Harbor fork, confirm `AREA 02 / PROCESS YARD →` is readable,
-   then take the east branch and confirm the gateway marker on arrival.
-3. Walk the main road at normal speed to Upper Plant; target 35–45 seconds.
-4. Confirm the route feels continuously uphill, not like four floors.
-5. Walk across local pads and their blended edges; check collision and scale.
-6. Return to the fork, continue inland past the unlabeled transition gate, then
-   return without HUD navigation; downhill should naturally recover Harbor.
-7. Strafe and rotate around the Pilot/main-road junction and confirm no floor
-   flicker.
-8. Recheck unchanged Pilot, Area 02, CI/PD, ports and Build Mode.
+1. Start fresh, complete Pilot and confirm the objective immediately names CI-101.
+2. Follow the single CI sign from Pilot, inspect CI's sea-side logistics reading
+   and refinery-facing output, then claim the free Standard delivery.
+3. Follow the main road to the Area 02 fork, take the signed east branch and
+   confirm the gateway marker at the Process Yard.
+4. Enter Build Mode and verify the unchanged Area 02 surface and ports.
+5. Inspect PD at Harbor: every product inlet belongs on its inland face and the
+   outbound side belongs toward Harbor.
+6. Confirm no CI/PD unit or label remains at either old Area 02 platform edge.
+7. Save/reload and confirm unique Harbor units, progression, economy and player
+   construction remain intact.
+8. Recheck shoreline, natural grade, floor stability and world recovery.
 
-Do not begin functional refinery migration until this pass is human-approved.
+Do not begin Crude Storage, process, Utilities, LAB or tank-farm migration until
+this pass is human-approved.

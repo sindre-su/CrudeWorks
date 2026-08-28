@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.31.3 – Wayfinding Decision-Point Cleanup**
+**Prototypeversjon: 0.31.4 – Harbor Functional Migration**
 
 CrudeWorks is a first-person refinery-builder prototype. The player starts with
 a manual Pilot process, unlocks Area 02, builds directed refinery routes,
@@ -10,12 +10,12 @@ approved diesel.
 
 ## Current phase
 
-**v0.31.3 — WAYFINDING DECISION-POINT CLEANUP.** The compact 214 x 264 m
-world, continuous natural grade and all process gameplay are unchanged. At the
-first Harbor road fork, `AREA 02 / PROCESS YARD →` directs the player onto the
-actual eastbound branch. A single `AREA 02 / PROCESS YARD` gateway marker
-identifies the yard entrance. The later inland gate deliberately has no Area 02
-or Main Refinery sign.
+**v0.31.4 — HARBOR FUNCTIONAL MIGRATION.** Functional CI-101 and PD-101 now
+exist once at their canonical Harbor zones with all ports, collision and
+interactions oriented as complete units. Normal fresh-game progression continues
+Pilot -> CI-101 -> Area 02; one concise CI sign supports the Pilot exit and the
+approved Area 02 fork/gateway signs support the onward route. No other refinery
+system moved.
 
 Quick orientation:
 
@@ -100,8 +100,8 @@ Den første komplette «vertical slice»-en inneholder:
   beholder stillingen; CDU-produksjon blokkeres uten aktiv kjølevannssirkulasjon
 - utility-alarmer, lokale statuser og en kompakt LS-201-oversikt som viser
   drivstoff, Instrument Air og Cooling Water sammen med eksisterende kraftdata
-- midlertidige CI-101- og PD-101-markører som gjør første fysiske inntak og
-  dispatch enklere å finne uten å legge til et waypoint-system
+- funksjonelle CI-101 og PD-101 ved Harbor, med ett lokalt CI-skilt og reduserte
+  onboarding-markører uten et permanent waypoint-system
 - byggemodus prioriterer eksplisitte prosessporter foran maskinkroppen når
   spilleren sikter på en markert port
 - eksplisitte pumpetilstander skiller `STOPPED`, `RUNNING | FLOW`,
@@ -180,6 +180,11 @@ ikke av denne Area 02-migreringen, og save-formatet er fortsatt versjon 2.
 Spillerposisjoner som var gyldige i den gamle 600 x 400 m-verdenen eller den
 større v0.31.0-verdenen, men ligger utenfor v0.31.1, flyttes trygt til Harbor
 uten at prosess, økonomi eller konstruksjon forkastes.
+CI/PD-transformer lagres ikke separat. Eldre format-2-lagringer gjenoppretter
+derfor stabile prosess-ID-er og koblinger, men bygger nøyaktig én CI og PD ved de
+nye Harbor-ankrene. Spillerbygget utstyr flyttes ikke; gamle koblinger får nye
+rørvisualer fra Harbor-portene og kan fremstå som lange rette gråboksrør til de
+kobles om.
 
 ## Styring
 

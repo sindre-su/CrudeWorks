@@ -297,21 +297,6 @@ func _build_harbor() -> void:
 	quay.set_meta("canonical_spec", quay_spec)
 	harbor_nodes["quay_edge"] = quay
 
-	for anchor_id: String in ["crude_intake", "product_dispatch"]:
-		var area := WorldLayoutScript.area_by_id(anchor_id)
-		var center: Vector2 = area["center"]
-		var dimensions: Vector2 = area["dimensions"]
-		var mass := _create_static_box(
-			"HarborReserve_%s" % anchor_id,
-			Vector3(center.x, 1.6, center.y + dimensions.y * 0.28),
-			Vector3(dimensions.x * 0.55, 3.2, dimensions.y * 0.22),
-			COLOR_FIXED_STRUCTURE
-		)
-		mass.set_meta("navigation_placeholder", true)
-		mass.set_meta("gameplay_equipment", false)
-		mass.set_meta("canonical_area_id", anchor_id)
-		harbor_nodes[anchor_id] = mass
-
 	var warehouse_spec: Dictionary = WorldLayoutScript.HARBOR_WAREHOUSE_SPEC
 	var warehouse_center: Vector2 = warehouse_spec["center"]
 	var warehouse_dimensions: Vector2 = warehouse_spec["dimensions"]

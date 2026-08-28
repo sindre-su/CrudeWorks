@@ -1,5 +1,27 @@
 # CrudeWorks Development Log
 
+## v0.31.4 — Harbor Functional Migration
+
+- Moved the single functional `built_crude_intake_0` from the Area 02 west
+  support edge to canonical Harbor `(31, 1.32, 49)`, rotation `0°`. Its output
+  and whole unit face inland toward the declared Crude Storage route.
+- Moved the single functional `built_product_dispatch_0` from the Area 02 east
+  support edge to Harbor `(138, 1.42, 49)`, rotation `180°`. Every product inlet
+  shares the inland process face and outbound logistics reads toward Harbor.
+- Removed both old Area 02 spatial authorities and the non-gameplay Harbor
+  reserve masses; no duplicate ports, colliders, labels or fixed IDs remain.
+- Restored `main_refinery` as the normal playable profile. Pilot completion now
+  exposes the existing CI first-delivery objective; `pilot_slice` remains an
+  explicit debug cap. Added one target-derived CI sign at the real Pilot-access
+  / Harbor-road junction and retained the approved Area 02 wayfinding.
+- Kept save format 2. Fixed CI/PD transforms were never serialized, so old
+  snapshots deterministically rebuild their stable IDs at Harbor while preserving
+  player construction, economy, inventories, progression and logical edges.
+  Rebuilt legacy straight-pipe visuals can span the old distance until reconnected.
+- Added Harbor transform/orientation, uniqueness, no-reserve-duplicate,
+  decision-point, fresh progression, interaction and deterministic reload
+  regressions. No process mechanics or broader refinery migration was added.
+
 ## v0.31.3 — Wayfinding Decision-Point Cleanup
 
 - Human playtesting found that v0.31.2's target-derived right arrow was correct

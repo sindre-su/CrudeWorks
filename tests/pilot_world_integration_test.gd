@@ -3,6 +3,7 @@ extends SceneTree
 const MainScene = preload("res://scenes/main.tscn")
 const SaveSystemScript = preload("res://scripts/save_system.gd")
 const WorldLayoutScript = preload("res://scripts/world_layout.gd")
+const EquipmentCatalogScript = preload("res://scripts/equipment_catalog.gd")
 
 const TEST_PATH := "user://crudeworks_pilot_world_integration_test.json"
 
@@ -49,6 +50,7 @@ func _test_fresh_world_context(main) -> void:
 	_expect(
 		main.world_builder.orientation_nodes.has("starter_site")
 		and main.world_builder.orientation_nodes.has("pilot_process_chain")
+		and main.world_builder.orientation_nodes.has("crude_intake_junction")
 		and main.world_builder.orientation_nodes.has("area02_junction")
 		and main.world_builder.orientation_nodes.has("area02_entrance")
 		and main.world_builder.orientation_nodes.has("inland_transition_gate"),
@@ -102,9 +104,17 @@ func _test_fresh_world_context(main) -> void:
 	var dispatch = main.build_controller.registered_unit_by_id("built_product_dispatch_0")
 	_expect(
 		is_instance_valid(intake) and is_instance_valid(dispatch)
-		and Vector2(intake.position.x, intake.position.z) == WorldLayoutScript.area02_anchor("crude_intake")
-		and Vector2(dispatch.position.x, dispatch.position.z) == WorldLayoutScript.area02_anchor("product_dispatch"),
-		"stable CI-101 and PD-101 instances use canonical Area 02 edge anchors"
+		and intake.position.is_equal_approx(WorldLayoutScript.harbor_logistics_position(
+			"crude_intake", float(EquipmentCatalogScript.definition("crude_intake")["size"].y)
+		))
+		and dispatch.position.is_equal_approx(WorldLayoutScript.harbor_logistics_position(
+			"product_dispatch", float(EquipmentCatalogScript.definition("product_dispatch")["size"].y)
+		))
+		and intake.rotation_quadrants == 0
+		and dispatch.rotation_quadrants == 2
+		and String(intake.get_meta("canonical_area_id")) == "crude_intake"
+		and String(dispatch.get_meta("canonical_area_id")) == "product_dispatch",
+		"stable CI-101 and PD-101 instances use their canonical functional Harbor anchors"
 	)
 	if is_instance_valid(intake) and is_instance_valid(dispatch):
 		var intake_output_direction := Vector2(
@@ -112,20 +122,24 @@ func _test_fresh_world_context(main) -> void:
 			intake.output_port.global_position.z - intake.global_position.z
 		).normalized()
 		_expect(
-			intake_output_direction.dot(WorldLayoutScript.area02_inward_direction("crude_intake")) > 0.99,
-			"CI-101 output port faces from crude logistics into Area 02"
+			intake_output_direction.dot(WorldLayoutScript.harbor_process_direction("crude_intake")) > 0.9,
+			"CI-101 output port faces inland from Harbor toward the crude/refinery route"
 		)
 		var dispatch_inputs_inward := true
+		var dispatch_face_3d: Vector3 = dispatch.global_basis * Vector3.BACK
+		var dispatch_face := Vector2(dispatch_face_3d.x, dispatch_face_3d.z).normalized()
 		for port in dispatch.ports_of_kind("input"):
-			var input_direction := Vector2(
+			var input_offset := Vector2(
 				port.global_position.x - dispatch.global_position.x,
 				port.global_position.z - dispatch.global_position.z
-			).normalized()
-			# Ports share the inward face but are laterally spaced, so their
-			# center-to-port vectors intentionally are not parallel.
-			if input_direction.dot(WorldLayoutScript.area02_inward_direction("product_dispatch")) <= 0.5:
+			)
+			if input_offset.dot(dispatch_face) <= 0.0:
 				dispatch_inputs_inward = false
-		_expect(dispatch_inputs_inward, "every PD-101 product input faces inward while its logistics face points outward")
+		_expect(
+			dispatch_inputs_inward
+			and dispatch_face.dot(WorldLayoutScript.harbor_process_direction("product_dispatch")) > 0.7,
+			"every PD-101 product input shares the refinery-facing side while outbound logistics faces Harbor"
+		)
 	var intake_count := 0
 	var dispatch_count := 0
 	for entry: Dictionary in main.build_controller.registered_units:
@@ -197,19 +211,34 @@ func _test_successful_pilot_operation(main) -> void:
 		"successful Pilot sale leaves the player ready for later Main Refinery progression"
 	)
 	_expect(
-		"PILOT COMPLETE" in main.objective_label.text
-		and "CI-101" not in main.objective_label.text
-		and "next development stage" in main.objective_label.text,
-		"default human-test stage ends coherently without directing the player into unmigrated Area 02"
-	)
-	main.playable_stage = "main_refinery"
-	main._update_user_interface()
-	_expect(
-		"CI-101" in main.objective_label.text,
-		"advancing the configured playable stage restores the preserved Area 02 progression"
+		main.playable_stage == "main_refinery"
+		and "CI-101" in main.objective_label.text,
+		"normal fresh-game progression continues from Pilot completion to Harbor CI-101"
 	)
 	main.playable_stage = "pilot_slice"
 	main._update_user_interface()
+	_expect(
+		"PILOT COMPLETE" in main.objective_label.text
+		and "next development stage" in main.objective_label.text,
+		"explicit pilot_slice profile still caps the development/debug route"
+	)
+	main.playable_stage = "main_refinery"
+	main._update_user_interface()
+	main._on_unit_interacted("built_crude_intake_0")
+	_expect(main.contract_selection_visible, "Harbor CI-101 remains physically interactive after Pilot")
+	var claim_event := InputEventKey.new()
+	claim_event.keycode = KEY_1
+	claim_event.pressed = true
+	main._unhandled_input(claim_event)
+	main._process(0.0)
+	_expect(
+		main.built_refinery_model.first_intake_received
+		and is_equal_approx(float(main.built_refinery_model.pending_intake_delivery["volume_l"]), 1000.0)
+		and "motta gratis" not in main.objective_label.text
+		and "gå til Area 02" in main.objective_label.text
+		and "Harbor CI-101" in main.objective_label.text,
+		"free Standard claim at Harbor advances the existing Area 02 commissioning objective"
+	)
 	main.build_controller.set_build_mode(true)
 	main._process(0.0)
 	_expect(

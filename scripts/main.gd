@@ -22,7 +22,7 @@ const PLAYER_RECOVERY_COOLDOWN_SECONDS := 1.0
 
 @export var persistence_enabled := true
 @export var save_path := SaveSystemScript.DEFAULT_PATH
-@export_enum("pilot_slice", "main_refinery") var playable_stage := "pilot_slice"
+@export_enum("pilot_slice", "main_refinery") var playable_stage := "main_refinery"
 
 var process_model
 var built_refinery_model
@@ -165,7 +165,7 @@ func _process(delta: float) -> void:
 		build_area_label.text = "AREA 02 BUILD ZONE\nOPEN IN BUILD MODE"
 		build_area_label.modulate = Color("78e08f")
 		_show_notification(
-			"PILOT COMPLETE — construction testing is available with B. Area 02 commissioning follows in the next development stage.",
+			"PILOT COMPLETE — Area 02 commissioning unlocked. Receive the free Standard delivery at Harbor CI-101.",
 			8.0
 		)
 		_schedule_save()
@@ -375,24 +375,27 @@ func _build_site_logistics() -> void:
 
 func _create_fixed_logistics_unit(equipment_type: String) -> void:
 	var definition := EquipmentCatalogScript.definition(equipment_type)
-	var anchor := WorldLayoutScript.area02_anchor(equipment_type)
 	var unit = BuildableUnitScript.new()
 	unit.configure_buildable(equipment_type, 0)
-	unit.position = Vector3(
-		anchor.x,
-		WorldLayoutScript.placement_center_y(float(definition["size"].y)),
-		anchor.y
+	unit.position = WorldLayoutScript.harbor_logistics_position(
+		equipment_type, float(definition["size"].y)
 	)
-	var facing_port_id := "output" if equipment_type == "crude_intake" else "diesel"
-	var facing_port: Dictionary = EquipmentCatalogScript.port_definition(equipment_type, facing_port_id)
-	var local_port_position: Vector3 = facing_port["position"]
+	# Fixed logistics orient by the shared process face, not by one laterally
+	# offset port. This keeps every PD inlet on the inland side as a unit.
+	var local_process_facing := (
+		Vector2(0.0, -1.0) if equipment_type == "crude_intake" else Vector2(0.0, 1.0)
+	)
 	unit.rotation_quadrants = WorldLayoutScript.cardinal_rotation_quadrants(
-		Vector2(local_port_position.x, local_port_position.z),
-		WorldLayoutScript.area02_inward_direction(equipment_type)
+		local_process_facing,
+		WorldLayoutScript.harbor_process_direction(equipment_type)
 	)
 	unit.rotation.y = deg_to_rad(float(unit.rotation_quadrants * 90))
-	unit.set_meta("canonical_area_id", WorldLayoutScript.AREA_02_ID)
+	unit.set_meta("canonical_area_id", equipment_type)
 	unit.set_meta("canonical_anchor_id", equipment_type)
+	unit.set_meta(
+		"process_route_target_id",
+		WorldLayoutScript.area_by_id(equipment_type).get("process_route_target_id", "")
+	)
 	add_child(unit)
 	built_refinery_model.register_unit(unit.unit_id, unit.equipment_type, unit.display_name)
 	build_controller.register_fixed_unit(unit)
