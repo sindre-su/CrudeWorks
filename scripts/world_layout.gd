@@ -400,6 +400,29 @@ const PATH_SPECS := [
 	},
 ]
 
+## A directional sign belongs before or at the road choice it describes. The
+## Harbor approach reaches this fork before the inland transition gate: turning
+## east takes the player to the active Area 02 yard; continuing north goes to
+## later, non-functional refinery districts.
+const WAYFINDING_DECISION_SPECS := [
+	{
+		"id": "area02_junction",
+		"position": Vector2(56.0, -10.0),
+		"approach_road_id": "main_spine_harbor",
+		"branch_road_id": "area02_access",
+		"uphill_road_id": "main_spine_inland_grade",
+		"destination_area_id": AREA_02_ID,
+	},
+]
+
+## The gate is on the inland continuation after the Area 02 fork. It preserves
+## physical route readability but intentionally has no player-facing destination
+## sign until the later district beyond it becomes useful gameplay.
+const INLAND_TRANSITION_GATE_SPEC := {
+	"id": "inland_transition_gate",
+	"position": Vector3(52.0, 0.0, -28.0),
+}
+
 ## Physical signs derive their displayed direction from this canonical placement
 ## and the target area's center. The arrow is relative to a player facing the
 ## readable side of the board, rather than a hardcoded compass instruction.
@@ -420,13 +443,24 @@ const WAYFINDING_SPECS := [
 		"board_size": Vector2(3.2, 0.8),
 	},
 	{
-		"id": "main_refinery_gate",
-		"position": Vector3(52.0, 0.0, -28.0),
+		"id": "area02_junction",
+		"role": "directional",
+		"decision_point_id": "area02_junction",
+		"position": Vector3(45.5, 0.0, -4.0),
 		"yaw_degrees": 180.0,
-		"primary": "MAIN REFINERY",
-		"secondary": "AREA 02",
+		"primary": "AREA 02",
+		"secondary": "PROCESS YARD",
 		"target_area_id": AREA_02_ID,
-		"board_size": Vector2(3.8, 0.8),
+		"board_size": Vector2(3.6, 0.9),
+	},
+	{
+		"id": "area02_entrance",
+		"role": "gateway",
+		"position": Vector3(72.0, 0.0, -14.0),
+		"yaw_degrees": 90.0,
+		"primary": "AREA 02",
+		"secondary": "PROCESS YARD",
+		"board_size": Vector2(3.6, 0.9),
 	},
 ]
 
@@ -579,6 +613,13 @@ static func road_rect(road: Dictionary) -> Rect2:
 	return Rect2(center - dimensions * 0.5, dimensions)
 
 
+static func road_by_id(road_id: String) -> Dictionary:
+	for road: Dictionary in ROAD_SPECS:
+		if String(road["id"]) == road_id:
+			return road
+	return {}
+
+
 static func harbor_logistics_anchor(area_id: String) -> Vector2:
 	var area := area_by_id(area_id)
 	if String(area.get("terrace", "")) != "harbor":
@@ -590,6 +631,13 @@ static func wayfinding_spec_by_id(sign_id: String) -> Dictionary:
 	for spec: Dictionary in WAYFINDING_SPECS:
 		if String(spec["id"]) == sign_id:
 			return spec
+	return {}
+
+
+static func wayfinding_decision_by_id(decision_id: String) -> Dictionary:
+	for decision: Dictionary in WAYFINDING_DECISION_SPECS:
+		if String(decision["id"]) == decision_id:
+			return decision
 	return {}
 
 

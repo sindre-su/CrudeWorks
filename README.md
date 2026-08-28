@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.31.2 – Wayfinding & Area Identity Fix**
+**Prototypeversjon: 0.31.3 – Wayfinding Decision-Point Cleanup**
 
 CrudeWorks is a first-person refinery-builder prototype. The player starts with
 a manual Pilot process, unlocks Area 02, builds directed refinery routes,
@@ -10,12 +10,12 @@ approved diesel.
 
 ## Current phase
 
-**v0.31.2 — WAYFINDING & AREA IDENTITY FIX.** The compact 214 x 264 m world,
-continuous natural grade and all process gameplay are unchanged. From Harbor,
-the Harbor-facing Main Gate now identifies the active first construction yard as
-**Main Refinery / Area 02** and derives a right arrow from its live Operations
-Hub center. The uphill road remains visual direction toward deeper, later
-refinery districts, without claiming that they are the current destination.
+**v0.31.3 — WAYFINDING DECISION-POINT CLEANUP.** The compact 214 x 264 m
+world, continuous natural grade and all process gameplay are unchanged. At the
+first Harbor road fork, `AREA 02 / PROCESS YARD →` directs the player onto the
+actual eastbound branch. A single `AREA 02 / PROCESS YARD` gateway marker
+identifies the yard entrance. The later inland gate deliberately has no Area 02
+or Main Refinery sign.
 
 Quick orientation:
 

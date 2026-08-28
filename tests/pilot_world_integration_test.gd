@@ -49,8 +49,10 @@ func _test_fresh_world_context(main) -> void:
 	_expect(
 		main.world_builder.orientation_nodes.has("starter_site")
 		and main.world_builder.orientation_nodes.has("pilot_process_chain")
-		and main.world_builder.orientation_nodes.has("main_refinery_gate"),
-		"starter region keeps focused Pilot orientation and a Main Refinery gate"
+		and main.world_builder.orientation_nodes.has("area02_junction")
+		and main.world_builder.orientation_nodes.has("area02_entrance")
+		and main.world_builder.orientation_nodes.has("inland_transition_gate"),
+		"starter region keeps focused Pilot orientation, an Area 02 branch marker and an inland transition gate"
 	)
 	_expect(
 		not main.world_builder.orientation_nodes.has("crude_intake"),

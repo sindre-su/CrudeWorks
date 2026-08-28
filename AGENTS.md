@@ -19,12 +19,13 @@ The game must be:
 
 ## Current project phase — authoritative
 
-**WAYFINDING & AREA IDENTITY FIX COMPLETE** at version `0.31.2`, pending
+**WAYFINDING DECISION-POINT CLEANUP COMPLETE** at version `0.31.3`, pending
 human macro-world approval. Playable land is 214 x 264 m and rises continuously
-from Harbor at 0 m to Upper Plant at +10.5 m through one primary road. Harbor
-wayfinding names the active first construction yard **Main Refinery / Area 02**
-and derives its right-turn arrow from the live Operations Hub center; uphill
-remains later/deeper refinery progression rather than an immediate destination.
+from Harbor at 0 m to Upper Plant at +10.5 m through one primary road. At the
+first Harbor road fork, a directional `AREA 02 / PROCESS YARD →` sign derives
+its branch arrow from the live Operations Hub center. The inland transition gate
+has no destination sign; its route is later/deeper refinery progression. A
+single non-directional Area 02 gateway marker identifies the yard itself.
 Pilot, the v0.30.3 Area 02 spatial contract, v0.30.4 build menu and all process
 behavior remain proven.
 Functional CI/PD stay once on the active Area 02 compatibility anchors while

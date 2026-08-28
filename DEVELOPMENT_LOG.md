@@ -1,5 +1,21 @@
 # CrudeWorks Development Log
 
+## v0.31.3 — Wayfinding Decision-Point Cleanup
+
+- Human playtesting found that v0.31.2's target-derived right arrow was correct
+  mathematically but mounted at the later inland gate, after the actual Area 02
+  branch had already occurred.
+- Recorded the live road graph's Area 02 decision point at the Harbor main-road
+  / `area02_access` fork `(56, -10)`. Moved the single directional sign just
+  before it: `AREA 02 / PROCESS YARD →` derives from the Operations Hub center.
+- Added one west-approach, non-directional `AREA 02 / PROCESS YARD` marker at
+  the yard entrance. Removed the sign from the physical inland transition gate.
+- Removed current player-facing `MAIN REFINERY` naming; later districts remain
+  unlabeled until they have useful gameplay.
+- Added road-graph, decision-point, sign-role, facing and no-stale-gate-sign
+  regressions. No macro geometry, process, economy, progression, construction
+  or persistence behavior changed.
+
 ## v0.31.2 — Wayfinding & Area Identity Fix
 
 - Human playtesting found that the Harbor-facing Main Gate still targeted a

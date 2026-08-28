@@ -285,7 +285,7 @@ static func _migrate_legacy_world_player_position(snapshot: Dictionary) -> bool:
 	if "world_v0311_player_recovery" not in migrations:
 		migrations.append("world_v0311_player_recovery")
 	snapshot["spatial_migrations"] = migrations
-	snapshot["game_version"] = ProjectSettings.get_setting("application/config/version", "0.31.2")
+	snapshot["game_version"] = ProjectSettings.get_setting("application/config/version", "0.31.3")
 	return true
 
 

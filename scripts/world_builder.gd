@@ -458,19 +458,17 @@ func _build_prototype_pads() -> void:
 
 func _build_starter_orientation() -> void:
 	for spec: Dictionary in WorldLayoutScript.WAYFINDING_SPECS:
-		if String(spec["id"]) == "main_refinery_gate":
-			continue
 		_create_graybox_sign_from_spec(spec)
-	_create_starter_access_gate()
+	_create_inland_transition_gate()
 
 
-func _create_starter_access_gate() -> void:
-	var gate_spec := WorldLayoutScript.wayfinding_spec_by_id("main_refinery_gate")
+func _create_inland_transition_gate() -> void:
+	var gate_spec := WorldLayoutScript.INLAND_TRANSITION_GATE_SPEC
 	var gate_root := Node3D.new()
-	gate_root.name = "StarterMainRefineryGate"
+	gate_root.name = "InlandTransitionGate"
 	gate_root.position = gate_spec["position"]
 	add_child(gate_root)
-	orientation_nodes["main_refinery_gate"] = gate_root
+	orientation_nodes["inland_transition_gate"] = gate_root
 	_create_fence_section("WestFence", -8.0, gate_root)
 	_create_fence_section("EastFence", 8.0, gate_root)
 	for x_position: float in [-4.0, 4.0]:
@@ -481,22 +479,6 @@ func _create_starter_access_gate() -> void:
 			Color("#b58a36"),
 			gate_root
 		)
-	var gate_sign = GrayboxSignScript.new()
-	gate_sign.name = "GateSign"
-	gate_sign.position = Vector3(0.0, 2.85, 0.0)
-	gate_sign.rotation_degrees.y = float(gate_spec["yaw_degrees"])
-	gate_root.add_child(gate_sign)
-	gate_sign.configure(
-		String(gate_spec["primary"]),
-		String(gate_spec.get("secondary", "")),
-		WorldLayoutScript.wayfinding_arrow(gate_spec),
-		gate_spec["board_size"],
-		false
-	)
-	gate_sign.set_meta("target_area_id", gate_spec["target_area_id"])
-	gate_sign.set_meta("wayfinding_arrow", WorldLayoutScript.wayfinding_arrow(gate_spec))
-
-
 func _create_fence_section(node_name: String, local_x: float, parent: Node3D) -> void:
 	var section := Node3D.new()
 	section.name = node_name

@@ -6,7 +6,7 @@ This is the authoritative spatial brief for the CrudeWorks V1 Graybox World.
 It translates `CRUDEWORKS_VISION.md` into a compact, traversable refinery
 geography without prescribing final art, final equipment count or vehicles.
 
-**Implementation status: v0.31.2 Wayfinding & Area Identity Fix.** The
+**Implementation status: v0.31.3 Wayfinding Decision-Point Cleanup.** The
 world reads Harbor -> Lower Plant -> Main Plant -> Upper Plant, but those names
 now describe progression districts rather than four giant physical shelves.
 One continuous terrain mesh rises inland and contains locally level industrial
@@ -93,13 +93,20 @@ fallback for genuine boundary escape. The old separate south boundary and
 segmented parallel quay barrier were removed; Harbor has one barrier for one
 purpose.
 
-The Main Refinery gate is at `(52, 0, -28)`. Its complete board/text assembly is
-rotated 180 degrees so `MAIN REFINERY / AREA 02 →` is readable while approaching
-from Harbor. Its target is the live `operations_hub` center `(120, -10)`, not a
-separate uphill waypoint. The uphill road communicates deeper, later refinery
-progression and has no competing immediate-destination sign. Pilot remains near
-spawn, visually calmer than the inland silhouettes, and connected by one short
-service branch.
+The first meaningful Harbor decision is the main-road / `area02_access` fork at
+`(56, -10)`: continuing north reaches the inland grade, while turning east
+reaches the active Area 02 yard. A complete Harbor-facing sign sits just before
+that fork at `(45.5, 0, -4)` and reads `AREA 02 / PROCESS YARD →`; its arrow is
+derived from the live `operations_hub` center `(120, -10)`. At the west ramp, a
+single west-approach `AREA 02 / PROCESS YARD` gateway marker identifies arrival
+without repeating a direction. The physical inland transition gate at
+`(52, 0, -28)` remains open but has no sign: it only leads onward to later,
+currently non-functional refinery districts. Pilot remains near spawn and is
+connected by one short service branch.
+
+Directional signs belong before or at the junction where a player chooses a
+route. Gateway signs identify only the area immediately beyond their gate.
+Do not use `MAIN REFINERY` as a synonym for the current Area 02 yard.
 
 ## Surface and flicker rule
 
@@ -118,7 +125,7 @@ storage and routing are migrated. Functional CI-101 and PD-101 therefore remain
 once at the unchanged Operations Hub support anchors. Harbor reserve masses are
 non-gameplay geometry with no stable unit IDs, ports, inventory or persistence.
 
-The following are intentionally not migrated in v0.31.2:
+The following are intentionally not migrated in v0.31.3:
 
 - fixed Utilities and LS-201;
 - player-built storage, trains and product tanks;
@@ -141,12 +148,13 @@ recognized legacy bounds remain corrupt rather than guessed.
 Before functional migration continues:
 
 1. Inspect spawn, Pilot containment, shoreline and the single Harbor edge.
-2. Approach the gate from Harbor and confirm `MAIN REFINERY / AREA 02 →` is
-   readable, then use the short service branch into the active construction yard.
+2. At the first Harbor fork, confirm `AREA 02 / PROCESS YARD →` is readable,
+   then take the east branch and confirm the gateway marker on arrival.
 3. Walk the main road at normal speed to Upper Plant; target 35–45 seconds.
 4. Confirm the route feels continuously uphill, not like four floors.
 5. Walk across local pads and their blended edges; check collision and scale.
-6. Return without HUD navigation; downhill should naturally recover Harbor.
+6. Return to the fork, continue inland past the unlabeled transition gate, then
+   return without HUD navigation; downhill should naturally recover Harbor.
 7. Strafe and rotate around the Pilot/main-road junction and confirm no floor
    flicker.
 8. Recheck unchanged Pilot, Area 02, CI/PD, ports and Build Mode.

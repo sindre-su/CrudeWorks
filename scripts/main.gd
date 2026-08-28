@@ -165,7 +165,7 @@ func _process(delta: float) -> void:
 		build_area_label.text = "AREA 02 BUILD ZONE\nOPEN IN BUILD MODE"
 		build_area_label.modulate = Color("78e08f")
 		_show_notification(
-			"PILOT COMPLETE — construction testing is available with B. Main Refinery commissioning follows in the next development stage.",
+			"PILOT COMPLETE — construction testing is available with B. Area 02 commissioning follows in the next development stage.",
 			8.0
 		)
 		_schedule_save()
@@ -705,7 +705,7 @@ func _update_user_interface() -> void:
 		if process_model.objective_complete:
 			objective_label.text = (
 				"PILOT COMPLETE\n"
-				+ "Main Refinery commissioning becomes available in the next development stage."
+				+ "Area 02 commissioning becomes available in the next development stage."
 			)
 		var alarms: Array[String] = process_model.active_alarms()
 		alarm_label.text = "\n".join(alarms)

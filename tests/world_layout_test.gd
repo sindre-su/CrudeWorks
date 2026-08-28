@@ -294,7 +294,7 @@ func _test_surface_standard() -> void:
 func _test_wayfinding_configuration() -> void:
 	var expected_arrows := {
 		"starter_site": "←",
-		"main_refinery_gate": "→",
+		"area02_junction": "→",
 	}
 	for sign_id: String in expected_arrows:
 		var spec := WorldLayoutScript.wayfinding_spec_by_id(sign_id)
@@ -313,35 +313,87 @@ func _test_wayfinding_configuration() -> void:
 		).is_empty(),
 		"non-directional Pilot process marker does not invent a route arrow"
 	)
-	var gate_spec := WorldLayoutScript.wayfinding_spec_by_id("main_refinery_gate")
+	var junction_spec := WorldLayoutScript.wayfinding_spec_by_id("area02_junction")
+	var decision := WorldLayoutScript.wayfinding_decision_by_id("area02_junction")
+	var approach_road := WorldLayoutScript.road_by_id(String(decision["approach_road_id"]))
+	var branch_road := WorldLayoutScript.road_by_id(String(decision["branch_road_id"]))
+	var uphill_road := WorldLayoutScript.road_by_id(String(decision["uphill_road_id"]))
+	var junction_position: Vector2 = decision["position"]
+	_expect(
+		not decision.is_empty()
+		and String(decision["destination_area_id"]) == WorldLayoutScript.AREA_02_ID
+		and WorldLayoutScript.road_rect(approach_road).grow(0.01).has_point(junction_position)
+		and WorldLayoutScript.road_rect(branch_road).grow(0.01).has_point(junction_position)
+		and is_equal_approx(WorldLayoutScript.road_rect(approach_road).position.y, WorldLayoutScript.road_rect(uphill_road).end.y),
+		"Area 02 decision point is the live main-road/branch-road fork before the continuous uphill route"
+	)
+	var junction_sign_position := Vector2(junction_spec["position"].x, junction_spec["position"].z)
+	_expect(
+		String(junction_spec["decision_point_id"]) == String(decision["id"])
+		and junction_sign_position.y > junction_position.y
+		and junction_sign_position.distance_to(junction_position) <= 13.0,
+		"Area 02 directional sign sits before its actual Harbor-to-branch decision point"
+	)
 	var main_refinery_sign_count := 0
+	var area02_directional_count := 0
+	var area02_gateway_count := 0
 	for spec: Dictionary in WorldLayoutScript.WAYFINDING_SPECS:
 		if String(spec.get("primary", "")) == "MAIN REFINERY":
 			main_refinery_sign_count += 1
+		if String(spec.get("target_area_id", "")) == WorldLayoutScript.AREA_02_ID:
+			area02_directional_count += 1
+		if (
+			String(spec.get("role", "")) == "gateway"
+			and String(spec.get("primary", "")) == "AREA 02"
+		):
+			area02_gateway_count += 1
 	_expect(
-		main_refinery_sign_count == 1,
-		"only the Harbor Main Gate identifies the current Main Refinery destination"
+		main_refinery_sign_count == 0,
+		"no current wayfinding sign uses the ambiguous Main Refinery identity"
 	)
 	_expect(
-		String(gate_spec["primary"]) == "MAIN REFINERY"
-		and String(gate_spec.get("secondary", "")) == "AREA 02",
-		"Main Gate identifies the current construction yard as Main Refinery / Area 02"
+		String(junction_spec["primary"]) == "AREA 02"
+		and String(junction_spec.get("secondary", "")) == "PROCESS YARD"
+		and String(junction_spec["role"]) == "directional",
+		"junction sign identifies the active Area 02 Process Yard before the player chooses the branch"
 	)
 	_expect(
-		String(gate_spec["target_area_id"]) == WorldLayoutScript.AREA_02_ID
-		and not gate_spec.has("target_position"),
-		"Main Gate derives its target from the live Area 02 center rather than a stale uphill coordinate"
+		String(junction_spec["target_area_id"]) == WorldLayoutScript.AREA_02_ID
+		and not junction_spec.has("target_position"),
+		"Area 02 junction sign derives its outgoing route from the live yard center rather than a hardcoded arrow"
 	)
-	var stale_uphill_target := gate_spec.duplicate()
+	var stale_uphill_target := junction_spec.duplicate()
 	stale_uphill_target["target_position"] = Vector2(52.0, -75.0)
 	_expect(
 		WorldLayoutScript.wayfinding_arrow(stale_uphill_target) == "↑"
-		and WorldLayoutScript.wayfinding_arrow(gate_spec) == "→",
-		"Main Gate arrow changes with its canonical target geometry instead of carrying a fixed uphill instruction"
+		and WorldLayoutScript.wayfinding_arrow(junction_spec) == "→",
+		"Area 02 junction arrow follows the branch geometry instead of carrying a fixed uphill instruction"
+	)
+	var entrance_spec := WorldLayoutScript.wayfinding_spec_by_id("area02_entrance")
+	_expect(
+		String(entrance_spec["role"]) == "gateway"
+		and not entrance_spec.has("target_area_id")
+		and WorldLayoutScript.wayfinding_arrow(entrance_spec).is_empty()
+		and area02_directional_count == 1
+		and area02_gateway_count == 1,
+		"Area 02 has one directional fork sign and one non-duplicated entrance identity marker"
+	)
+	var entrance_position := Vector2(entrance_spec["position"].x, entrance_spec["position"].z)
+	var area02_access_end := Vector2(WorldLayoutScript.road_rect(branch_road).end.x, junction_position.y)
+	_expect(
+		entrance_position.distance_to(area02_access_end) <= 6.0
+		and entrance_position.x < WorldLayoutScript.area_rect(WorldLayoutScript.area02_spec()).position.x,
+		"Area 02 gateway sign sits beside the access-road end before the west ramp into the live yard"
 	)
 	_expect(
-		is_equal_approx(float(gate_spec["yaw_degrees"]), 180.0),
-		"Main Refinery gate board faces the player approaching north from Harbor"
+		WorldLayoutScript.wayfinding_spec_by_id("main_refinery_gate").is_empty()
+		and String(WorldLayoutScript.INLAND_TRANSITION_GATE_SPEC["id"]) == "inland_transition_gate",
+		"inland gate no longer identifies Area 02 or Main Refinery"
+	)
+	_expect(
+		is_equal_approx(float(junction_spec["yaw_degrees"]), 180.0)
+		and is_equal_approx(float(entrance_spec["yaw_degrees"]), 90.0),
+		"junction and Area 02 entrance boards face their Harbor and branch approaches"
 	)
 
 
@@ -490,8 +542,9 @@ func _test_world_builder() -> void:
 	var signs: Array = [
 		builder.orientation_nodes["starter_site"],
 		builder.orientation_nodes["pilot_process_chain"],
+		builder.orientation_nodes["area02_junction"],
+		builder.orientation_nodes["area02_entrance"],
 		builder.orientation_nodes["build_area"],
-		builder.orientation_nodes["main_refinery_gate"].get_node("GateSign"),
 	]
 	for sign in signs:
 		_expect(
@@ -517,7 +570,7 @@ func _test_world_builder() -> void:
 		Vector2(builder.orientation_nodes["starter_site"].get_meta("board_size")).x <= 3.0,
 		"starter sign remains human-scale rather than filling the approach view"
 	)
-	for sign_id: String in ["starter_site"]:
+	for sign_id: String in ["starter_site", "area02_junction"]:
 		var sign = builder.orientation_nodes[sign_id]
 		var spec := WorldLayoutScript.wayfinding_spec_by_id(sign_id)
 		_expect(
@@ -525,18 +578,27 @@ func _test_world_builder() -> void:
 			and String(sign.get_meta("wayfinding_arrow")) == WorldLayoutScript.wayfinding_arrow(spec),
 			"%s rendered sign consumes canonical target metadata" % sign_id
 		)
-	var gate_sign = builder.orientation_nodes["main_refinery_gate"].get_node("GateSign")
-	var gate_spec := WorldLayoutScript.wayfinding_spec_by_id("main_refinery_gate")
+	var junction_sign = builder.orientation_nodes["area02_junction"]
+	var junction_spec := WorldLayoutScript.wayfinding_spec_by_id("area02_junction")
 	_expect(
-		gate_sign.primary_text == String(gate_spec["primary"])
-		and gate_sign.secondary_text == String(gate_spec["secondary"])
-		and String(gate_sign.get_meta("target_area_id")) == WorldLayoutScript.AREA_02_ID
-		and String(gate_sign.get_meta("wayfinding_arrow")) == "→",
-		"Harbor-facing Main Gate renders the canonical Area 02 identity and target-derived arrow"
+		junction_sign.primary_text == String(junction_spec["primary"])
+		and junction_sign.secondary_text == String(junction_spec["secondary"])
+		and String(junction_sign.get_meta("target_area_id")) == WorldLayoutScript.AREA_02_ID
+		and String(junction_sign.get_meta("wayfinding_arrow")) == "→",
+		"Harbor-facing junction renders the canonical Area 02 identity and target-derived branch arrow"
 	)
 	_expect(
-		is_equal_approx(gate_sign.rotation_degrees.y, float(gate_spec["yaw_degrees"])),
-		"complete Main Gate sign assembly preserves its Harbor-facing orientation"
+		is_equal_approx(junction_sign.rotation_degrees.y, float(junction_spec["yaw_degrees"]))
+		and is_equal_approx(
+			builder.orientation_nodes["area02_entrance"].rotation_degrees.y,
+			float(WorldLayoutScript.wayfinding_spec_by_id("area02_entrance")["yaw_degrees"])
+		),
+		"complete junction and Area 02 entrance sign assemblies preserve their intended approach facings"
+	)
+	_expect(
+		builder.orientation_nodes.has("inland_transition_gate")
+		and not builder.orientation_nodes["inland_transition_gate"].has_node("GateSign"),
+		"inland transition gate remains physical but carries no stale Area 02 destination sign"
 	)
 	_expect(
 		builder.build_visual_nodes.all(func(node: Node3D) -> bool: return not node.visible),
@@ -672,7 +734,7 @@ func _test_platform_walkability() -> void:
 		await physics_frame
 	_expect(
 		walker.global_position.z < -32.0,
-		"open starter transition gate preserves player-sized access toward the Main Refinery"
+		"open inland transition gate preserves player-sized access toward later refinery districts"
 	)
 
 	walker.global_position = Vector3(0.0, 0.1, WorldLayoutScript.SHORELINE_Z - 4.0)
