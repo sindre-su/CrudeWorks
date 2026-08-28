@@ -1,5 +1,20 @@
 # CrudeWorks Development Log
 
+## v0.31.2 — Wayfinding & Area Identity Fix
+
+- Human playtesting found that the Harbor-facing Main Gate still targeted a
+  historic CDU/uphill coordinate, so `MAIN REFINERY ↑` contradicted the live
+  first buildable operations yard to the east.
+- Kept the existing Harbor-facing gate geometry and its correct complete-sign
+  facing. The gate now reads `MAIN REFINERY / AREA 02 →`, targets only the live
+  `operations_hub` center and derives its arrow from that geometry.
+- Did not add an uphill sign: the inland grade remains readable as later/deeper
+  refinery progression and does not compete with the currently usable Area 02.
+- Added regressions for the canonical Area 02 target, removal of the stale
+  target coordinate, target-derived right arrow, rendered identity and metadata.
+- No terrain, road, fence, process, economy, progression, equipment ID,
+  construction or persistence contract changed.
+
 ## v0.31.1 — World Intimacy & Natural Grade Pass
 
 - Human v0.31.0 playtesting found a 60-second Harbor-to-Upper walk, shelf-like

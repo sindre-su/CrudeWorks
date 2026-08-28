@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.31.1 – World Intimacy & Natural Grade Pass**
+**Prototypeversjon: 0.31.2 – Wayfinding & Area Identity Fix**
 
 CrudeWorks is a first-person refinery-builder prototype. The player starts with
 a manual Pilot process, unlocks Area 02, builds directed refinery routes,
@@ -10,14 +10,12 @@ approved diesel.
 
 ## Current phase
 
-**v0.31.1 — WORLD INTIMACY & NATURAL GRADE PASS.** Playable land is now 214 x
-264 m, with an approximately 41-second normal-walk route from Harbor to the
-current Upper Plant. One continuous terrain mesh rises from 0 to +10.5 m;
-locally level process pads are shaped into it instead of sitting on four giant
-terraces. Harbor has one shoreline barrier, the gate sign faces the Harbor
-approach, and roads/pads are materials in the authoritative terrain rather than
-coplanar floor overlays. Pilot, active Area 02, functional CI/PD, saves and all
-process gameplay remain unchanged pending human approval.
+**v0.31.2 — WAYFINDING & AREA IDENTITY FIX.** The compact 214 x 264 m world,
+continuous natural grade and all process gameplay are unchanged. From Harbor,
+the Harbor-facing Main Gate now identifies the active first construction yard as
+**Main Refinery / Area 02** and derives a right arrow from its live Operations
+Hub center. The uphill road remains visual direction toward deeper, later
+refinery districts, without claiming that they are the current destination.
 
 Quick orientation:
 

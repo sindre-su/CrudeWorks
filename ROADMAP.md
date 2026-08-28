@@ -2,14 +2,16 @@
 
 ## Current baseline
 
-Version 0.31.1 retains the tested v0.28.2 process foundation, functional Pilot,
+Version 0.31.2 retains the tested v0.28.2 process foundation, functional Pilot,
 v0.30.3 Area 02 spatial contract and v0.30.4 build-menu/readability behavior.
 It tightens the world to 214 x 264 m visible land with one continuous natural
 grade from Harbor at 0 m to Upper at +10.5 m. Locally flattened pads and one
 continuous main road communicate progression inland/uphill without shelves.
 The elevated `operations_hub` remains the single runtime Area 02 source and
-functional CI/PD compatibility pocket; other Main Refinery systems remain
-unmigrated pending human approval of the new macro world.
+functional CI/PD compatibility pocket; the Harbor Main Gate now labels and
+targets that live first construction yard as Main Refinery / Area 02. Other
+Main Refinery systems remain unmigrated pending human approval of the new macro
+world.
 
 The underlying foundation has a tested pilot plant and a substantial Area 02 refinery
 slice: free building, directed process networks, multiple independent trains,
@@ -39,10 +41,11 @@ running sales pump before it can invoke the existing dispatch transaction.
 
 ## Current priority
 
-**Human-playtest v0.31.1 World Intimacy & Natural Grade before any functional
+**Human-playtest v0.31.2 Wayfinding & Area Identity before any functional
 migration.** Automated coverage validates continuous grade, locally flat pads,
 non-overlapping reservations/roads, one Harbor-to-Upper route, shoreline/world
-recovery, unchanged Area 02 placement and save compatibility.
+recovery, unchanged Area 02 placement/save compatibility and a Harbor-facing
+Main Refinery / Area 02 sign derived from the live Operations Hub center.
 A real 1280 x 720 WASD pass must judge Harbor/Pilot containment, uphill/downhill
 orientation, intimate scale, landmark reading, natural grade and the
 Harbor-to-Upper travel feel. It must also recheck Pilot signs, ports and the
@@ -96,7 +99,7 @@ requires a post-graybox player-value decision, not process completeness alone.
 | Standard gross output | ~5,000 kr | 300 L Naphtha, 350 L Diesel, 350 L Heavy Residue at target |
 | HT-201 / PU-101 / VDU-301 / FCC-401 | 800 / 700 / 1,200 / 2,200 kr | Reachable after a successful first physical delivery; exact feel still needs human QA |
 
-v0.31.1 retains the existing equipment prices and fixed Utilities Yard at
+v0.31.2 retains the existing equipment prices and fixed Utilities Yard at
 no purchase cost. IA-101 and CWP-101 add 35 kW, so one first atmospheric train
 uses 70 kW before commissioning, 80 kW with LAB/LS, and 100 kW with Sour
 treatment. PU-101 still doubles generation to 200 kW for concurrent trains and
@@ -118,7 +121,7 @@ Establish the total site footprint, human-scale convention, major zones,
 approximate travel distances, sightlines and deliberately empty expansion pads.
 The compact prototype layout is not the target world.
 
-**Status: tightened again in v0.31.1; awaiting human approval.** Human testing
+**Status: tightened in v0.31.1 and clarified in v0.31.2; awaiting human approval.** Human testing
 found v0.31.0's 230 x 395 m footprint and 60-second walk too broad. The current
 214 x 264 m land and approximately 41-second canonical walk retain Harbor-to-
 Upper progression with substantially denser area clusters.
@@ -130,8 +133,8 @@ maintenance/parking approaches, entrances, fences/gates, safe edges and
 reliable out-of-bounds recovery. Reserve routes that can support future simple
 site transport without implementing transport now.
 
-**Status: natural-grade hierarchy complete in v0.31.1; awaiting human
-approval.** One 8 m primary road changes from flat Harbor to a continuous 6.6%
+**Status: natural-grade hierarchy complete in v0.31.1; v0.31.2 wayfinding now
+targets Area 02 before the uphill road; awaiting human approval.** One 8 m primary road changes from flat Harbor to a continuous 6.6%
 inland grade. Road/path/pad materials share the authoritative terrain mesh.
 Short service branches, an open Harbor gate, one quay edge and deep-water
 recovery exist. Detailed parking and dressing remain later refinement.
@@ -143,7 +146,7 @@ Tank Farm, LAB-101 and PD-101 into their intended zones. Preserve IDs,
 interactions, ports, process topology and saves where practical. Do not place
 visual duplicates of functional equipment.
 
-**Status: paused for v0.31.1 macro-world approval.** Pilot remains complete and
+**Status: paused for v0.31.2 macro-world approval.** Pilot remains complete and
 visually stable; Area 02 remains on its v0.30.3 platform. Functional CI-101 and
 PD-101 remain once at the Operations Hub compatibility anchors, while exact
 final Harbor CI/PD reservations now exist as non-gameplay Graybox areas. Crude
@@ -158,7 +161,7 @@ the current local-control seed, and reserve accessible pads for VDU, FCC,
 future Naphtha work and utility/Steam expansion. Do not implement a full Control
 Room or new process systems in this step.
 
-**Spatial reservation tightened in v0.31.1.** Control Room, LAB and Maintenance
+**Spatial reservation tightened in v0.31.1 and unchanged in v0.31.2.** Control Room, LAB and Maintenance
 shells occupy the compact Main district. VDU/FCC and approved-later expansion
 occupy the Upper district. Functional migration and gameplay remain pending.
 

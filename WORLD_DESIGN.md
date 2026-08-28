@@ -6,7 +6,7 @@ This is the authoritative spatial brief for the CrudeWorks V1 Graybox World.
 It translates `CRUDEWORKS_VISION.md` into a compact, traversable refinery
 geography without prescribing final art, final equipment count or vehicles.
 
-**Implementation status: v0.31.1 World Intimacy & Natural Grade Pass.** The
+**Implementation status: v0.31.2 Wayfinding & Area Identity Fix.** The
 world reads Harbor -> Lower Plant -> Main Plant -> Upper Plant, but those names
 now describe progression districts rather than four giant physical shelves.
 One continuous terrain mesh rises inland and contains locally level industrial
@@ -94,9 +94,12 @@ segmented parallel quay barrier were removed; Harbor has one barrier for one
 purpose.
 
 The Main Refinery gate is at `(52, 0, -28)`. Its complete board/text assembly is
-rotated 180 degrees so `MAIN REFINERY ↑` is readable while approaching from
-Harbor. Pilot remains near spawn, visually calmer than the uphill silhouettes,
-and connected by one short service branch.
+rotated 180 degrees so `MAIN REFINERY / AREA 02 →` is readable while approaching
+from Harbor. Its target is the live `operations_hub` center `(120, -10)`, not a
+separate uphill waypoint. The uphill road communicates deeper, later refinery
+progression and has no competing immediate-destination sign. Pilot remains near
+spawn, visually calmer than the inland silhouettes, and connected by one short
+service branch.
 
 ## Surface and flicker rule
 
@@ -115,7 +118,7 @@ storage and routing are migrated. Functional CI-101 and PD-101 therefore remain
 once at the unchanged Operations Hub support anchors. Harbor reserve masses are
 non-gameplay geometry with no stable unit IDs, ports, inventory or persistence.
 
-The following are intentionally not migrated in v0.31.1:
+The following are intentionally not migrated in v0.31.2:
 
 - fixed Utilities and LS-201;
 - player-built storage, trains and product tanks;
@@ -138,7 +141,8 @@ recognized legacy bounds remain corrupt rather than guessed.
 Before functional migration continues:
 
 1. Inspect spawn, Pilot containment, shoreline and the single Harbor edge.
-2. Approach the gate from Harbor and confirm the sign is readable.
+2. Approach the gate from Harbor and confirm `MAIN REFINERY / AREA 02 →` is
+   readable, then use the short service branch into the active construction yard.
 3. Walk the main road at normal speed to Upper Plant; target 35–45 seconds.
 4. Confirm the route feels continuously uphill, not like four floors.
 5. Walk across local pads and their blended edges; check collision and scale.

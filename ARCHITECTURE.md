@@ -130,7 +130,7 @@ utility/trip state and stable identifiers; it rebuilds derived state and restore
 pumps stopped. Existing v0.27/v0.28-compatible saves remain supported through
 validated migration/fallback paths.
 
-v0.31.1 uses 214 x 268 m player bounds and 214 x 264 m visible land. Harbor is
+v0.31.2 uses 214 x 268 m player bounds and 214 x 264 m visible land. Harbor is
 flat through z `-42`; one continuous terrain grade then reaches +10.5 m at z
 `-200`. Lower/Main/Upper are planning districts with local pads at +3.5/+7.0/
 +10.5 m, not map-wide shelves. `IndustrialGround` is one multi-material mesh;
@@ -141,6 +141,8 @@ The functional `operations_hub` remains unchanged at x `80..160`, z `-40..20`,
 surface `+0.75 m` as an explicit Harbor compatibility pocket. One 4 m safety
 margin still derives build rectangle x `84..156`, z `-36..16`;
 `WorldBuilder`, `BuildController` and `SaveSystem` all consume that contract.
+The Harbor-facing Main Gate derives its `MAIN REFINERY / AREA 02` arrow directly
+from this `operations_hub` center; it has no separate waypoint coordinate.
 CI-101 and PD-101 still instantiate once from its west/east support anchors and
 derive whole-unit rotation from their functional port side toward the platform
 center. Separate `crude_intake` and `product_dispatch` areas reserve their exact
@@ -165,7 +167,7 @@ placing visual duplicate equipment that looks functional but has no model state.
 
 ## Scope boundary
 
-The v0.28.2 process foundation remains frozen in v0.31.1. The existing fixed
+The v0.28.2 process foundation remains frozen through v0.31.2. The existing fixed
 Pilot is now verified as one complete fresh-save world loop without relocating
 its stable IDs or absolute coordinates. CI-101/PD-101 and Area 02 building are
 retained as functional compatibility, while Main CDU, VDU, FCC, HT-201,

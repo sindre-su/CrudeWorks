@@ -294,7 +294,7 @@ func _test_surface_standard() -> void:
 func _test_wayfinding_configuration() -> void:
 	var expected_arrows := {
 		"starter_site": "←",
-		"main_refinery_gate": "↑",
+		"main_refinery_gate": "→",
 	}
 	for sign_id: String in expected_arrows:
 		var spec := WorldLayoutScript.wayfinding_spec_by_id(sign_id)
@@ -314,6 +314,31 @@ func _test_wayfinding_configuration() -> void:
 		"non-directional Pilot process marker does not invent a route arrow"
 	)
 	var gate_spec := WorldLayoutScript.wayfinding_spec_by_id("main_refinery_gate")
+	var main_refinery_sign_count := 0
+	for spec: Dictionary in WorldLayoutScript.WAYFINDING_SPECS:
+		if String(spec.get("primary", "")) == "MAIN REFINERY":
+			main_refinery_sign_count += 1
+	_expect(
+		main_refinery_sign_count == 1,
+		"only the Harbor Main Gate identifies the current Main Refinery destination"
+	)
+	_expect(
+		String(gate_spec["primary"]) == "MAIN REFINERY"
+		and String(gate_spec.get("secondary", "")) == "AREA 02",
+		"Main Gate identifies the current construction yard as Main Refinery / Area 02"
+	)
+	_expect(
+		String(gate_spec["target_area_id"]) == WorldLayoutScript.AREA_02_ID
+		and not gate_spec.has("target_position"),
+		"Main Gate derives its target from the live Area 02 center rather than a stale uphill coordinate"
+	)
+	var stale_uphill_target := gate_spec.duplicate()
+	stale_uphill_target["target_position"] = Vector2(52.0, -75.0)
+	_expect(
+		WorldLayoutScript.wayfinding_arrow(stale_uphill_target) == "↑"
+		and WorldLayoutScript.wayfinding_arrow(gate_spec) == "→",
+		"Main Gate arrow changes with its canonical target geometry instead of carrying a fixed uphill instruction"
+	)
 	_expect(
 		is_equal_approx(float(gate_spec["yaw_degrees"]), 180.0),
 		"Main Refinery gate board faces the player approaching north from Harbor"
@@ -500,6 +525,19 @@ func _test_world_builder() -> void:
 			and String(sign.get_meta("wayfinding_arrow")) == WorldLayoutScript.wayfinding_arrow(spec),
 			"%s rendered sign consumes canonical target metadata" % sign_id
 		)
+	var gate_sign = builder.orientation_nodes["main_refinery_gate"].get_node("GateSign")
+	var gate_spec := WorldLayoutScript.wayfinding_spec_by_id("main_refinery_gate")
+	_expect(
+		gate_sign.primary_text == String(gate_spec["primary"])
+		and gate_sign.secondary_text == String(gate_spec["secondary"])
+		and String(gate_sign.get_meta("target_area_id")) == WorldLayoutScript.AREA_02_ID
+		and String(gate_sign.get_meta("wayfinding_arrow")) == "→",
+		"Harbor-facing Main Gate renders the canonical Area 02 identity and target-derived arrow"
+	)
+	_expect(
+		is_equal_approx(gate_sign.rotation_degrees.y, float(gate_spec["yaw_degrees"])),
+		"complete Main Gate sign assembly preserves its Harbor-facing orientation"
+	)
 	_expect(
 		builder.build_visual_nodes.all(func(node: Node3D) -> bool: return not node.visible),
 		"construction pad, bounds and sign default hidden outside Build Mode"

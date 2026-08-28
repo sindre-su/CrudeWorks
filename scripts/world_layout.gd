@@ -424,8 +424,8 @@ const WAYFINDING_SPECS := [
 		"position": Vector3(52.0, 0.0, -28.0),
 		"yaw_degrees": 180.0,
 		"primary": "MAIN REFINERY",
-		"target_area_id": "cdu",
-		"target_position": Vector2(52.0, -75.0),
+		"secondary": "AREA 02",
+		"target_area_id": AREA_02_ID,
 		"board_size": Vector2(3.8, 0.8),
 	},
 ]

@@ -488,7 +488,7 @@ func _create_starter_access_gate() -> void:
 	gate_root.add_child(gate_sign)
 	gate_sign.configure(
 		String(gate_spec["primary"]),
-		"",
+		String(gate_spec.get("secondary", "")),
 		WorldLayoutScript.wayfinding_arrow(gate_spec),
 		gate_spec["board_size"],
 		false

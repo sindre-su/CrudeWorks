@@ -19,10 +19,13 @@ The game must be:
 
 ## Current project phase — authoritative
 
-**WORLD INTIMACY & NATURAL GRADE PASS COMPLETE** at version `0.31.1`, pending
+**WAYFINDING & AREA IDENTITY FIX COMPLETE** at version `0.31.2`, pending
 human macro-world approval. Playable land is 214 x 264 m and rises continuously
-from Harbor at 0 m to Upper Plant at +10.5 m through one primary road. Pilot,
-the v0.30.3 Area 02 spatial contract, v0.30.4 build menu and all process
+from Harbor at 0 m to Upper Plant at +10.5 m through one primary road. Harbor
+wayfinding names the active first construction yard **Main Refinery / Area 02**
+and derives its right-turn arrow from the live Operations Hub center; uphill
+remains later/deeper refinery progression rather than an immediate destination.
+Pilot, the v0.30.3 Area 02 spatial contract, v0.30.4 build menu and all process
 behavior remain proven.
 Functional CI/PD stay once on the active Area 02 compatibility anchors while
 their exact final Harbor areas are non-gameplay reservations. Broader Main
