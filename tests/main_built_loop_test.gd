@@ -2,6 +2,8 @@ extends SceneTree
 
 const MainScene = preload("res://scenes/main.tscn")
 const WorldLayoutScript = preload("res://scripts/world_layout.gd")
+const EquipmentCatalogScript = preload("res://scripts/equipment_catalog.gd")
+const MaterialBalanceScript = preload("res://scripts/material_balance.gd")
 
 var failures := 0
 
@@ -44,6 +46,34 @@ func _run_test() -> void:
 		and not main.liquid_levels["diesel_tank"]["node"].visible,
 		"new Pilot visuals derive from the initial canonical crude and product volumes"
 	)
+	var raw_shell: CylinderMesh = main.units["raw_tank"].mesh_instance.mesh
+	var fuel_shell: CylinderMesh = main.units["generator_fuel"].mesh_instance.mesh
+	_expect(
+		not raw_shell.cap_top and not raw_shell.cap_bottom
+		and not fuel_shell.cap_top and not fuel_shell.cap_bottom
+		and main.liquid_levels["raw_tank"]["node"].get_meta("tank_liquid_render_path") == "canonical_cylinder"
+		and main.liquid_levels["generator_fuel"]["node"].get_meta("tank_liquid_render_path") == "canonical_cylinder",
+		"Pilot and GF-101 use one shared liquid path inside open transparent shells without triangulated shell caps"
+	)
+	_expect(
+		main.liquid_levels["generator_fuel"]["node"].visible
+		and is_equal_approx(
+			main.liquid_levels["generator_fuel"]["node"].scale.y / main.liquid_levels["generator_fuel"]["max_height"],
+			main.built_refinery_model.generator_fuel_l / main.built_refinery_model.GENERATOR_FUEL_CAPACITY_L
+		),
+		"GF-101 visible fill is derived from its canonical generator-fuel inventory"
+	)
+	for ratio in [0.0, 0.1, 0.5, 0.9, 1.0]:
+		main._set_liquid_level("raw_tank", ratio)
+		_expect(
+			main.liquid_levels["raw_tank"]["node"].visible == (ratio > 0.001)
+			and is_equal_approx(
+				main.liquid_levels["raw_tank"]["node"].scale.y / main.liquid_levels["raw_tank"]["max_height"],
+				ratio if ratio > 0.001 else 0.015 / main.liquid_levels["raw_tank"]["max_height"]
+			),
+			"fixed tank liquid path remains deterministic at %.0f%% fill" % (ratio * 100.0)
+		)
+	main._update_process_visuals(0.0)
 	main.process_model.crude_volume_l = 500.0
 	main.process_model.light_product_l = 100.0
 	main.process_model.diesel_volume_l = ProcessModel.DIESEL_TARGET_L
@@ -91,8 +121,8 @@ func _run_test() -> void:
 		"Pilot restart creates no stale product fill"
 	)
 	main._process(0.0)
-	var intake_marker = main.build_controller.registered_unit_by_id("built_crude_intake_0")
-	var dispatch_marker = main.build_controller.registered_unit_by_id("built_product_dispatch_0")
+	var intake_marker = main.build_controller.registered_unit_by_id(EquipmentCatalogScript.CRUDE_TERMINAL_ID)
+	var dispatch_marker = main.build_controller.registered_unit_by_id(EquipmentCatalogScript.PRODUCT_TERMINAL_ID)
 	_expect(intake_marker.guidance_label.visible and not dispatch_marker.guidance_label.visible, "first Area 02 objective highlights CI-101 without prematurely highlighting PD-101")
 	main.built_refinery_model.first_intake_received = true
 	main._process(0.0)
@@ -397,6 +427,7 @@ func _test_heavy_contract_through_main() -> void:
 	await _test_offspec_lab_through_main()
 	await _test_product_header_save_round_trip()
 	await _test_ci_first_batch_entitlement()
+	await _test_local_intake_boundary()
 
 
 func _test_offspec_lab_through_main() -> void:
@@ -497,7 +528,7 @@ func _test_ci_first_batch_entitlement() -> void:
 		before_restore["ok"] and before_restored.built_refinery_model.commissioning_batch_available,
 		"save/load before CI-101 claim preserves the free-first-batch entitlement"
 	)
-	zero_money_main._open_contract_selection("built_crude_intake_0")
+	zero_money_main._open_contract_selection(EquipmentCatalogScript.CRUDE_TERMINAL_ID)
 	_expect(
 		"FIRST BATCH FREE / 0 kr" in zero_money_main.contract_selection_label.text,
 		"CI-101 clearly displays the free first Standard batch price"
@@ -528,7 +559,7 @@ func _test_ci_first_batch_entitlement() -> void:
 	)
 
 	zero_money_main.built_refinery_model.pending_intake_delivery = {"contract_id": "", "volume_l": 0.0}
-	zero_money_main._open_contract_selection("built_crude_intake_0")
+	zero_money_main._open_contract_selection(EquipmentCatalogScript.CRUDE_TERMINAL_ID)
 	zero_money_main._select_contract("standard")
 	_expect(
 		is_zero_approx(float(zero_money_main.built_refinery_model.pending_intake_delivery["volume_l"]))
@@ -550,7 +581,7 @@ func _test_ci_first_batch_entitlement() -> void:
 	two_hundred_main.process_model.objective_complete = true
 	two_hundred_main.process_model.money = 200
 	two_hundred_main._process(0.0)
-	two_hundred_main._open_contract_selection("built_crude_intake_0")
+	two_hundred_main._open_contract_selection(EquipmentCatalogScript.CRUDE_TERMINAL_ID)
 	two_hundred_main._select_contract("standard")
 	_expect(
 		two_hundred_main.process_model.money == 200
@@ -562,6 +593,65 @@ func _test_ci_first_batch_entitlement() -> void:
 	before_restored.queue_free()
 	after_restored.queue_free()
 	two_hundred_main.queue_free()
+
+
+func _test_local_intake_boundary() -> void:
+	var main = MainScene.instantiate()
+	main.persistence_enabled = false
+	root.add_child(main)
+	await process_frame
+	main.process_model.objective_complete = true
+	main._process(0.0)
+	var pump_result: Dictionary = main._create_built_unit(
+		"pump", Vector3(86.0, WorldLayoutScript.placement_center_y(1.4), -10.0), 3, 1, false
+	)
+	var tank_result: Dictionary = main._create_built_unit(
+		"tank", Vector3(90.0, WorldLayoutScript.placement_center_y(3.6), -10.0), 3, 2, false
+	)
+	var intake_pump = pump_result["unit"]
+	var crude_tank = tank_result["unit"]
+	var tie_in = _unit(main, EquipmentCatalogScript.CRUDE_TIE_IN_ID)
+	_expect(
+		main.build_controller._connect_ports(tie_in.get_port("output"), intake_pump.get_port("input"))["ok"]
+		and main.build_controller._connect_ports(intake_pump.get_port("output"), crude_tank.get_port("input"))["ok"],
+		"fresh Main connects CI-201 → local intake pump → player crude tank with short Area 02 pipes"
+	)
+	main._open_contract_selection(EquipmentCatalogScript.CRUDE_TERMINAL_ID)
+	main._select_contract("standard")
+	main.built_refinery_model.tick(5.0)
+	_expect(
+		is_zero_approx(float(main.built_refinery_model.equipment[crude_tank.unit_id]["volume_l"]))
+		and is_equal_approx(float(main.built_refinery_model.pending_intake_delivery["volume_l"]), 1000.0),
+		"claimed crude remains at the zero-hold-up boundary until the player starts the local pump"
+	)
+	main._on_unit_interacted("area02_generator")
+	_expect(main.built_refinery_model.interact(intake_pump.unit_id)["ok"], "local CI-201 transfer pump starts from field interaction")
+	var before_transfer: Dictionary = main.built_refinery_model.material_inventory_snapshot(true, false)
+	main.built_refinery_model.tick(10.0)
+	_expect(
+		is_equal_approx(float(main.built_refinery_model.equipment[crude_tank.unit_id]["volume_l"]), 100.0)
+		and is_equal_approx(float(main.built_refinery_model.pending_intake_delivery["volume_l"]), 900.0)
+		and MaterialBalanceScript.evaluate(
+			before_transfer, main.built_refinery_model.material_inventory_snapshot(true, false)
+		)["conserved"],
+		"CI-201 transfer moves exactly 100 L into canonical storage without duplicate crude"
+	)
+	var snapshot: Dictionary = main._build_snapshot()
+	var has_harbor_process_edge := false
+	for edge: Dictionary in snapshot["construction"]["connections"]:
+		if (
+			edge["from_unit"] == EquipmentCatalogScript.CRUDE_TERMINAL_ID
+			or edge["to_unit"] == EquipmentCatalogScript.CRUDE_TERMINAL_ID
+			or edge["from_unit"] == EquipmentCatalogScript.PRODUCT_TERMINAL_ID
+			or edge["to_unit"] == EquipmentCatalogScript.PRODUCT_TERMINAL_ID
+		):
+			has_harbor_process_edge = true
+			break
+	_expect(
+		not has_harbor_process_edge,
+		"current saves contain no direct Harbor process endpoints or giant replacement pipes"
+	)
+	main.queue_free()
 
 
 func _test_out_of_bounds_recovery() -> void:
@@ -610,7 +700,7 @@ func _connect_full_refinery(main) -> void:
 	var light_sales_pump = _unit(main, "built_pump_9")
 	var diesel_sales_pump = _unit(main, "built_pump_10")
 	var heavy_sales_pump = _unit(main, "built_pump_11")
-	var dispatch = _unit(main, "built_product_dispatch_0")
+	var dispatch = _unit(main, EquipmentCatalogScript.PRODUCT_TIE_IN_ID)
 	main.build_controller._connect_ports(source.get_port("output"), pump.get_port("input"))
 	main.build_controller._connect_ports(pump.get_port("output"), valve.get_port("input"))
 	main.build_controller._connect_ports(valve.get_port("output"), heater.get_port("input"))
@@ -627,13 +717,13 @@ func _connect_full_refinery(main) -> void:
 
 
 func _dispatch_main_product(main, product_id: String) -> void:
-	var orders: Array[Dictionary] = main.built_refinery_model.available_physical_dispatch_orders("built_product_dispatch_0")
+	var orders: Array[Dictionary] = main.built_refinery_model.available_physical_dispatch_orders(EquipmentCatalogScript.PRODUCT_TIE_IN_ID)
 	for index in orders.size():
 		var order: Dictionary = orders[index]
 		if String(order["product"]) != product_id:
 			continue
 		main.built_refinery_model.interact(String(order["pump_id"]))
-		main._on_unit_interacted("built_product_dispatch_0")
+		main._on_unit_interacted(EquipmentCatalogScript.PRODUCT_TERMINAL_ID)
 		var event := InputEventKey.new()
 		event.keycode = KEY_1 + index
 		event.pressed = true

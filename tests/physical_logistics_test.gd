@@ -27,13 +27,19 @@ func _test_intake_route_and_persistence() -> void:
 	_register(model, "ci", "crude_intake")
 	_register(model, "intake_pump", "pump")
 	_register(model, "crude_tank", "tank")
-	_expect(model.network.try_connect("ci", "output", "intake_pump", "input")["ok"], "CI-101 connects only through a pump input")
-	_expect(model.network.try_connect("intake_pump", "output", "crude_tank", "input")["ok"], "intake pump connects to crude storage")
-	_expect(not model.network.can_connect("ci", "output", "crude_tank", "input")["ok"], "CI-101 cannot bypass the required transfer pump")
 	model.commissioning_batch_available = false
 	model.commissioning_contract_complete = true
 	var delivery: Dictionary = model.receive_intake_delivery("standard", true)
 	_expect(delivery["ok"] and delivery["charge"] == 300, "paid Standard delivery uses canonical 300 kr contract charge")
+	model.tick(20.0)
+	_expect(
+		is_zero_approx(model.equipment["crude_tank"]["volume_l"])
+		and is_equal_approx(float(model.pending_intake_delivery["volume_l"]), 1000.0),
+		"Harbor claim remains pending and cannot auto-fill the first unconnected tank"
+	)
+	_expect(model.network.try_connect("ci", "output", "intake_pump", "input")["ok"], "CI-201 connects only through a pump input")
+	_expect(model.network.try_connect("intake_pump", "output", "crude_tank", "input")["ok"], "intake pump connects to crude storage")
+	_expect(not model.network.can_connect("ci", "output", "crude_tank", "input")["ok"], "CI-201 cannot bypass the required transfer pump")
 	_expect(model.interact("intake_pump")["ok"], "intake transfer pump starts with a pending delivery")
 	var before_transfer: Dictionary = model.material_inventory_snapshot(true, false)
 	model.tick(20.0)
@@ -70,6 +76,12 @@ func _test_product_dispatch_route() -> void:
 	_expect(model.network.try_connect("sales_pump", "output", "pd", "vacuum_gas_oil")["ok"], "sales pump connects to the matching PD-101 typed inlet")
 	model.equipment["product_tank"]["contents"] = "vacuum_gas_oil"
 	model.equipment["product_tank"]["volume_l"] = 100.0
+	var before_tie_in_inspection := float(model.equipment["product_tank"]["volume_l"])
+	model.interact("pd")
+	_expect(
+		is_equal_approx(float(model.equipment["product_tank"]["volume_l"]), before_tie_in_inspection),
+		"local PD-201 tie-in inspection is not a second sale terminal"
+	)
 	_expect(model.available_physical_dispatch_orders("pd").size() == 1, "PD-101 discovers the compatible filled product line")
 	_expect(not model.dispatch_product_from_terminal("pd", "product_tank")["ok"], "PD-101 refuses dispatch until its sales pump is running")
 	_expect(model.interact("sales_pump")["ok"], "physical sales pump starts on a valid product line")

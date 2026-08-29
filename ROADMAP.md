@@ -2,14 +2,16 @@
 
 ## Current baseline
 
-Version 0.31.4 retains the tested v0.28.2 process foundation, functional Pilot,
+Version 0.31.5 retains the tested v0.28.2 process foundation, functional Pilot,
 v0.30.3 Area 02 spatial contract and v0.30.4 build-menu/readability behavior.
 It tightens the world to 214 x 264 m visible land with one continuous natural
 grade from Harbor at 0 m to Upper at +10.5 m. Locally flattened pads and one
 continuous main road communicate progression inland/uphill without shelves.
 The elevated `operations_hub` remains the single runtime Area 02 build/process
-yard. CI-101 and PD-101 now exist once at their canonical Harbor anchors, with
-whole-unit process faces oriented inland and no reserve or Area 02 duplicates.
+yard. Portless CI-101 and PD-101 logistics terminals exist once at their
+canonical Harbor anchors. Zero-hold-up CI-201 and PD-201 process boundaries sit
+at the Area 02 edges, keeping physical process pipes local without duplicating
+delivery or sale authority.
 One CI sign supports the Pilot exit; the existing Area 02 fork and gateway signs
 support the onward route. Other refinery systems remain unmigrated.
 
@@ -34,20 +36,22 @@ yields, utility balance, save schema or process-unit scope.
 The core conclusion is deliberate: **process depth is no longer the primary
 bottleneck.** Further process-unit expansion is lower priority until existing
 systems feel physical, understandable, rewarding and scalable in real play.
-The first physical feed-to-cash endpoints are now established: CI-101 receives
-the canonical crude order into an explicit pending delivery, a player pump
-moves it into crude storage, and PD-101 requires a compatible product tank and
-running sales pump before it can invoke the existing dispatch transaction.
+The first physical feed-to-cash endpoints are now established: Harbor CI-101
+receives the canonical crude order into an explicit pending delivery, a player
+pump moves it from local CI-201 into crude storage, and Harbor PD-101 requires a
+compatible product tank and running sales pump connected to local PD-201 before
+it can invoke the existing dispatch transaction.
 
 ## Current priority
 
-**Human-playtest v0.31.4 Pilot -> Harbor CI -> Area 02 before any further
-functional migration.** Automated coverage validates unique functional CI/PD,
-canonical Harbor transforms, process-facing ports, the free first delivery,
-normal post-Pilot continuation, unchanged Area 02 construction and deterministic
-format-v2 loading. A real 1280 x 720 WASD pass must judge CI discoverability,
-Harbor spacing, first-person port access, the route to Area 02 and PD's inland/
-outbound reading. Headless tests protect contracts; they cannot approve world feel.
+**Human-playtest v0.31.5 Pilot -> Harbor CI -> Area 02 before any further
+functional migration.** Automated coverage validates unique portless Harbor
+terminals, local process boundaries, the free first delivery, no transfer before
+a local pump route, Harbor-only sale interaction, unchanged Area 02 construction
+and deterministic format-v2 migration. A real 1280 x 720 WASD pass must judge
+CI discoverability, Harbor spacing, CI-201/PD-201 readability, tank liquids,
+Build Mode cleanup and the route to Area 02. Headless tests protect contracts;
+they cannot approve world feel.
 
 Utilities are now mechanically meaningful and have focused automated coverage:
 PG/GF/MCC/IA/CT/CWP field state, contextual interlocks, fail-safe behavior,
@@ -97,7 +101,7 @@ requires a post-graybox player-value decision, not process completeness alone.
 | Standard gross output | ~5,000 kr | 300 L Naphtha, 350 L Diesel, 350 L Heavy Residue at target |
 | HT-201 / PU-101 / VDU-301 / FCC-401 | 800 / 700 / 1,200 / 2,200 kr | Reachable after a successful first physical delivery; exact feel still needs human QA |
 
-v0.31.4 retains the existing equipment prices and fixed Utilities Yard at
+v0.31.5 retains the existing equipment prices and fixed Utilities Yard at
 no purchase cost. IA-101 and CWP-101 add 35 kW, so one first atmospheric train
 uses 70 kW before commissioning, 80 kW with LAB/LS, and 100 kW with Sour
 treatment. PU-101 still doubles generation to 200 kW for concurrent trains and
@@ -142,13 +146,14 @@ recovery exist. Detailed parking and dressing remain later refinement.
 
 Move the working Pilot, CI-101, crude storage, Area 02, Utilities Yard, Product
 Tank Farm, LAB-101 and PD-101 into their intended zones. Preserve IDs,
-interactions, ports, process topology and saves where practical. Do not place
+interactions, boundary semantics, process topology and saves where practical. Do not place
 visual duplicates of functional equipment.
 
-**Status: first slice implemented in v0.31.4; awaiting human approval.** Pilot
-remains stable and Area 02 remains on its v0.30.3 platform. CI-101 and PD-101
-have moved once to their Harbor zones with stable IDs, interactions, economy,
-process semantics and deterministic save behavior. Crude storage, CDU/HT,
+**Status: boundary cleanup implemented in v0.31.5; awaiting human approval.**
+Pilot remains stable and Area 02 remains on its v0.30.3 platform. CI-101 and
+PD-101 remain Harbor logistics terminals with stable interaction/economy IDs;
+CI-201 and PD-201 provide the local process topology. Legacy Harbor graph edges
+remap deterministically without moving player construction. Crude storage, CDU/HT,
 Utilities, product storage, LAB, VDU and FCC migration remains pending and must
 continue only in smaller validated slices after Harbor WASD approval.
 
@@ -165,8 +170,9 @@ occupy the Upper district. Functional migration and gameplay remain pending.
 
 ### 5. Full Graybox Gameplay Pass
 
-Start a fresh game and play the current loop at real site scale: Pilot ->
-CI-101 -> crude storage -> Area 02 -> utilities -> LAB -> PD-101. Test field
+Start a fresh game and play the current loop at real site scale: Pilot -> Harbor
+CI-101 -> CI-201 -> crude storage -> Area 02 -> utilities -> LAB -> PD-201 ->
+Harbor PD-101. Test field
 access, discovery, road/path readability, alarms, ports, build pads, tank
 levels, utility recovery and the meaningful travel between major areas.
 

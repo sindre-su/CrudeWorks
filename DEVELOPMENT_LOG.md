@@ -1,5 +1,29 @@
 # CrudeWorks Development Log
 
+## v0.31.5 — Process Boundary Connections & Visual Cleanup
+
+- Kept CI-101 and PD-101 as the unique interactive Harbor logistics terminals,
+  but removed their process ports and direct `ProcessNetwork` registration.
+- Added fixed zero-hold-up CI-201 and PD-201 endpoints at the west/east Area 02
+  boundaries. Claiming crude at Harbor leaves it pending until a running local
+  pump route transfers it; PD-201 inspection cannot sell, while Harbor PD-101
+  remains the canonical sale interaction.
+- Added deterministic format-v2 migration from legacy Harbor endpoint edges to
+  local boundaries. Canonical local edges win conflicts; player placements,
+  inventory and stable player-built IDs remain unchanged.
+- Replaced closed transparent tank shells with cap-free shells and one shared
+  canonical liquid renderer across Pilot, fixed GF-101 and player-built tanks,
+  removing radial cap artifacts without arbitrary height offsets.
+- Removed the dynamic physical Build Mode sign. The build overlay, boundary
+  lines and permanent Area 02 gateway sign remain.
+- Extended building, logistics, world, save and end-to-end regressions for
+  terminal/boundary separation, mass conservation, migration conflicts, tank
+  fill states and absence of Harbor graph edges.
+- SPEC DEVIATIONS: save format remains 2 because the existing migration marker
+  safely handles the endpoint-ID change. Historic `crude_intake` and
+  `product_dispatch` catalog names remain attached to the local boundaries to
+  avoid unnecessary model/save churn; Harbor uses new visual terminal types.
+
 ## v0.31.4 — Harbor Functional Migration
 
 - Moved the single functional `built_crude_intake_0` from the Area 02 west

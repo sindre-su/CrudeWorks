@@ -165,6 +165,15 @@ func _test_area_configuration() -> void:
 		and WorldLayoutScript.harbor_logistics_anchor("product_dispatch") == Vector2(138.0, 49.0),
 		"functional CI/PD Harbor anchors are exact canonical logistics positions"
 	)
+	var crude_boundary := WorldLayoutScript.process_boundary_spec("crude_intake")
+	var product_boundary := WorldLayoutScript.process_boundary_spec("product_dispatch")
+	_expect(
+		crude_boundary["anchor"] == Vector2(82.0, -10.0)
+		and product_boundary["anchor"] == Vector2(158.0, -10.0)
+		and float(crude_boundary["anchor"].x) < WorldLayoutScript.build_bounds().position.x
+		and float(product_boundary["anchor"].x) > WorldLayoutScript.build_bounds().end.x,
+		"CI-201 and PD-201 occupy the upstream/downstream Area 02 edges without shrinking build bounds"
+	)
 	for logistics_id: String in ["crude_intake", "product_dispatch"]:
 		var logistics_area := WorldLayoutScript.area_by_id(logistics_id)
 		var anchor := WorldLayoutScript.harbor_logistics_anchor(logistics_id)
@@ -576,7 +585,6 @@ func _test_world_builder() -> void:
 		builder.orientation_nodes["crude_intake_junction"],
 		builder.orientation_nodes["area02_junction"],
 		builder.orientation_nodes["area02_entrance"],
-		builder.orientation_nodes["build_area"],
 	]
 	for sign in signs:
 		_expect(
@@ -633,21 +641,24 @@ func _test_world_builder() -> void:
 		"inland transition gate remains physical but carries no stale Area 02 destination sign"
 	)
 	_expect(
-		builder.build_visual_nodes.all(func(node: Node3D) -> bool: return not node.visible),
-		"construction pad, bounds and sign default hidden outside Build Mode"
+		not builder.orientation_nodes.has("build_area")
+		and builder.build_visual_nodes.all(func(node: Node3D) -> bool: return not node.visible)
+		and builder.orientation_nodes["area02_entrance"].visible,
+		"construction overlay/bounds default hidden while permanent Area 02 signage remains physical"
 	)
 	builder.set_build_visualization_visible(true)
 	_expect(
 		builder.build_visual_nodes.all(func(node: Node3D) -> bool: return node.visible),
-		"construction visualization can be enabled without changing build validation"
+		"construction overlay and boundaries can be enabled without creating a physical sign"
 	)
 	builder.set_build_visualization_visible(false)
 	builder.set_build_visualization_visible(true)
 	_expect(
 		builder.build_visualization_visible
 		and builder.build_visual_nodes.all(func(node: Node3D) -> bool: return node.visible)
+		and builder.orientation_nodes["area02_entrance"].visible
 		and WorldLayoutScript.build_bounds() == canonical_build_bounds,
-		"repeated Build Mode toggles return every canonical Area 02 visual to one deterministic state"
+		"repeated Build Mode toggles are deterministic and leave permanent Area 02 signage untouched"
 	)
 	_expect(
 		builder.area_labels.all(func(label: Label3D) -> bool: return not label.visible),

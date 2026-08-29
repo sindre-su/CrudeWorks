@@ -50,11 +50,12 @@ Pilot: heat -> open valve -> start pump -> distill -> sell approved diesel ->
 unlock Area 02.
 
 Post-Pilot: receive the free Harbor CI-101 delivery -> follow wayfinding to
-Area 02 -> build the directed pump/storage route -> transfer crude -> establish
+Area 02 -> connect local CI-201 through a pump to storage -> transfer crude -> establish
 generator/MCC/IA/CW availability -> heat -> open manual
 valve -> pump -> CDU fractions -> optional HT-201 treatment and selected product
 storage -> sample/analyse at LAB-101 where required -> send physical product
-through sales pump -> PD-101 -> canonical inventory removal and payment.
+through a sales pump to local PD-201 -> use Harbor PD-101 -> canonical inventory
+removal and payment.
 
 VDU-301 and FCC-401 are implemented, purchasable typed secondary routes with
 fixed simplified yields, capacity-bounded atomic transfers and dedicated product
@@ -64,7 +65,7 @@ placement and player-facing pacing still need Graybox validation.
 ## Canonical state and conservation
 
 - `ProcessModel` owns Pilot crude/light/diesel/heavy inventory.
-- `BuiltRefineryModel` owns Area 02 tank contents, pending CI-101 delivery and
+- `BuiltRefineryModel` owns Area 02 tank contents, pending Harbor CI-101 delivery and
   GF-101 generator fuel. Pipes, headers, pumps, treatment and process units
   currently have no modeled liquid hold-up.
 - Tank fills, HUD text, samples, reports, flow visuals, total electrical demand
@@ -120,9 +121,10 @@ on Instrument Air loss, and Cooling Water is a CDU condensation permissive.
 
 LAB-101 samples and analyses product, exposes specification/quality evidence and
 authorizes eligible dispatch. It does not sell material. Product tanks store and
-route canonical inventory but do not create a parallel economy. PD-101 is the
-normal Area 02 sales boundary: dispatch removes authorized canonical inventory
-atomically and pays once through the established value path.
+route canonical inventory but do not create a parallel economy. PD-201 is the
+zero-hold-up Area 02 process boundary; Harbor PD-101 is the only sale
+interaction. Dispatch removes authorized canonical inventory atomically and
+pays once through the established value path.
 
 ## Persistence and world migration
 
@@ -131,7 +133,7 @@ utility/trip state and stable identifiers; it rebuilds derived state and restore
 pumps stopped. Existing v0.27/v0.28-compatible saves remain supported through
 validated migration/fallback paths.
 
-v0.31.4 uses 214 x 268 m player bounds and 214 x 264 m visible land. Harbor is
+v0.31.5 uses 214 x 268 m player bounds and 214 x 264 m visible land. Harbor is
 flat through z `-42`; one continuous terrain grade then reaches +10.5 m at z
 `-200`. Lower/Main/Upper are planning districts with local pads at +3.5/+7.0/
 +10.5 m, not map-wide shelves. `IndustrialGround` is one multi-material mesh;
@@ -148,22 +150,22 @@ The Area 02 Harbor-facing directional sign derives
 `AREA 02 / PROCESS YARD →` from this `operations_hub`
 center and the physical entrance has one non-directional gateway marker. The
 later inland transition gate intentionally has no destination sign.
-CI-101 and PD-101 instantiate once at Harbor area centers `(31, 49)` and
-`(138, 49)`. `main.gd` derives whole-unit cardinal rotation from the CI output
-face or PD input face toward each area's declared inland process target. Their
-mesh, collision, interaction and ports share that transform. `WorldBuilder`
+CI-101 and PD-101 instantiate once as portless logistics terminals at Harbor
+area centers `(31, 49)` and `(138, 49)`. CI-201 and PD-201 instantiate once as
+fixed zero-hold-up process boundaries at Area 02 anchors `(82, -10)` and
+`(158, -10)`, respectively. Harbor terminals own delivery/sale interaction;
+only the local boundaries register with `ProcessNetwork`. `WorldBuilder`
 creates no duplicate logistics reserve masses.
 
 Format-v2 development saves whose complete construction set still validates
 inside the old x `-20..20`, z `10.5..38.5` footprint at its old placement
 height receive one all-or-nothing translation `(120, 0.61, -34)`. This keeps
 relative layout, rotations, connections and IDs. Mixed/ambiguous layouts are
-not guessed. Fixed CI/PD transforms were never serialized: format-v2 snapshots
-store their process-network IDs/edges, while fresh runtime creation places one
-of each at Harbor. Logical edges survive and visual pipes rebuild from the new
-ports; legacy development layouts can show long straight pipes until manually
-reconnected. Player-built equipment is not translated for this migration. No
-schema bump was needed. Valid saved player positions in the old
+not guessed. Format-v2 snapshots using the former Harbor endpoint IDs have
+their edges deterministically remapped to CI-201/PD-201. Existing canonical
+local edges take precedence over conflicting legacy edges; placements and
+inventory are unchanged, and visual pipes rebuild locally. No schema bump was
+needed. Valid saved player positions in the old
 600 x 400 m world or v0.31.0 bounds but outside v0.31.1 recover to Harbor
 without changing construction or process state. Visible land ends at the
 physical Harbor edge at z `64`; deep water at z `64.5+`, world exits and falls
@@ -176,10 +178,11 @@ placing visual duplicate equipment that looks functional but has no model state.
 
 ## Scope boundary
 
-The v0.28.2 process foundation remains frozen through v0.31.4. The existing fixed
+The v0.28.2 process foundation remains frozen through v0.31.5. The existing fixed
 Pilot is now verified as one complete fresh-save world loop without relocating
-its stable IDs or absolute coordinates. CI-101/PD-101 now occupy Harbor while
-Area 02 building remains unchanged; Main CDU, VDU, FCC, HT-201,
+its stable IDs or absolute coordinates. CI-101/PD-101 remain at Harbor while
+CI-201/PD-201 keep process connections local to unchanged Area 02 building;
+Main CDU, VDU, FCC, HT-201,
 routing, storage, LAB, utilities, controls, alarms and maintenance remain
 functionally compact and await deliberate migration after human approval of the
 natural-grade world. New major process families, detailed hydraulics and detailed
@@ -199,7 +202,8 @@ types remain unchanged.
 - `tests/building_system_test.gd`: placement, ports and visual connection rules.
 - `tests/built_refinery_model_test.gd`: Area 02 simulation, conservation,
   contracts, quality, LAB, dispatch, VDU/FCC, maintenance and utilities.
-- `tests/physical_logistics_test.gd`: CI-101/PD-101 physical material paths.
+- `tests/physical_logistics_test.gd`: Harbor logistics authority and local
+  CI-201/PD-201 physical material paths.
 - `tests/progression_test.gd`: unlock and first-hour progression gates.
 - `tests/main_built_loop_test.gd`: end-to-end world/UI integration.
 - `tests/save_system_test.gd`: persistence, validation and migrations.

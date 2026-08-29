@@ -124,7 +124,7 @@ func material_inventory_snapshot(
 	include_pending_intake := true,
 	include_generator_fuel := true
 ) -> Dictionary:
-	# Tanks, CI-101 pending delivery and GF-101 are the only current physical
+	# Tanks, the zero-hold-up CI-201 pending boundary and GF-101 are the only current physical
 	# material hold-ups. Reports, samples, UI and equipment processed totals are
 	# intentionally excluded because they are derived history, not inventory.
 	var snapshot := {}
@@ -133,7 +133,7 @@ func material_inventory_snapshot(
 		if state["type"] == "tank":
 			snapshot["tank:" + unit_id] = float(state["volume_l"])
 	if include_pending_intake:
-		snapshot["site:ci_101_pending"] = float(pending_intake_delivery.get("volume_l", 0.0))
+		snapshot["site:ci_201_pending_boundary"] = float(pending_intake_delivery.get("volume_l", 0.0))
 	if include_generator_fuel:
 		snapshot["site:gf_101"] = generator_fuel_l
 	return snapshot
@@ -766,9 +766,9 @@ func interaction_prompt(unit_id: String) -> String:
 		"power_unit":
 			return "E — %s generator" % ("stopp" if state["running"] else "start")
 		"crude_intake":
-			return "E — velg råoljeleveranse ved CI-101"
+			return "CI-201 — koble lokal pumpe til CRUDE OUT"
 		"product_dispatch":
-			return "E — åpne PD-101 produktdispatch"
+			return "PD-201 — koble salgspumpe til riktig produktinngang"
 		"column":
 			return "E — inspiser destillasjon"
 		"tank":
@@ -2063,11 +2063,11 @@ func inspect_unit(unit_id: String) -> String:
 			var intake_l := float(pending_intake_delivery.get("volume_l", 0.0))
 			var intake_contract := String(pending_intake_delivery.get("contract_id", ""))
 			if intake_l > 0.001 and CrudeCatalog.is_valid(intake_contract):
-				return "CI-101: %.0f L %s klar for overføring." % [intake_l, CrudeCatalog.definition(intake_contract)["short_name"]]
-			return "CI-101: Ingen råoljeleveranse valgt."
+				return "CI-201: %.0f L %s klar ved null-hold-up feedgrense." % [intake_l, CrudeCatalog.definition(intake_contract)["short_name"]]
+			return "CI-201: Ingen Harbor-leveranse venter."
 		"product_dispatch":
 			var ready_orders := available_physical_dispatch_orders(unit_id)
-			return "PD-101: %d produktlinje%s klar for dispatch." % [ready_orders.size(), "er" if ready_orders.size() != 1 else ""]
+			return "PD-201: %d lokal produktlinje%s koblet mot Harbor-dispatch." % [ready_orders.size(), "r" if ready_orders.size() != 1 else ""]
 		"tank":
 			var contents_name := _contents_name(state["contents"])
 			if state["contents"] == "crude" and CrudeCatalog.is_valid(active_contract_id):

@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.31.4 – Harbor Functional Migration**
+**Prototypeversjon: 0.31.5 – Process Boundary Connections & Visual Cleanup**
 
 CrudeWorks is a first-person refinery-builder prototype. The player starts with
 a manual Pilot process, unlocks Area 02, builds directed refinery routes,
@@ -10,12 +10,12 @@ approved diesel.
 
 ## Current phase
 
-**v0.31.4 — HARBOR FUNCTIONAL MIGRATION.** Functional CI-101 and PD-101 now
-exist once at their canonical Harbor zones with all ports, collision and
-interactions oriented as complete units. Normal fresh-game progression continues
-Pilot -> CI-101 -> Area 02; one concise CI sign supports the Pilot exit and the
-approved Area 02 fork/gateway signs support the onward route. No other refinery
-system moved.
+**v0.31.5 — PROCESS BOUNDARY CONNECTIONS & VISUAL CLEANUP.** CI-101 and PD-101
+remain unique Harbor logistics terminals, now without process ports. CI-201 and
+PD-201 provide fixed zero-hold-up process connections at the Area 02 edges, so
+player pipes no longer stretch across the world. Tank liquids use one shared,
+cap-free renderer, and Build Mode keeps its overlay/bounds without spawning a
+physical sign. No process family, economy rule or macro-world geometry changed.
 
 Quick orientation:
 
@@ -100,8 +100,8 @@ Den første komplette «vertical slice»-en inneholder:
   beholder stillingen; CDU-produksjon blokkeres uten aktiv kjølevannssirkulasjon
 - utility-alarmer, lokale statuser og en kompakt LS-201-oversikt som viser
   drivstoff, Instrument Air og Cooling Water sammen med eksisterende kraftdata
-- funksjonelle CI-101 og PD-101 ved Harbor, med ett lokalt CI-skilt og reduserte
-  onboarding-markører uten et permanent waypoint-system
+- portløse CI-101 og PD-101 ved Harbor, med lokale CI-201/PD-201-prosessgrenser
+  i Area 02, ett lokalt CI-skilt og ingen permanent waypoint-løsning
 - byggemodus prioriterer eksplisitte prosessporter foran maskinkroppen når
   spilleren sikter på en markert port
 - eksplisitte pumpetilstander skiller `STOPPED`, `RUNNING | FLOW`,
@@ -180,11 +180,10 @@ ikke av denne Area 02-migreringen, og save-formatet er fortsatt versjon 2.
 Spillerposisjoner som var gyldige i den gamle 600 x 400 m-verdenen eller den
 større v0.31.0-verdenen, men ligger utenfor v0.31.1, flyttes trygt til Harbor
 uten at prosess, økonomi eller konstruksjon forkastes.
-CI/PD-transformer lagres ikke separat. Eldre format-2-lagringer gjenoppretter
-derfor stabile prosess-ID-er og koblinger, men bygger nøyaktig én CI og PD ved de
-nye Harbor-ankrene. Spillerbygget utstyr flyttes ikke; gamle koblinger får nye
-rørvisualer fra Harbor-portene og kan fremstå som lange rette gråboksrør til de
-kobles om.
+CI/PD-transformer lagres ikke separat. Eldre format-2-lagringer som koblet
+direkte til Harbor-ID-ene remappes deterministisk til lokale CI-201/PD-201.
+Spillerbygget utstyr, beholdning og relative plasseringer flyttes ikke; nye
+rørvisualer bygges ved Area 02-grensene i stedet for som lange Harbor-rør.
 
 ## Styring
 
@@ -260,8 +259,8 @@ direkte i 3D. Pumpens rotor og ventilhåndtak beveger seg når utstyret brukes.
    `ventil OUT → varme IN` og `varme OUT → kolonne IN`.
 4. Koble kolonnens `LETT`, `DIESEL` og `TUNG` til hver sin tank. Trykk `V` for
    en konkret valideringsmelding. Feil rør kan fjernes med `G`.
-5. Trykk `B` for å avslutte bygging, motta råolje ved CI-101 og bygg fysisk
-   inntak til kildetanken.
+5. Trykk `B` for å avslutte bygging, motta råolje ved Harbor CI-101 og bygg
+   fysisk CI-201 → pumpe → kildetank i Area 02.
 6. Prøv pumpen med PG-101 av. Den forklarer `START BLOCKED — NO POWER`; kontroller
    brensel i GF-101, start PG-101 og les last/reserve ved MCC-101.
 7. Start IA-101 og CWP-101. De legger henholdsvis 15 og 20 kW til MCC-lasten.
@@ -277,11 +276,12 @@ direkte i 3D. Pumpens rotor og ventilhåndtak beveger seg når utstyret brukes.
 10. En subsidiert oppstartsbatch kan prøves igjen uten kostnad fram til første
    godkjente levering dersom produktet blir off-spec og tømmes sikkert.
 11. Følg væskenivå, flow og kvalitet. Behold noe diesel og fyll GF-101, eller
-   send produktet via PD-101; dette er nå en faktisk driftsøkonomisk avveiing.
+   koble produktet via salgspumpe til PD-201 og fullfør salget ved Harbor
+   PD-101; dette er nå en faktisk driftsøkonomisk avveiing.
    Ventilen kan stenge eller gjenopprette flow
    uten at væske skapes eller forsvinner. Stopp pumpen, ta dieselprøve ved tanken,
-   analyser den ved `LAB-101`, og bruk produkttank → salgspumpe → PD-101 for fysisk
-   dispatch. Salget sender produktbatchen ut og viser en batchrapport med
+   analyser den ved `LAB-101`, og bruk produkttank → salgspumpe → PD-201 for den
+   fysiske ruten. Harbor PD-101 sender produktbatchen ut og viser en batchrapport med
    faktisk råolje behandlet, fraksjoner, kvalitet, inntekt, kostnad og resultat.
 
 Etter godkjent oppstart åpner `E` på en tom kildetank leveransevalget. Valget
@@ -297,7 +297,8 @@ Råoljetypen låses til batchen. En ny type kan først velges når alle bygde ta
 er tomme og pumpen er stoppet. Batchrapporten viser valgt råolje, faktisk
 snittemperatur, temperaturmål, dieselsalg, eventuell bonus, kostnad og resultat.
 
-Alle Område 02-leveranser går fysisk via `PD-101`; LAB-101 brukes kun til
+Alle Område 02-leveranser går fysisk via lokal `PD-201` og selges ved Harbor
+`PD-101`; LAB-101 brukes kun til
 analyse. Spilleren må stoppe pumpen og trykke `E` på dieseltanken i den aktive
 linjen for å ta en prøve. Før analyse vises
 produktkvaliteten som `IKKE ANALYSERT`; en prøve fra en frakoblet tank kan ikke
@@ -307,7 +308,8 @@ For Tung viser analysen dieselkvaliteten og tungfraksjonsmålet som to separate
 krav. En god dieselprøve kan derfor være godkjent selv om ordren ennå trenger
 mer tungfraksjon; videre produksjon krever deretter en ny prøve.
 
-`Enter` lukker kun analyseresultatet; den godkjente tanken sendes fra `PD-101`.
+`Enter` lukker kun analyseresultatet; den godkjente tanken kobles til `PD-201`
+og sendes fra Harbor `PD-101`.
 OFF-SPEC-produkt beholdes og gir ingen inntekt. Ny produksjon, endret rørnett, tømming, salg eller
 lasting gjør prøven ugyldig, og save/load krever alltid en ny fysisk prøve.
 

@@ -5,6 +5,11 @@ extends RefCounted
 ## six entries teach the physical starter flow before routing/advanced tools.
 const ORDER := ["tank", "pump", "valve", "heater", "column", "treatment", "header", "product_header", "vacuum_distillation", "power_unit", "catalytic_cracking"]
 
+const CRUDE_TERMINAL_ID := "built_crude_intake_0"
+const PRODUCT_TERMINAL_ID := "built_product_dispatch_0"
+const CRUDE_TIE_IN_ID := "site_crude_feed_tie_in"
+const PRODUCT_TIE_IN_ID := "site_product_dispatch_tie_in"
+
 
 static func definition(equipment_type: String) -> Dictionary:
 	match equipment_type:
@@ -182,8 +187,8 @@ static func definition(equipment_type: String) -> Dictionary:
 			}
 		"crude_intake":
 			return {
-				"name": "Crude Intake",
-				"tag": "CI-101",
+				"name": "Crude Feed Tie-In",
+				"tag": "CI-201",
 				"cost": 0,
 				"size": Vector3(3.0, 2.6, 2.6),
 				"color": Color("45676e"),
@@ -194,13 +199,37 @@ static func definition(equipment_type: String) -> Dictionary:
 			}
 		"product_dispatch":
 			return {
-				"name": "Product Dispatch",
-				"tag": "PD-101",
+				"name": "Product Dispatch Tie-In",
+				"tag": "PD-201",
 				"cost": 0,
 				"size": Vector3(3.4, 2.8, 2.8),
 				"color": Color("3e6650"),
 				"shape": "box",
 				"has_input": true,
+				"has_output": false,
+				"power_demand_kw": 0.0,
+			}
+		"crude_intake_terminal":
+			return {
+				"name": "Crude Intake Terminal",
+				"tag": "CI-101",
+				"cost": 0,
+				"size": Vector3(3.0, 2.6, 2.6),
+				"color": Color("45676e"),
+				"shape": "box",
+				"has_input": false,
+				"has_output": false,
+				"power_demand_kw": 0.0,
+			}
+		"product_dispatch_terminal":
+			return {
+				"name": "Product Dispatch Terminal",
+				"tag": "PD-101",
+				"cost": 0,
+				"size": Vector3(3.4, 2.8, 2.8),
+				"color": Color("3e6650"),
+				"shape": "box",
+				"has_input": false,
 				"has_output": false,
 				"power_demand_kw": 0.0,
 			}
@@ -250,6 +279,8 @@ static func port_definitions(equipment_type: String) -> Array[Dictionary]:
 			_port("vacuum_residue", "output", "vacuum_residue", "VAKUUMREST", Vector3(0.78, y, -z)),
 		]
 	if equipment_type == "power_unit":
+		return []
+	if equipment_type in ["crude_intake_terminal", "product_dispatch_terminal"]:
 		return []
 	if equipment_type == "crude_intake":
 		return [_port("output", "output", "crude", "CRUDE OUT", Vector3(0.0, y, -z))]

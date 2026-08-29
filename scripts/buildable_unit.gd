@@ -3,6 +3,7 @@ extends InteractiveUnit
 
 const Catalog = preload("res://scripts/equipment_catalog.gd")
 const ProcessPortScript = preload("res://scripts/process_port.gd")
+const TankLiquidVisualScript = preload("res://scripts/tank_liquid_visual.gd")
 
 const TANK_LIQUID_COLORS := {
 	"crude": Color("241815"),
@@ -36,7 +37,12 @@ var pump_rotor_running := false
 var guidance_label: Label3D
 
 
-func configure_buildable(type: String, serial_number: int) -> void:
+func configure_buildable(
+	type: String,
+	serial_number: int,
+	fixed_unit_id := "",
+	fixed_display_name := ""
+) -> void:
 	var data: Dictionary = Catalog.definition(type)
 	equipment_type = type
 	self.serial_number = serial_number
@@ -66,8 +72,8 @@ func configure_buildable(type: String, serial_number: int) -> void:
 		unit_shape = box_shape
 
 	configure(
-		"built_%s_%d" % [type, serial_number],
-		"%s %02d" % [data["tag"], serial_number],
+		fixed_unit_id if not fixed_unit_id.is_empty() else "built_%s_%d" % [type, serial_number],
+		fixed_display_name if not fixed_display_name.is_empty() else "%s %02d" % [data["tag"], serial_number],
 		unit_mesh,
 		unit_shape,
 		data["color"],
@@ -77,10 +83,15 @@ func configure_buildable(type: String, serial_number: int) -> void:
 	add_to_group("player_built")
 	_create_ports()
 	if equipment_type == "crude_intake":
-		_create_guidance_label("CRUDE INTAKE\nCI-101")
+		_create_guidance_label("CRUDE FEED\nCI-201 TIE-IN")
 	elif equipment_type == "product_dispatch":
+		_create_guidance_label("PRODUCT EXPORT\nPD-201 TIE-IN")
+	elif equipment_type == "crude_intake_terminal":
+		_create_guidance_label("CRUDE INTAKE\nCI-101")
+	elif equipment_type == "product_dispatch_terminal":
 		_create_guidance_label("PRODUCT DISPATCH\nPD-101")
 	if equipment_type == "tank":
+		TankLiquidVisualScript.open_transparent_shell(unit_mesh)
 		make_transparent(0.48)
 		_create_tank_liquid(size)
 	elif equipment_type == "pump":
@@ -137,34 +148,23 @@ func _create_guidance_label(text_value: String) -> void:
 func set_tank_fill(fill_ratio: float, contents: String) -> void:
 	if not is_instance_valid(liquid_level):
 		return
-	var ratio := clampf(fill_ratio, 0.0, 1.0)
-	var display_height := maxf(liquid_max_height * ratio, 0.015)
-	liquid_level.scale.y = display_height
-	liquid_level.position.y = liquid_bottom_y + display_height * 0.5
-	liquid_level.visible = ratio > 0.001
 	var color: Color = TANK_LIQUID_COLORS.get(contents, Color("65777c"))
-	liquid_material.albedo_color = color
-	liquid_material.emission = color
+	TankLiquidVisualScript.set_fill({
+		"node": liquid_level,
+		"material": liquid_material,
+		"max_height": liquid_max_height,
+		"bottom_y": liquid_bottom_y,
+	}, fill_ratio, color)
 
 
 func _create_tank_liquid(size: Vector3) -> void:
 	liquid_max_height = size.y * 0.86
 	liquid_bottom_y = -liquid_max_height * 0.5
-	liquid_level = MeshInstance3D.new()
-	var liquid_mesh := CylinderMesh.new()
-	liquid_mesh.top_radius = size.x * 0.42
-	liquid_mesh.bottom_radius = size.x * 0.42
-	liquid_mesh.height = 1.0
-	liquid_mesh.radial_segments = 28
-	liquid_level.mesh = liquid_mesh
-	liquid_material = StandardMaterial3D.new()
-	liquid_material.albedo_color = Color("241815")
-	liquid_material.emission_enabled = true
-	liquid_material.emission = Color("241815")
-	liquid_material.emission_energy_multiplier = 0.2
-	liquid_level.material_override = liquid_material
-	liquid_level.visible = false
-	add_child(liquid_level)
+	var data := TankLiquidVisualScript.create(
+		self, size.x * 0.42, liquid_max_height, Color("241815"), 28
+	)
+	liquid_level = data["node"]
+	liquid_material = data["material"]
 
 
 func _create_pump_rotor(size: Vector3) -> void:

@@ -15,8 +15,8 @@ const MAX_UNITS := 128
 const MAX_CONNECTIONS := 256
 const MAX_BUILD_SERIAL := 1000000
 const SITE_UNIT_TYPES := {
-	"built_crude_intake_0": "crude_intake",
-	"built_product_dispatch_0": "product_dispatch",
+	EquipmentCatalogScript.CRUDE_TIE_IN_ID: "crude_intake",
+	EquipmentCatalogScript.PRODUCT_TIE_IN_ID: "product_dispatch",
 }
 
 
@@ -166,15 +166,20 @@ static func migrate_snapshot(snapshot) -> Dictionary:
 		var current: Dictionary = snapshot.duplicate(true)
 		var spatially_migrated := _migrate_legacy_area02_construction(current)
 		var player_recovered := _migrate_legacy_world_player_position(current)
+		var boundaries_migrated := _migrate_process_boundary_connections(current)
 		return {
 			"ok": true,
 			"message": (
-				"Area 02-konstruksjon er flyttet til den kanoniske plattformen."
-				if spatially_migrated
+				"Harbor-rør er flyttet til de lokale Area 02-tie-ins."
+				if boundaries_migrated
 				else (
-					"Spilleren er flyttet trygt til Harbor etter verdensreskaleringen."
-					if player_recovered
-					else "Lagringen bruker gjeldende format."
+					"Area 02-konstruksjon er flyttet til den kanoniske plattformen."
+					if spatially_migrated
+					else (
+						"Spilleren er flyttet trygt til Harbor etter verdensreskaleringen."
+						if player_recovered
+						else "Lagringen bruker gjeldende format."
+					)
 				)
 			),
 			"data": current,
@@ -214,7 +219,83 @@ static func migrate_snapshot(snapshot) -> Dictionary:
 	migrated["format_version"] = FORMAT_VERSION
 	_migrate_legacy_area02_construction(migrated)
 	_migrate_legacy_world_player_position(migrated)
+	_migrate_process_boundary_connections(migrated)
 	return {"ok": true, "message": "Lagringen er oppgradert til format 2.", "data": migrated}
+
+
+static func _migrate_process_boundary_connections(snapshot: Dictionary) -> bool:
+	var construction = snapshot.get("construction", {})
+	if typeof(construction) != TYPE_DICTIONARY or typeof(construction.get("connections")) != TYPE_ARRAY:
+		return false
+	var connections: Array = construction["connections"]
+	var canonical: Array = []
+	var legacy: Array[Dictionary] = []
+	for stored_edge in connections:
+		if typeof(stored_edge) != TYPE_DICTIONARY:
+			# Keep malformed data for the normal validator to reject; migration must
+			# never make an otherwise corrupt snapshot appear valid.
+			canonical.append(stored_edge)
+			continue
+		var edge: Dictionary = stored_edge.duplicate(true)
+		if (
+			String(edge.get("from_unit", "")) in [
+				EquipmentCatalogScript.CRUDE_TERMINAL_ID,
+				EquipmentCatalogScript.PRODUCT_TERMINAL_ID,
+			]
+			or String(edge.get("to_unit", "")) in [
+				EquipmentCatalogScript.CRUDE_TERMINAL_ID,
+				EquipmentCatalogScript.PRODUCT_TERMINAL_ID,
+			]
+		):
+			legacy.append(edge)
+		else:
+			canonical.append(edge)
+	if legacy.is_empty():
+		return false
+
+	for edge in legacy:
+		var valid_legacy_edge := true
+		if String(edge.get("from_unit", "")) == EquipmentCatalogScript.CRUDE_TERMINAL_ID:
+			valid_legacy_edge = String(edge.get("from_port", "")) == "output"
+			edge["from_unit"] = EquipmentCatalogScript.CRUDE_TIE_IN_ID
+		elif String(edge.get("from_unit", "")) == EquipmentCatalogScript.PRODUCT_TERMINAL_ID:
+			valid_legacy_edge = false
+		if String(edge.get("to_unit", "")) == EquipmentCatalogScript.PRODUCT_TERMINAL_ID:
+			valid_legacy_edge = valid_legacy_edge and String(edge.get("to_port", "")) in [
+				"light", "diesel", "heavy", "vacuum_gas_oil", "vacuum_residue",
+				"gasoline_blendstock", "lpg", "light_cycle_oil",
+			]
+			edge["to_unit"] = EquipmentCatalogScript.PRODUCT_TIE_IN_ID
+		elif String(edge.get("to_unit", "")) == EquipmentCatalogScript.CRUDE_TERMINAL_ID:
+			valid_legacy_edge = false
+		if not valid_legacy_edge or _connection_conflicts(canonical, edge):
+			continue
+		canonical.append(edge)
+	construction["connections"] = canonical
+	var stored_migrations = snapshot.get("system_migrations", [])
+	var migrations: Array = stored_migrations.duplicate() if typeof(stored_migrations) == TYPE_ARRAY else []
+	if "process_boundaries_v0315" not in migrations:
+		migrations.append("process_boundaries_v0315")
+	snapshot["system_migrations"] = migrations
+	snapshot["game_version"] = ProjectSettings.get_setting("application/config/version", "0.31.5")
+	return true
+
+
+static func _connection_conflicts(existing_edges: Array, candidate: Dictionary) -> bool:
+	for edge in existing_edges:
+		if typeof(edge) != TYPE_DICTIONARY:
+			continue
+		if (
+			String(edge.get("from_unit", "")) == String(candidate.get("from_unit", ""))
+			and String(edge.get("from_port", "")) == String(candidate.get("from_port", ""))
+		):
+			return true
+		if (
+			String(edge.get("to_unit", "")) == String(candidate.get("to_unit", ""))
+			and String(edge.get("to_port", "")) == String(candidate.get("to_port", ""))
+		):
+			return true
+	return false
 
 
 static func _migrate_legacy_area02_construction(snapshot: Dictionary) -> bool:

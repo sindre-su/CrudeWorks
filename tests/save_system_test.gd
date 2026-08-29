@@ -5,6 +5,7 @@ const SaveSystemScript = preload("res://scripts/save_system.gd")
 const ProcessModelScript = preload("res://scripts/process_model.gd")
 const MaterialBalanceScript = preload("res://scripts/material_balance.gd")
 const WorldLayoutScript = preload("res://scripts/world_layout.gd")
+const EquipmentCatalogScript = preload("res://scripts/equipment_catalog.gd")
 
 const TEST_PATH := "user://crudeworks_save_system_test.json"
 const LEGACY_PATH := "user://crudeworks_save_system_legacy_test.json"
@@ -26,6 +27,7 @@ func _run_tests() -> void:
 	var snapshot: Dictionary = source_main._build_snapshot()
 	_test_schema_validation(snapshot, source_main)
 	_test_area02_spatial_migration(snapshot)
+	_test_process_boundary_migration(snapshot)
 	_test_v0304_player_recovery(snapshot)
 	_test_canonical_area02_save_states(snapshot)
 	_test_optional_delivery_report_validation(snapshot)
@@ -250,6 +252,58 @@ func _test_v0304_player_recovery(snapshot: Dictionary) -> void:
 		corrupt_migration["ok"]
 		and not SaveSystemScript.validate_snapshot(corrupt_migration["data"])["ok"],
 		"unknown positions outside both current and legacy worlds remain rejected as corrupt"
+	)
+
+
+func _test_process_boundary_migration(snapshot: Dictionary) -> void:
+	var legacy := snapshot.duplicate(true)
+	var original_units: Array = legacy["construction"]["units"].duplicate(true)
+	legacy["construction"]["connections"] = [
+		{
+			"from_unit": EquipmentCatalogScript.CRUDE_TERMINAL_ID,
+			"from_port": "output",
+			"to_unit": "legacy_intake_pump",
+			"to_port": "input",
+		},
+		{
+			"from_unit": "legacy_sales_pump",
+			"from_port": "output",
+			"to_unit": EquipmentCatalogScript.PRODUCT_TERMINAL_ID,
+			"to_port": "diesel",
+		},
+	]
+	var migration: Dictionary = SaveSystemScript.migrate_snapshot(legacy)
+	var migrated_edges: Array = migration["data"]["construction"]["connections"]
+	_expect(
+		migration["ok"]
+		and migrated_edges[0]["from_unit"] == EquipmentCatalogScript.CRUDE_TIE_IN_ID
+		and migrated_edges[1]["to_unit"] == EquipmentCatalogScript.PRODUCT_TIE_IN_ID
+		and migration["data"]["construction"]["units"] == original_units
+		and "process_boundaries_v0315" in migration["data"]["system_migrations"],
+		"v0.31.4 direct Harbor edges remap deterministically to local tie-ins without relocating player equipment"
+	)
+
+	var conflict := snapshot.duplicate(true)
+	conflict["construction"]["connections"] = [
+		{
+			"from_unit": EquipmentCatalogScript.CRUDE_TIE_IN_ID,
+			"from_port": "output",
+			"to_unit": "canonical_pump",
+			"to_port": "input",
+		},
+		{
+			"from_unit": EquipmentCatalogScript.CRUDE_TERMINAL_ID,
+			"from_port": "output",
+			"to_unit": "legacy_pump",
+			"to_port": "input",
+		},
+	]
+	var conflict_migration: Dictionary = SaveSystemScript.migrate_snapshot(conflict)
+	_expect(
+		conflict_migration["ok"]
+		and conflict_migration["data"]["construction"]["connections"].size() == 1
+		and conflict_migration["data"]["construction"]["connections"][0]["to_unit"] == "canonical_pump",
+		"an old Harbor edge is safely disconnected when the canonical tie-in port is already occupied"
 	)
 
 
@@ -592,11 +646,11 @@ func _test_area02_autosave_stress() -> void:
 	var heavy_tank = main.build_controller.registered_unit_by_id("built_tank_8")
 	var sales_pump_result: Dictionary = main._create_built_unit("pump", _area02_fixture(Vector3(14.0, 0.86, 23.0)), 0, 10, false)
 	var sales_pump = sales_pump_result.get("unit")
-	var dispatch_terminal = main.build_controller.registered_unit_by_id("built_product_dispatch_0")
+	var dispatch_tie_in = main.build_controller.registered_unit_by_id(EquipmentCatalogScript.PRODUCT_TIE_IN_ID)
 	main.build_controller._connect_ports(heavy_tank.get_port("output"), sales_pump.get_port("input"))
-	main.build_controller._connect_ports(sales_pump.get_port("output"), dispatch_terminal.get_port("heavy"))
+	main.build_controller._connect_ports(sales_pump.get_port("output"), dispatch_tie_in.get_port("heavy"))
 	main.built_refinery_model.interact(sales_pump.unit_id)
-	main._on_unit_interacted(dispatch_terminal.unit_id)
+	main._on_unit_interacted(EquipmentCatalogScript.PRODUCT_TERMINAL_ID)
 	var dispatch_event := InputEventKey.new()
 	dispatch_event.keycode = KEY_1
 	dispatch_event.pressed = true
@@ -695,11 +749,13 @@ func _test_main_round_trip(snapshot: Dictionary, source_main) -> void:
 	_expect(restored.build_serial_number == 9, "maximum build serial is restored")
 	_expect(_player_built_count(restored) == 9 and _player_equipment_count(restored) == 9, "all built nodes and model states restore once")
 	var restored_intakes: Array[Dictionary] = restored.build_controller.registered_units.filter(
-		func(entry: Dictionary): return entry["node"].unit_id == "built_crude_intake_0"
+		func(entry: Dictionary): return entry["node"].unit_id == EquipmentCatalogScript.CRUDE_TERMINAL_ID
 	)
 	var restored_dispatches: Array[Dictionary] = restored.build_controller.registered_units.filter(
-		func(entry: Dictionary): return entry["node"].unit_id == "built_product_dispatch_0"
+		func(entry: Dictionary): return entry["node"].unit_id == EquipmentCatalogScript.PRODUCT_TERMINAL_ID
 	)
+	var restored_crude_boundary = restored.build_controller.registered_unit_by_id(EquipmentCatalogScript.CRUDE_TIE_IN_ID)
+	var restored_product_boundary = restored.build_controller.registered_unit_by_id(EquipmentCatalogScript.PRODUCT_TIE_IN_ID)
 	_expect(
 		restored_intakes.size() == 1
 		and restored_dispatches.size() == 1
@@ -708,8 +764,10 @@ func _test_main_round_trip(snapshot: Dictionary, source_main) -> void:
 		)
 		and Vector2(restored_dispatches[0]["node"].position.x, restored_dispatches[0]["node"].position.z).is_equal_approx(
 			WorldLayoutScript.harbor_logistics_anchor("product_dispatch")
-		),
-		"legacy snapshots deterministically instantiate exactly one CI-101 and PD-101 at Harbor"
+		)
+		and restored_crude_boundary != null
+		and restored_product_boundary != null,
+		"round-trip deterministically instantiates unique Harbor terminals and local process boundaries"
 	)
 	_expect(restored.built_refinery_model.network.connection_count() == 7 and restored.build_controller.connections.size() == 7, "logical topology and seven visual pipes restore together")
 	_expect(

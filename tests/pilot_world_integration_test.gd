@@ -100,52 +100,69 @@ func _test_fresh_world_context(main) -> void:
 		not main.build_mode_unlocked and not main.build_controller.unlocked,
 		"Main Refinery construction remains locked during the fresh Pilot loop"
 	)
-	var intake = main.build_controller.registered_unit_by_id("built_crude_intake_0")
-	var dispatch = main.build_controller.registered_unit_by_id("built_product_dispatch_0")
+	var intake = main.build_controller.registered_unit_by_id(EquipmentCatalogScript.CRUDE_TERMINAL_ID)
+	var dispatch = main.build_controller.registered_unit_by_id(EquipmentCatalogScript.PRODUCT_TERMINAL_ID)
+	var crude_tie_in = main.build_controller.registered_unit_by_id(EquipmentCatalogScript.CRUDE_TIE_IN_ID)
+	var product_tie_in = main.build_controller.registered_unit_by_id(EquipmentCatalogScript.PRODUCT_TIE_IN_ID)
 	_expect(
 		is_instance_valid(intake) and is_instance_valid(dispatch)
 		and intake.position.is_equal_approx(WorldLayoutScript.harbor_logistics_position(
-			"crude_intake", float(EquipmentCatalogScript.definition("crude_intake")["size"].y)
+			"crude_intake", float(EquipmentCatalogScript.definition("crude_intake_terminal")["size"].y)
 		))
 		and dispatch.position.is_equal_approx(WorldLayoutScript.harbor_logistics_position(
-			"product_dispatch", float(EquipmentCatalogScript.definition("product_dispatch")["size"].y)
+			"product_dispatch", float(EquipmentCatalogScript.definition("product_dispatch_terminal")["size"].y)
 		))
 		and intake.rotation_quadrants == 0
 		and dispatch.rotation_quadrants == 2
 		and String(intake.get_meta("canonical_area_id")) == "crude_intake"
-		and String(dispatch.get_meta("canonical_area_id")) == "product_dispatch",
-		"stable CI-101 and PD-101 instances use their canonical functional Harbor anchors"
+		and String(dispatch.get_meta("canonical_area_id")) == "product_dispatch"
+		and intake.ports.is_empty()
+		and dispatch.ports.is_empty(),
+		"unique CI-101 and PD-101 logistics terminals stay interactive at Harbor without process ports"
 	)
-	if is_instance_valid(intake) and is_instance_valid(dispatch):
+	_expect(
+		is_instance_valid(crude_tie_in) and is_instance_valid(product_tie_in)
+		and crude_tie_in.position.is_equal_approx(WorldLayoutScript.process_boundary_position(
+			"crude_intake", float(EquipmentCatalogScript.definition("crude_intake")["size"].y)
+		))
+		and product_tie_in.position.is_equal_approx(WorldLayoutScript.process_boundary_position(
+			"product_dispatch", float(EquipmentCatalogScript.definition("product_dispatch")["size"].y)
+		))
+		and bool(crude_tie_in.get_meta("zero_hold_up"))
+		and bool(product_tie_in.get_meta("zero_hold_up")),
+		"CI-201 and PD-201 are fixed zero-hold-up boundaries at the Area 02 edges"
+	)
+	if is_instance_valid(crude_tie_in) and is_instance_valid(product_tie_in):
 		var intake_output_direction := Vector2(
-			intake.output_port.global_position.x - intake.global_position.x,
-			intake.output_port.global_position.z - intake.global_position.z
+			crude_tie_in.output_port.global_position.x - crude_tie_in.global_position.x,
+			crude_tie_in.output_port.global_position.z - crude_tie_in.global_position.z
 		).normalized()
 		_expect(
-			intake_output_direction.dot(WorldLayoutScript.harbor_process_direction("crude_intake")) > 0.9,
-			"CI-101 output port faces inland from Harbor toward the crude/refinery route"
+			intake_output_direction.dot(WorldLayoutScript.process_boundary_spec("crude_intake")["process_facing"]) > 0.9,
+			"CI-201 exposes exactly one refinery-facing crude output"
 		)
 		var dispatch_inputs_inward := true
-		var dispatch_face_3d: Vector3 = dispatch.global_basis * Vector3.BACK
+		var dispatch_face_3d: Vector3 = product_tie_in.global_basis * Vector3.BACK
 		var dispatch_face := Vector2(dispatch_face_3d.x, dispatch_face_3d.z).normalized()
-		for port in dispatch.ports_of_kind("input"):
+		for port in product_tie_in.ports_of_kind("input"):
 			var input_offset := Vector2(
-				port.global_position.x - dispatch.global_position.x,
-				port.global_position.z - dispatch.global_position.z
+				port.global_position.x - product_tie_in.global_position.x,
+				port.global_position.z - product_tie_in.global_position.z
 			)
 			if input_offset.dot(dispatch_face) <= 0.0:
 				dispatch_inputs_inward = false
 		_expect(
 			dispatch_inputs_inward
-			and dispatch_face.dot(WorldLayoutScript.harbor_process_direction("product_dispatch")) > 0.7,
-			"every PD-101 product input shares the refinery-facing side while outbound logistics faces Harbor"
+			and product_tie_in.ports_of_kind("input").size() == 8
+			and dispatch_face.dot(WorldLayoutScript.process_boundary_spec("product_dispatch")["process_facing"]) > 0.7,
+			"PD-201 exposes every supported product input on its local refinery-facing side"
 		)
 	var intake_count := 0
 	var dispatch_count := 0
 	for entry: Dictionary in main.build_controller.registered_units:
-		if entry["node"].unit_id == "built_crude_intake_0":
+		if entry["node"].unit_id == EquipmentCatalogScript.CRUDE_TERMINAL_ID:
 			intake_count += 1
-		if entry["node"].unit_id == "built_product_dispatch_0":
+		if entry["node"].unit_id == EquipmentCatalogScript.PRODUCT_TERMINAL_ID:
 			dispatch_count += 1
 	_expect(intake_count == 1 and dispatch_count == 1, "CI-101 and PD-101 stable IDs are unique")
 	_expect(
@@ -224,7 +241,7 @@ func _test_successful_pilot_operation(main) -> void:
 	)
 	main.playable_stage = "main_refinery"
 	main._update_user_interface()
-	main._on_unit_interacted("built_crude_intake_0")
+	main._on_unit_interacted(EquipmentCatalogScript.CRUDE_TERMINAL_ID)
 	_expect(main.contract_selection_visible, "Harbor CI-101 remains physically interactive after Pilot")
 	var claim_event := InputEventKey.new()
 	claim_event.keycode = KEY_1
@@ -238,6 +255,11 @@ func _test_successful_pilot_operation(main) -> void:
 		and "gå til Area 02" in main.objective_label.text
 		and "Harbor CI-101" in main.objective_label.text,
 		"free Standard claim at Harbor advances the existing Area 02 commissioning objective"
+	)
+	_expect(
+		main.built_refinery_model.network.crude_intake_routes().is_empty()
+		and is_equal_approx(float(main.built_refinery_model.pending_intake_delivery["volume_l"]), 1000.0),
+		"claiming at Harbor cannot auto-fill refinery storage without a local CI-201 pump route"
 	)
 	main.build_controller.set_build_mode(true)
 	main._process(0.0)

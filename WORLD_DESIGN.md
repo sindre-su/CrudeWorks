@@ -6,15 +6,17 @@ This is the authoritative spatial brief for the CrudeWorks V1 Graybox World.
 It translates `CRUDEWORKS_VISION.md` into a compact, traversable refinery
 geography without prescribing final art, final equipment count or vehicles.
 
-**Implementation status: v0.31.4 Harbor Functional Migration.** The
+**Implementation status: v0.31.5 Process Boundary Connections.** The
 world reads Harbor -> Lower Plant -> Main Plant -> Upper Plant, but those names
 now describe progression districts rather than four giant physical shelves.
 One continuous terrain mesh rises inland and contains locally level industrial
 pads, roads, paths and the Pilot process surface.
 
-The first functional migration slice is now active: stable CI-101 and PD-101
-exist once at their Harbor zones, while Pilot, Area 02 building and every other
-process, utility, LAB and storage system remain in place. Normal fresh-game
+The first functional migration slice is now active: stable portless CI-101 and
+PD-101 terminals exist once at their Harbor zones, while fixed CI-201 and
+PD-201 process boundaries keep player pipework at the Area 02 edges. Pilot,
+Area 02 building and every other process, utility, LAB and storage system remain
+in place. Normal fresh-game
 progression continues from Pilot through Harbor CI to Area 02. The Process Scope
 Freeze remains in force.
 
@@ -97,9 +99,9 @@ purpose.
 Leaving Pilot, the `pilot_access` / main-road junction at `(48, 5)` has one
 west-approach `CRUDE INTAKE / CI-101 →` sign. It derives its direction from the
 live CI area center and supports the real post-Pilot objective without a HUD
-waypoint. CI's process output faces north/inland; its opposite logistics side
-faces the sea. PD's product inlet face points north/inland, leaving its outbound
-side toward Harbor.
+waypoint. Harbor CI-101 and PD-101 are logistics terminals without process
+ports. Their physical process continuations are CI-201 and PD-201 at the Area
+02 west/east boundaries.
 
 The next meaningful Harbor decision is the main-road / `area02_access` fork at
 `(56, -10)`: continuing north reaches the inland grade, while turning east
@@ -127,15 +129,16 @@ so they cannot form coplanar duplicate floors.
 
 ## Functional migration and SPEC DEVIATIONS
 
-CI-101 moved from `(82, 2.07, -10)`, rotation `270°`, to
-`(31, 1.32, 49)`, rotation `0°`. PD-101 moved from `(158, 2.17, -10)`,
-rotation `270°`, to `(138, 1.42, 49)`, rotation `180°`. The runtime derives the
-new whole-unit rotation from each Harbor area's process-route target rather than
-rotating only meshes. Ports, collision, labels and interaction therefore share
-the same transform. Old Area 02 support definitions and Harbor reserve masses
-have no runtime authority.
+CI-101 remains at `(31, 1.32, 49)` and PD-101 at `(138, 1.42, 49)` as unique,
+interactive Harbor logistics terminals. They intentionally have no process
+ports. CI-201 at `(82, -10)` exposes one east-facing output and PD-201 at
+`(158, -10)` exposes product inputs facing west. These fixed endpoints have no
+modeled hold-up: Harbor CI claims create canonical pending crude consumed only
+through a running local CI-201 route, while Harbor PD completes sales only from
+a valid route ending at PD-201. The dynamic physical Build Mode sign is removed;
+the overlay and boundary lines remain authoritative.
 
-The following remain intentionally unmigrated in v0.31.4:
+The following remain intentionally unmigrated in v0.31.5:
 
 - fixed Utilities and LS-201;
 - player-built storage, trains and product tanks;
@@ -143,12 +146,17 @@ The following remain intentionally unmigrated in v0.31.4:
 - VDU-301 and FCC-401;
 - active Area 02 construction.
 
-The fixed CI/PD transforms were never serialized. Saves store their stable IDs
-only through process-network edges, so format 2 remains valid and startup
-deterministically creates exactly one unit at each Harbor anchor. Player-built
-absolute positions do not move. Saved logical edges are preserved and their
-visual pipes are rebuilt from the new Harbor ports; old development layouts may
-therefore show long straight graybox pipes until the player reconnects them.
+Save format 2 remains valid. Startup creates exactly one terminal and one local
+boundary per role. Legacy process edges using Harbor IDs remap deterministically
+to CI-201/PD-201; a pre-existing canonical local edge wins conflicts. Player
+placements, inventory and relative layout do not move, and replacement pipe
+visuals are local to Area 02 rather than stretched to Harbor.
+
+SPEC DEVIATIONS: the implementation retains the historic catalog type names
+`crude_intake` and `product_dispatch` for the local boundaries to minimize save
+and model churn; new `*_terminal` catalog types represent Harbor visuals. The
+save schema remains format 2 because its existing migration marker handles the
+ID remap without changing serialized structure.
 
 ## Save and recovery behavior
 
@@ -164,15 +172,17 @@ recognized legacy bounds remain corrupt rather than guessed.
 Before the next functional migration continues:
 
 1. Start fresh, complete Pilot and confirm the objective immediately names CI-101.
-2. Follow the single CI sign from Pilot, inspect CI's sea-side logistics reading
-   and refinery-facing output, then claim the free Standard delivery.
+2. Follow the single CI sign from Pilot, inspect portless Harbor CI-101, then
+   claim the free Standard delivery.
 3. Follow the main road to the Area 02 fork, take the signed east branch and
    confirm the gateway marker at the Process Yard.
-4. Enter Build Mode and verify the unchanged Area 02 surface and ports.
-5. Inspect PD at Harbor: every product inlet belongs on its inland face and the
-   outbound side belongs toward Harbor.
-6. Confirm no CI/PD unit or label remains at either old Area 02 platform edge.
-7. Save/reload and confirm unique Harbor units, progression, economy and player
+4. Enter Build Mode and verify the unchanged Area 02 surface, no dynamic
+   physical build sign, and readable CI-201/PD-201 local process ports.
+5. Claim crude before connecting a route; verify it remains pending, then pump
+   it from CI-201 into a player tank.
+6. Confirm PD-201 inspection cannot sell; connect an eligible product route and
+   complete the sale only by interacting with Harbor PD-101.
+7. Save/reload and confirm unique terminals/boundaries, progression, economy and player
    construction remain intact.
 8. Recheck shoreline, natural grade, floor stability and world recovery.
 

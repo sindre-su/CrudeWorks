@@ -147,7 +147,12 @@ func _test_catalog() -> void:
 	_expect(
 		dispatch_ports.size() == 8
 		and dispatch_ports.all(func(port): return port["kind"] == "input" and port["position"].z > 0.0),
-		"PD-101 exposes every product input on one refinery-facing side"
+		"local PD-201 tie-in exposes every supported product input on one refinery-facing side"
+	)
+	_expect(
+		Catalog.port_definitions("crude_intake_terminal").is_empty()
+		and Catalog.port_definitions("product_dispatch_terminal").is_empty(),
+		"Harbor CI-101 and PD-101 terminal visuals expose no player-build process ports"
 	)
 
 
@@ -208,9 +213,9 @@ func _test_units_and_footprints(world: Node3D) -> void:
 	var intake = BuildableUnitScript.new()
 	intake.configure_buildable("crude_intake", 0)
 	world.add_child(intake)
-	_expect(is_instance_valid(intake.guidance_label) and not intake.guidance_label.visible, "CI-101 has a concise onboarding marker that starts hidden")
+	_expect(is_instance_valid(intake.guidance_label) and not intake.guidance_label.visible, "CI-201 has a concise local-boundary marker that starts hidden")
 	intake.set_onboarding_guidance(true)
-	_expect(intake.guidance_label.visible and "CI-101" in intake.guidance_label.text, "CI-101 onboarding marker can be enabled without changing its equipment state")
+	_expect(intake.guidance_label.visible and "CI-201" in intake.guidance_label.text, "CI-201 boundary marker can be enabled without changing its equipment state")
 
 
 func _test_placement_and_connections(world: Node3D, controller) -> void:
@@ -220,6 +225,12 @@ func _test_placement_and_connections(world: Node3D, controller) -> void:
 	world.add_child(tank)
 	controller.register_unit(tank)
 	_expect(is_instance_valid(tank.liquid_level), "built tank has a visible-fill component")
+	var tank_shell: CylinderMesh = tank.mesh_instance.mesh
+	_expect(
+		not tank_shell.cap_top and not tank_shell.cap_bottom
+		and tank.liquid_level.get_meta("tank_liquid_render_path") == "canonical_cylinder",
+		"player-built tank uses the same cap-free shell and single liquid render path as fixed tanks"
+	)
 	tank.set_tank_fill(0.5, "crude")
 	_expect(tank.liquid_level.visible, "non-empty built tank displays its liquid level")
 	for product_id in ["vacuum_gas_oil", "vacuum_residue", "gasoline_blendstock", "lpg", "light_cycle_oil"]:

@@ -81,6 +81,23 @@ const HARBOR_WAREHOUSE_SPEC := {
 	"height": 7.0,
 }
 
+## Zero-hold-up process boundaries sit just outside the player build rectangle.
+## Harbor terminals remain logistics interactions and never expose process ports.
+const PROCESS_BOUNDARY_SPECS := {
+	"crude_intake": {
+		"id": "site_crude_feed_tie_in",
+		"anchor": Vector2(82.0, -10.0),
+		"process_facing": Vector2(1.0, 0.0),
+		"side": "upstream",
+	},
+	"product_dispatch": {
+		"id": "site_product_dispatch_tie_in",
+		"anchor": Vector2(158.0, -10.0),
+		"process_facing": Vector2(-1.0, 0.0),
+		"side": "downstream",
+	},
+}
+
 const AREA_SPECS := [
 	{
 		"id": "control_room",
@@ -647,6 +664,20 @@ static func harbor_process_direction(area_id: String) -> Vector2:
 		return Vector2.ZERO
 	var target_center: Vector2 = target_area["center"]
 	return (target_center - harbor_logistics_anchor(area_id)).normalized()
+
+
+static func process_boundary_spec(equipment_type: String) -> Dictionary:
+	return PROCESS_BOUNDARY_SPECS.get(equipment_type, {}).duplicate(true)
+
+
+static func process_boundary_position(equipment_type: String, equipment_height: float) -> Vector3:
+	var spec := process_boundary_spec(equipment_type)
+	var anchor: Vector2 = spec.get("anchor", Vector2.ZERO)
+	return Vector3(
+		anchor.x,
+		area02_surface_elevation() + BUILD_PLACEMENT_CLEARANCE + equipment_height * 0.5,
+		anchor.y
+	)
 
 
 static func wayfinding_spec_by_id(sign_id: String) -> Dictionary:

@@ -19,7 +19,7 @@ The game must be:
 
 ## Current project phase — authoritative
 
-**HARBOR FUNCTIONAL MIGRATION COMPLETE** at version `0.31.4`, pending human
+**PROCESS BOUNDARY CONNECTIONS COMPLETE** at version `0.31.5`, pending human
 WASD approval. Playable land is 214 x 264 m and rises continuously
 from Harbor at 0 m to Upper Plant at +10.5 m through one primary road. At the
 Pilot-access junction, one `CRUDE INTAKE / CI-101 →` sign directs the first
@@ -29,10 +29,14 @@ has no destination sign; its route is later/deeper refinery progression. A
 single non-directional Area 02 gateway marker identifies the yard itself.
 Pilot, the v0.30.3 Area 02 spatial contract, v0.30.4 build menu and all process
 behavior remain proven.
-Functional CI-101 and PD-101 now exist once at their canonical Harbor anchors;
-their old Area 02 support positions and non-gameplay reserve masses are gone.
-Normal progression continues Pilot -> Harbor CI -> Area 02, while `pilot_slice`
-remains an explicit debug profile. Broader Utilities, storage, LAB,
+Portless CI-101 and PD-101 logistics terminals exist once at their canonical
+Harbor anchors. Local zero-hold-up CI-201 and PD-201 process boundaries sit at
+the Area 02 west/east edges, so player pipes stay local while Harbor remains the
+place to claim deliveries and complete sales. The dynamic physical Build Mode
+sign is removed; bounds and overlay remain. Fixed and player-built transparent
+tanks share one cap-free liquid renderer. Normal progression continues Pilot ->
+Harbor CI -> Area 02, while `pilot_slice` remains an explicit debug profile.
+Broader Utilities, storage, LAB,
 CDU/HT/VDU/FCC and logistics migration remains paused until a real 1280 x 720
 Pilot -> CI -> Area 02 pass approves this slice.
 
@@ -137,8 +141,9 @@ sake.
 - Preserve the utility dependency chain: Diesel -> GF-101 -> generation -> MCC
   -> Instrument Air/Cooling Water -> process availability. Keep root causes
   visible and avoid redundant alarm cascades.
-- Keep LAB-101 analytical. PD-101 is the normal Area 02 dispatch/sales boundary;
-  tanks and LAB must not acquire duplicate sale paths.
+- Keep LAB-101 analytical. Harbor PD-101 is the only sale interaction and local
+  PD-201 is its zero-hold-up process boundary; tanks and LAB must not acquire
+  duplicate sale paths.
 - The current ΔP model is diagnostic only. Do not add CFD, pipe-friction
   networks, Reynolds-number calculations, transient pressure models or detailed
   thermal/energy balance without explicit approval and a proven player decision.

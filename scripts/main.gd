@@ -13,6 +13,7 @@ const CrudeCatalogScript = preload("res://scripts/crude_contract_catalog.gd")
 const LabAnalysisPanelScript = preload("res://scripts/lab_analysis_panel.gd")
 const WorldLayoutScript = preload("res://scripts/world_layout.gd")
 const WorldBuilderScript = preload("res://scripts/world_builder.gd")
+const TankLiquidVisualScript = preload("res://scripts/tank_liquid_visual.gd")
 
 const AUTOSAVE_INTERVAL_SECONDS := 12.0
 const SAVE_DEBOUNCE_SECONDS := 1.0
@@ -35,7 +36,6 @@ var valve_handle: Node3D
 var build_controller
 var build_mode_unlocked := false
 var build_serial_number := 0
-var build_area_label: Label3D
 var world_builder
 
 var hud_label: Label
@@ -89,6 +89,7 @@ func _ready() -> void:
 	_build_build_system()
 	_build_site_logistics()
 	_build_user_interface()
+	_update_process_visuals(0.0)
 	if persistence_enabled:
 		built_refinery_model.network.topology_changed.connect(_schedule_save)
 		_initialize_persistence()
@@ -162,8 +163,6 @@ func _process(delta: float) -> void:
 	if process_model.objective_complete and not build_mode_unlocked:
 		build_mode_unlocked = true
 		build_controller.set_unlocked(true)
-		build_area_label.text = "AREA 02 BUILD ZONE\nOPEN IN BUILD MODE"
-		build_area_label.modulate = Color("78e08f")
 		_show_notification(
 			"PILOT COMPLETE — Area 02 commissioning unlocked. Receive the free Standard delivery at Harbor CI-101.",
 			8.0
@@ -221,9 +220,6 @@ func _build_environment() -> void:
 	world_builder.name = "GrayboxWorld"
 	add_child(world_builder)
 	world_builder.build_world()
-	build_area_label = world_builder.area02_build_area_label
-	build_area_label.text = "AREA 02 BUILD ZONE\nLOCKED — COMPLETE PILOT"
-	build_area_label.modulate = Color("9ce8c1")
 
 
 func _build_process_area() -> void:
@@ -232,6 +228,7 @@ func _build_process_area() -> void:
 		2.1, 4.2, Color("343b3d")
 	)
 	units[raw_tank.unit_id] = raw_tank
+	TankLiquidVisualScript.open_transparent_shell(raw_tank.mesh_instance.mesh as CylinderMesh)
 	raw_tank.make_transparent(0.48)
 	_create_liquid_level(raw_tank, "raw_tank", 1.82, 3.75, Color("241815"))
 
@@ -266,6 +263,7 @@ func _build_process_area() -> void:
 		1.55, 3.6, Color("bdcfca")
 	)
 	units[light_tank.unit_id] = light_tank
+	TankLiquidVisualScript.open_transparent_shell(light_tank.mesh_instance.mesh as CylinderMesh)
 	light_tank.make_transparent(0.42)
 	_create_liquid_level(light_tank, "light_tank", 1.30, 3.15, Color("a8e5dc"))
 
@@ -274,6 +272,7 @@ func _build_process_area() -> void:
 		1.55, 3.6, Color("d2b541")
 	)
 	units[diesel_tank.unit_id] = diesel_tank
+	TankLiquidVisualScript.open_transparent_shell(diesel_tank.mesh_instance.mesh as CylinderMesh)
 	diesel_tank.make_transparent(0.42)
 	_create_liquid_level(diesel_tank, "diesel_tank", 1.30, 3.15, Color("e8bd22"))
 
@@ -282,6 +281,7 @@ func _build_process_area() -> void:
 		1.55, 3.6, Color("494146")
 	)
 	units[heavy_tank.unit_id] = heavy_tank
+	TankLiquidVisualScript.open_transparent_shell(heavy_tank.mesh_instance.mesh as CylinderMesh)
 	heavy_tank.make_transparent(0.42)
 	_create_liquid_level(heavy_tank, "heavy_tank", 1.30, 3.15, Color("241c20"))
 
@@ -335,8 +335,22 @@ func _build_build_system() -> void:
 
 
 func _build_site_logistics() -> void:
-	_create_fixed_logistics_unit("crude_intake")
-	_create_fixed_logistics_unit("product_dispatch")
+	_create_harbor_logistics_terminal(
+		"crude_intake", "crude_intake_terminal",
+		EquipmentCatalogScript.CRUDE_TERMINAL_ID, "CI-101 CRUDE INTAKE"
+	)
+	_create_harbor_logistics_terminal(
+		"product_dispatch", "product_dispatch_terminal",
+		EquipmentCatalogScript.PRODUCT_TERMINAL_ID, "PD-101 PRODUCT DISPATCH"
+	)
+	_create_process_boundary_tie_in(
+		"crude_intake", EquipmentCatalogScript.CRUDE_TIE_IN_ID,
+		"CI-201 CRUDE FEED TIE-IN"
+	)
+	_create_process_boundary_tie_in(
+		"product_dispatch", EquipmentCatalogScript.PRODUCT_TIE_IN_ID,
+		"PD-201 PRODUCT EXPORT TIE-IN"
+	)
 	var generator = _create_box_unit(
 		"area02_generator", "PG-101 GENERATOR", Vector3(-24.0, 1.2, 19.0),
 		Vector3(2.6, 2.4, 2.2), Color("c99b32")
@@ -352,7 +366,12 @@ func _build_site_logistics() -> void:
 		1.15, 3.0, Color("8a7134")
 	)
 	units[fuel_tank.unit_id] = fuel_tank
+	TankLiquidVisualScript.open_transparent_shell(fuel_tank.mesh_instance.mesh as CylinderMesh)
 	fuel_tank.make_transparent(0.72)
+	_create_liquid_level(
+		fuel_tank, "generator_fuel", 0.96, 2.58,
+		BuildableUnitScript.TANK_LIQUID_COLORS["diesel"]
+	)
 	fuel_tank.create_alarm_beacon(Vector3(0.0, 1.72, 0.0))
 	var instrument_air = _create_box_unit(
 		"instrument_air", "IA-101 INSTRUMENT AIR", Vector3(-16.0, 1.1, 19.0),
@@ -373,29 +392,61 @@ func _build_site_logistics() -> void:
 	cooling_pump.create_alarm_beacon(Vector3(0.0, 1.07, 0.0))
 
 
-func _create_fixed_logistics_unit(equipment_type: String) -> void:
+func _create_harbor_logistics_terminal(
+	area_id: String,
+	equipment_type: String,
+	unit_id: String,
+	display_name: String
+) -> void:
 	var definition := EquipmentCatalogScript.definition(equipment_type)
 	var unit = BuildableUnitScript.new()
-	unit.configure_buildable(equipment_type, 0)
+	unit.configure_buildable(equipment_type, 0, unit_id, display_name)
+	unit.remove_from_group("player_built")
+	unit.add_to_group("fixed_site")
 	unit.position = WorldLayoutScript.harbor_logistics_position(
+		area_id, float(definition["size"].y)
+	)
+	var local_process_facing := Vector2(0.0, -1.0) if area_id == "crude_intake" else Vector2(0.0, 1.0)
+	unit.rotation_quadrants = WorldLayoutScript.cardinal_rotation_quadrants(
+		local_process_facing,
+		WorldLayoutScript.harbor_process_direction(area_id)
+	)
+	unit.rotation.y = deg_to_rad(float(unit.rotation_quadrants * 90))
+	unit.set_meta("canonical_area_id", area_id)
+	unit.set_meta("canonical_anchor_id", area_id)
+	unit.set_meta("logistics_terminal_only", true)
+	unit.set_meta(
+		"process_route_target_id",
+		WorldLayoutScript.area_by_id(area_id).get("process_route_target_id", "")
+	)
+	add_child(unit)
+	build_controller.register_fixed_unit(unit)
+
+
+func _create_process_boundary_tie_in(
+	equipment_type: String,
+	unit_id: String,
+	display_name: String
+) -> void:
+	var definition := EquipmentCatalogScript.definition(equipment_type)
+	var spec := WorldLayoutScript.process_boundary_spec(equipment_type)
+	var unit = BuildableUnitScript.new()
+	unit.configure_buildable(equipment_type, 0, unit_id, display_name)
+	unit.remove_from_group("player_built")
+	unit.add_to_group("fixed_site")
+	unit.position = WorldLayoutScript.process_boundary_position(
 		equipment_type, float(definition["size"].y)
 	)
-	# Fixed logistics orient by the shared process face, not by one laterally
-	# offset port. This keeps every PD inlet on the inland side as a unit.
 	var local_process_facing := (
 		Vector2(0.0, -1.0) if equipment_type == "crude_intake" else Vector2(0.0, 1.0)
 	)
 	unit.rotation_quadrants = WorldLayoutScript.cardinal_rotation_quadrants(
-		local_process_facing,
-		WorldLayoutScript.harbor_process_direction(equipment_type)
+		local_process_facing, spec["process_facing"]
 	)
 	unit.rotation.y = deg_to_rad(float(unit.rotation_quadrants * 90))
-	unit.set_meta("canonical_area_id", equipment_type)
-	unit.set_meta("canonical_anchor_id", equipment_type)
-	unit.set_meta(
-		"process_route_target_id",
-		WorldLayoutScript.area_by_id(equipment_type).get("process_route_target_id", "")
-	)
+	unit.set_meta("process_boundary", true)
+	unit.set_meta("zero_hold_up", true)
+	unit.set_meta("boundary_side", spec["side"])
 	add_child(unit)
 	built_refinery_model.register_unit(unit.unit_id, unit.equipment_type, unit.display_name)
 	build_controller.register_fixed_unit(unit)
@@ -941,16 +992,19 @@ func _update_unit_statuses() -> void:
 		var built_unit = entry["node"]
 		if not is_instance_valid(built_unit):
 			continue
-		built_unit.set_status(built_refinery_model.unit_status(built_unit.unit_id))
-		built_unit.set_alarm_severity(String(built_alarm_severities.get(built_unit.unit_id, "")))
-		var state: Dictionary = built_refinery_model.equipment.get(built_unit.unit_id, {})
-		if state.get("type", "") == "crude_intake":
+		if built_unit.unit_id == EquipmentCatalogScript.CRUDE_TERMINAL_ID:
+			built_unit.set_status(built_refinery_model.unit_status(EquipmentCatalogScript.CRUDE_TIE_IN_ID))
 			built_unit.set_onboarding_guidance(not built_refinery_model.first_intake_received)
-		elif state.get("type", "") == "product_dispatch":
+		elif built_unit.unit_id == EquipmentCatalogScript.PRODUCT_TERMINAL_ID:
+			built_unit.set_status(built_refinery_model.unit_status(EquipmentCatalogScript.PRODUCT_TIE_IN_ID))
 			built_unit.set_onboarding_guidance(
 				built_refinery_model.first_atmospheric_production
 				and not built_refinery_model.first_physical_dispatch_completed
 			)
+		else:
+			built_unit.set_status(built_refinery_model.unit_status(built_unit.unit_id))
+		built_unit.set_alarm_severity(String(built_alarm_severities.get(built_unit.unit_id, "")))
+		var state: Dictionary = built_refinery_model.equipment.get(built_unit.unit_id, {})
 		if state.get("type", "") == "tank":
 			built_unit.set_tank_fill(
 				state["volume_l"] / state["capacity_l"],
@@ -1032,6 +1086,10 @@ func _update_process_visuals(delta: float) -> void:
 	_set_liquid_level("light_tank", process_model.light_product_l / ProcessModelScript.PRODUCT_TANK_CAPACITY_L)
 	_set_liquid_level("diesel_tank", process_model.diesel_volume_l / ProcessModelScript.PRODUCT_TANK_CAPACITY_L)
 	_set_liquid_level("heavy_tank", process_model.heavy_product_l / ProcessModelScript.PRODUCT_TANK_CAPACITY_L)
+	_set_liquid_level(
+		"generator_fuel",
+		built_refinery_model.generator_fuel_l / BuiltRefineryModelScript.GENERATOR_FUEL_CAPACITY_L
+	)
 
 
 func _set_flow_group(group_name: String, enabled: bool, normalized_rate: float) -> void:
@@ -1045,14 +1103,7 @@ func _set_liquid_level(tank_id: String, fill_ratio: float) -> void:
 	if not liquid_levels.has(tank_id):
 		return
 	var data: Dictionary = liquid_levels[tank_id]
-	var liquid: MeshInstance3D = data["node"]
-	var max_height: float = data["max_height"]
-	var bottom_y: float = data["bottom_y"]
-	var visible_ratio := clampf(fill_ratio, 0.0, 1.0)
-	var display_height := maxf(max_height * visible_ratio, 0.015)
-	liquid.scale.y = display_height
-	liquid.position.y = bottom_y + display_height * 0.5
-	liquid.visible = visible_ratio > 0.001
+	TankLiquidVisualScript.set_fill(data, fill_ratio, data["material"].albedo_color)
 
 
 func _on_unit_interacted(unit_id: String) -> void:
@@ -1108,12 +1159,14 @@ func _on_unit_interacted(unit_id: String) -> void:
 			message = built_refinery_model.toggle_instrument_air_compressor()["message"]
 		"cooling_tower", "cooling_water":
 			message = built_refinery_model.toggle_cooling_water_pump()["message"]
-		"built_crude_intake_0":
+		EquipmentCatalogScript.CRUDE_TERMINAL_ID:
 			_open_contract_selection(unit_id)
 			return
-		"built_product_dispatch_0":
+		EquipmentCatalogScript.PRODUCT_TERMINAL_ID:
 			_open_physical_product_dispatch(unit_id)
 			return
+		EquipmentCatalogScript.CRUDE_TIE_IN_ID, EquipmentCatalogScript.PRODUCT_TIE_IN_ID:
+			message = built_refinery_model.inspect_unit(unit_id)
 		"raw_tank":
 			message = "Råolje: %.0f liter, %.1f °C." % [
 				process_model.crude_volume_l,
@@ -1396,7 +1449,7 @@ func _update_contract_selection_text(error_text := "") -> void:
 	var standard := CrudeCatalogScript.definition("standard")
 	var heavy := CrudeCatalogScript.definition("heavy")
 	var sour := CrudeCatalogScript.definition("sour")
-	var intake_mode := contract_selection_source_id == "built_crude_intake_0"
+	var intake_mode := contract_selection_source_id == EquipmentCatalogScript.CRUDE_TERMINAL_ID
 	var standard_price := (
 		"FIRST BATCH FREE / 0 kr"
 		if built_refinery_model.commissioning_batch_available
@@ -1437,7 +1490,7 @@ func _select_contract(contract_id: String) -> void:
 		return
 	var result: Dictionary = (
 		built_refinery_model.receive_intake_delivery(contract_id, true)
-		if contract_selection_source_id == "built_crude_intake_0"
+		if contract_selection_source_id == EquipmentCatalogScript.CRUDE_TERMINAL_ID
 		else built_refinery_model.load_crude_batch(contract_selection_source_id, true, contract_id)
 	)
 	if not result["ok"]:
@@ -1468,7 +1521,9 @@ func _open_physical_product_dispatch(terminal_id: String) -> void:
 
 
 func _update_product_dispatch_text(error_text := "") -> void:
-	var orders: Array[Dictionary] = built_refinery_model.available_physical_dispatch_orders(physical_dispatch_terminal_id)
+	var orders: Array[Dictionary] = built_refinery_model.available_physical_dispatch_orders(
+		EquipmentCatalogScript.PRODUCT_TIE_IN_ID
+	)
 	var rows: Array[String] = []
 	for index in orders.size():
 		var order: Dictionary = orders[index]
@@ -1495,11 +1550,13 @@ func _handle_product_dispatch_input(event: InputEventKey) -> void:
 	var index := -1
 	if event.keycode >= KEY_1 and event.keycode <= KEY_9:
 		index = int(event.keycode) - int(KEY_1)
-	var orders: Array[Dictionary] = built_refinery_model.available_physical_dispatch_orders(physical_dispatch_terminal_id)
+	var orders: Array[Dictionary] = built_refinery_model.available_physical_dispatch_orders(
+		EquipmentCatalogScript.PRODUCT_TIE_IN_ID
+	)
 	if index < 0 or index >= orders.size():
 		return
 	var result: Dictionary = built_refinery_model.dispatch_product_from_terminal(
-		physical_dispatch_terminal_id, String(orders[index]["tank_id"])
+		EquipmentCatalogScript.PRODUCT_TIE_IN_ID, String(orders[index]["tank_id"])
 	)
 	if not result["ok"]:
 		_update_product_dispatch_text(result["message"])
@@ -1924,9 +1981,6 @@ func _apply_snapshot(snapshot: Dictionary) -> Dictionary:
 	process_model.apply_saved_state(snapshot["pilot"])
 	build_mode_unlocked = process_model.objective_complete
 	build_controller.set_unlocked(build_mode_unlocked)
-	if build_mode_unlocked:
-		build_area_label.text = "AREA 02 BUILD ZONE\nOPEN IN BUILD MODE"
-		build_area_label.modulate = Color("78e08f")
 	world_builder.set_build_visualization_visible(build_controller.active)
 	player.position = Vector3(
 		float(snapshot["player"]["position"][0]),
@@ -2041,27 +2095,9 @@ func _create_liquid_level(
 	max_height: float,
 	color: Color
 ) -> void:
-	var liquid := MeshInstance3D.new()
-	var mesh := CylinderMesh.new()
-	mesh.top_radius = radius
-	mesh.bottom_radius = radius
-	mesh.height = 1.0
-	mesh.radial_segments = 32
-	liquid.mesh = mesh
-	var liquid_material := StandardMaterial3D.new()
-	liquid_material.albedo_color = color
-	liquid_material.metallic = 0.05
-	liquid_material.roughness = 0.18
-	liquid_material.emission_enabled = true
-	liquid_material.emission = color
-	liquid_material.emission_energy_multiplier = 0.18
-	liquid.material_override = liquid_material
-	tank.add_child(liquid)
-	liquid_levels[tank_id] = {
-		"node": liquid,
-		"max_height": max_height,
-		"bottom_y": -max_height * 0.5,
-	}
+	liquid_levels[tank_id] = TankLiquidVisualScript.create(
+		tank, radius, max_height, color, 32
+	)
 
 
 func _create_pump_rotor(pump) -> Node3D:

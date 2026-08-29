@@ -19,7 +19,6 @@ const COLOR_BOUNDARY := Color("#9c906b")
 const COLOR_PROTOTYPE_PAD := Color("#65736d")
 const COLOR_FIXED_STRUCTURE := Color("#444c51")
 
-var area02_build_area_label: Label3D
 var area02_build_overlay: Node3D
 var terrace_nodes: Dictionary = {}
 var area_nodes: Dictionary = {}
@@ -430,16 +429,6 @@ func _build_prototype_pads() -> void:
 			Color("#7896a3")
 		)
 		build_visual_nodes.append(boundary)
-
-	var build_sign = GrayboxSignScript.new()
-	build_sign.name = "Orientation_build_area"
-	build_sign.position = Vector3(build_center.x, build_elevation, build_bounds.end.y + 1.2)
-	add_child(build_sign)
-	build_sign.configure("AREA 02 BUILD ZONE", "LOCKED — COMPLETE PILOT", "", Vector2(5.2, 1.2))
-	orientation_nodes["build_area"] = build_sign
-	build_visual_nodes.append(build_sign)
-	area02_build_area_label = build_sign.label
-
 
 func _build_starter_orientation() -> void:
 	for spec: Dictionary in WorldLayoutScript.WAYFINDING_SPECS:
