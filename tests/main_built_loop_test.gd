@@ -198,7 +198,13 @@ func _run_test() -> void:
 	main.built_refinery_model.equipment[heater.unit_id]["temperature_c"] = 200.0
 	_expect("ÅPEN" in valve.status_label.text and is_equal_approx(valve.valve_handle.rotation.y, 0.0), "opening valve updates world status and handle")
 	main.built_refinery_model.tick(100.0)
-	_expect(main.built_refinery_model.diesel_is_approved(), "Main-integrated refinery produces approved diesel")
+	main._on_unit_interacted("built_tank_7")
+	main._on_unit_interacted("sales_terminal")
+	var close_lab_event := InputEventKey.new()
+	close_lab_event.keycode = KEY_ENTER
+	close_lab_event.pressed = true
+	main._unhandled_input(close_lab_event)
+	_expect(main.built_refinery_model.diesel_is_approved(), "Main-integrated refinery produces LAB-approved diesel")
 	main._update_unit_statuses()
 	_expect(pump.alarm_severity.is_empty() and heater.alarm_severity.is_empty(), "restored route conditions clear derived pump and heater beacons automatically")
 	_expect("KLAR" in main.units["sales_terminal"].status_label.text, "terminal becomes ready for approved built diesel")
@@ -218,28 +224,23 @@ func _run_test() -> void:
 	_expect(
 		main.process_model.money == money_before_lab
 		and is_equal_approx(main.built_refinery_model.equipment["built_tank_7"]["volume_l"], diesel_before_lab)
-		and "PD-101" in main.notification_label.text,
+		and main.lab_analysis_panel.visible,
 		"LAB-101 does not sell the commissioning batch directly"
 	)
+	main._unhandled_input(close_lab_event)
 	_dispatch_main_product(main, "diesel")
-	_expect(main.process_model.money == 3200, "PD-101 credits the commissioning diesel sale through the shared economy")
-	_expect(not diesel_visual.liquid_level.visible, "PD-101 sale immediately clears the sold tank visual from canonical inventory")
+	_expect(main.process_model.money == 2000, "PD-101 credits exactly 200 L of commissioning diesel through the shared economy")
+	_expect(diesel_visual.liquid_level.visible and is_equal_approx(main.built_refinery_model.equipment["built_tank_7"]["volume_l"], 150.0), "PD-101 contract delivery preserves excess diesel in canonical inventory")
 	_expect(main.built_refinery_model.commissioning_contract_complete, "first built sale persistently completes Area 02 commissioning")
-	_expect(main.batch_report_visible, "successful built sale opens a persistent batch report")
-	_expect(main.player.input_blocked and main.build_controller.input_blocked, "batch report blocks movement, interaction and build controls")
-	_expect("Råolje behandlet" in main.batch_report_label.text and "Resultat" in main.batch_report_label.text, "batch report explains process yield and economy")
-	_expect("LS-201 lokalstasjon" in main.batch_report_label.text, "first commissioning report clearly unlocks the local control station")
+	_expect(not main.batch_report_visible and not main.player.input_blocked and not main.build_controller.input_blocked, "contract completion returns directly to physical play without a legacy batch-report modal")
 	_expect("OMRÅDE 02 FULLFØRT" in main.built_refinery_model.objective_text(), "objective changes after commissioning completion")
-	_expect(not main.built_refinery_model.diesel_is_approved(), "Main-integrated sale consumes approved diesel")
+	_expect(main.built_refinery_model.diesel_is_approved(), "contract delivery preserves the approved excess diesel")
 	main._update_unit_statuses()
 	_expect("PRØVE KREVES" in main.units["sales_terminal"].status_label.text, "terminal keeps diesel LAB state distinct while product inventory remains")
 	main._on_unit_interacted("sales_terminal")
-	_expect(main.process_model.money == 3200, "repeated LAB-101 interaction cannot duplicate PD-101 sale revenue")
-	var dismiss_event := InputEventKey.new()
-	dismiss_event.keycode = KEY_ENTER
-	dismiss_event.pressed = true
-	main._unhandled_input(dismiss_event)
-	_expect(not main.batch_report_visible and not main.player.input_blocked and not main.build_controller.input_blocked, "Enter dismisses the report and restores gameplay controls")
+	_expect(main.process_model.money == 2000 and "dieselprøve" in main.notification_label.text, "repeated LAB-101 interaction cannot duplicate PD-101 sale revenue")
+	_dispatch_main_product(main, "diesel")
+	_expect(main.process_model.money == 3200 and is_zero_approx(main.built_refinery_model.equipment["built_tank_7"]["volume_l"]), "explicit diesel spotsalg clears only the excess inventory")
 	var heavy_tank = _unit(main, "built_tank_8")
 	var heavy_before_direct_interaction: float = main.built_refinery_model.equipment[heavy_tank.unit_id]["volume_l"]
 	main._on_unit_interacted(heavy_tank.unit_id)
@@ -403,7 +404,7 @@ func _test_heavy_contract_through_main() -> void:
 	main._on_unit_interacted("sales_terminal")
 	_expect(main.lab_analysis_panel.visible and main.player.input_blocked and main.build_controller.input_blocked, "LAB analysis opens a modal and blocks field/build controls")
 	_expect(main.discard_confirmation_time_left <= 0.0, "opening a lab analysis also cancels stale disposal intent")
-	_expect("P-001 — TUNG" in main.lab_analysis_panel.result_label.text and "TUNG LEVERANSE" in main.lab_analysis_panel.result_label.text and "Tung fraksjon" in main.lab_analysis_panel.result_label.text and "630 L / krav 600 L" in main.lab_analysis_panel.result_label.text and "flow 10.0 L/s" in main.lab_analysis_panel.result_label.text and "GODKJENT" in main.lab_analysis_panel.result_label.text and "sendes fra PD-101" in main.lab_analysis_panel.result_label.text, "Heavy lab separates diesel QC and average flow from the ordered heavy-fraction target")
+	_expect("P-001 — TUNG RÅOLJE" in main.lab_analysis_panel.result_label.text and "Diesel i tank" in main.lab_analysis_panel.result_label.text and "flow 10.0 L/s" in main.lab_analysis_panel.result_label.text and "GODKJENT" in main.lab_analysis_panel.result_label.text and "kontrakt og spotsalg" in main.lab_analysis_panel.result_label.text, "Heavy LAB view reports analytical quality without a crude-coupled delivery target")
 	var heavy_money_before_lab_enter: int = main.process_model.money
 	var dispatch_event := InputEventKey.new()
 	dispatch_event.keycode = KEY_ENTER
@@ -411,10 +412,9 @@ func _test_heavy_contract_through_main() -> void:
 	main._unhandled_input(dispatch_event)
 	_expect(not main.lab_analysis_panel.visible and not main.batch_report_visible and main.process_model.money == heavy_money_before_lab_enter, "approved LAB-101 Enter closes analysis without selling product")
 	_dispatch_main_product(main, "diesel")
-	_expect(main.batch_report_visible and main.process_model.money == 3580, "PD-101 Heavy dispatch credits 1 760 kr product revenue and one 1 000 kr bonus")
-	_expect("BATCH GODKJENT — TUNG LEVERANSE" in main.batch_report_label.text and "Tung fraksjon 630 / 600 L" in main.batch_report_label.text and "flow 10.0 L/s" in main.batch_report_label.text and "Kontraktbonus" in main.batch_report_label.text, "Heavy batch report records the fulfilled order, average flow and its bonus")
+	_expect(not main.batch_report_visible and main.process_model.money == 2420 and is_equal_approx(main.built_refinery_model.equipment["built_tank_7"]["volume_l"], 20.0), "PD-101 fulfills the independent 200 L diesel contract without a crude-selection bonus")
 	main._on_unit_interacted("sales_terminal")
-	_expect(main.process_model.money == 3580, "repeated LAB-101 use cannot duplicate the Heavy bonus")
+	_expect(main.process_model.money == 2420, "repeated LAB-101 use cannot duplicate contract revenue")
 	main.built_refinery_model.equipment[pump.unit_id]["condition_percent"] = 42.0
 	var money_before_pump_service: int = main.process_model.money
 	main._on_maintenance_unit_interacted(pump.unit_id)
@@ -456,7 +456,7 @@ func _test_offspec_lab_through_main() -> void:
 	var money_before: int = main.process_model.money
 	var products_before: float = main.built_refinery_model.product_volume_l()
 	main._on_unit_interacted("sales_terminal")
-	_expect(main.lab_analysis_panel.visible and "OFF-SPEC" in main.lab_analysis_panel.result_label.text and "Råoljetanken er tom" in main.lab_analysis_panel.result_label.text, "completed cold Heavy batch opens a truthful OFF-SPEC lab report")
+	_expect(main.lab_analysis_panel.visible and "OFF-SPEC" in main.lab_analysis_panel.result_label.text and "Dieselkvaliteten" in main.lab_analysis_panel.result_label.text, "completed cold Heavy batch opens a truthful analytical OFF-SPEC report")
 	_expect("Enter — send" not in main.lab_analysis_panel.result_label.text and "R x2" in main.lab_analysis_panel.result_label.text, "OFF-SPEC modal offers recovery but no dispatch action")
 	var blocked_enter := InputEventKey.new()
 	blocked_enter.keycode = KEY_ENTER

@@ -627,8 +627,8 @@ func _build_user_interface() -> void:
 	product_dispatch_panel.anchor_bottom = 0.5
 	product_dispatch_panel.offset_left = -330.0
 	product_dispatch_panel.offset_right = 330.0
-	product_dispatch_panel.offset_top = -195.0
-	product_dispatch_panel.offset_bottom = 195.0
+	product_dispatch_panel.offset_top = -270.0
+	product_dispatch_panel.offset_bottom = 270.0
 	product_dispatch_panel.visible = false
 	product_dispatch_label = Label.new()
 	product_dispatch_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -809,7 +809,7 @@ func _update_user_interface() -> void:
 			]
 		elif focused.unit_id.begins_with("built_"):
 			prompt_label.text = built_refinery_model.interaction_prompt(focused.unit_id)
-		elif focused.unit_id == "sales_terminal" and built_refinery_model.commissioning_contract_complete:
+		elif focused.unit_id == "sales_terminal" and process_model.objective_complete:
 			var lab_status: Dictionary = built_refinery_model.lab_dispatch_status()
 			if not built_refinery_model.can_use_site_consumer("lab")["ok"]:
 				prompt_label.text = "LAB-101 — POWER LOST"
@@ -1121,22 +1121,19 @@ func _on_unit_interacted(unit_id: String) -> void:
 			message = process_model.cycle_heater()
 		"sales_terminal":
 			if process_model.objective_complete:
-				if built_refinery_model.commissioning_contract_complete:
-					var lab_status: Dictionary = built_refinery_model.lab_dispatch_status()
-					if lab_status.get("sample_current", false):
-						var lab_power: Dictionary = built_refinery_model.can_use_site_consumer("lab")
-						if not lab_power["ok"]:
-							message = lab_power["message"]
-						else:
-							var analysis: Dictionary = built_refinery_model.analyze_diesel_sample()
-							if analysis["ok"]:
-								_open_lab_analysis(analysis)
-								return
-							message = analysis["message"]
+				var lab_status: Dictionary = built_refinery_model.lab_dispatch_status()
+				if lab_status.get("sample_current", false):
+					var lab_power: Dictionary = built_refinery_model.can_use_site_consumer("lab")
+					if not lab_power["ok"]:
+						message = lab_power["message"]
 					else:
-						message = lab_status["message"]
+						var analysis: Dictionary = built_refinery_model.analyze_diesel_sample()
+						if analysis["ok"]:
+							_open_lab_analysis(analysis)
+							return
+						message = analysis["message"]
 				else:
-					message = "Første Område 02-produkt sendes fra PD-101. Koble en produkttank via salgspumpe."
+					message = lab_status["message"]
 			else:
 				message = process_model.sell_diesel()
 		"area02_control":
@@ -1456,15 +1453,18 @@ func _update_contract_selection_text(error_text := "") -> void:
 		else "%d kr" % standard["purchase_cost"]
 	)
 	contract_selection_label.text = (
-		("RÅOLJEINNTAK CI-101 — VELG 1 000 L\nPenger: %d kr\n\n" if intake_mode else "LEVERINGSORDRE — VELG 1 000 L\nPenger: %d kr\n\n") % process_model.money
+		("CI-101 — RÅOLJETILFØRSEL, 1 000 L\nPenger: %d kr\n\n" if intake_mode else "RÅOLJETILFØRSEL — VELG 1 000 L\nPenger: %d kr\n\n") % process_model.money
 		+ "1 %s / %s — %s\n  %s\n\n" % [
-			standard["order_name"], standard["short_name"], standard_price, standard["description"],
+			standard["display_name"], standard["short_name"], standard_price,
+			standard["description"] + "\n  " + CrudeCatalogScript.expected_yield_description("standard"),
 		]
-		+ "2 %s / %s — %d kr\n  %s • bonus +%d kr\n\n" % [
-			heavy["order_name"], heavy["short_name"], heavy["purchase_cost"], heavy["description"], heavy["delivery_bonus"],
+		+ "2 %s / %s — %d kr\n  %s\n\n" % [
+			heavy["display_name"], heavy["short_name"], heavy["purchase_cost"],
+			heavy["description"] + "\n  " + CrudeCatalogScript.expected_yield_description("heavy"),
 		]
 		+ "3 %s / %s — %d kr\n  %s\n\n" % [
-			sour["order_name"], sour["short_name"], sour["purchase_cost"], sour["description"],
+			sour["display_name"], sour["short_name"], sour["purchase_cost"],
+			sour["description"] + "\n  " + CrudeCatalogScript.expected_yield_description("sour"),
 		]
 		+ (error_text + "\n\n" if not error_text.is_empty() else "")
 		+ ("1 / 2 / 3 — kjøp og motta    Esc — avbryt" if intake_mode else "1 / 2 / 3 — kjøp og last    Esc — avbryt")
@@ -1521,24 +1521,44 @@ func _open_physical_product_dispatch(terminal_id: String) -> void:
 
 
 func _update_product_dispatch_text(error_text := "") -> void:
-	var orders: Array[Dictionary] = built_refinery_model.available_physical_dispatch_orders(
+	var actions: Array[Dictionary] = built_refinery_model.available_physical_dispatch_actions(
 		EquipmentCatalogScript.PRODUCT_TIE_IN_ID
 	)
+	var contract: Dictionary = built_refinery_model.product_contract_status()
+	var contract_lines := "INGEN AKTIV KONTRAKT\nSpotsalg er fortsatt tilgjengelig."
+	if contract["status"] != "none":
+		contract_lines = (
+			("AKTIV KONTRAKT" if contract["status"] == "active" else "KONTRAKT FULLFØRT")
+			+ " — %s\n" % contract["display_name"]
+			+ "Krav: %.0f L %s • %s\n" % [
+				contract["required_quantity_l"], contract["product_name"],
+				String(contract["required_quality_status"]).replace("_", "-").to_upper(),
+			]
+			+ "Levert: %.0f / %.0f L • gjenstår %.0f L\n" % [
+				contract["delivered_l"], contract["required_quantity_l"], contract["remaining_l"],
+			]
+			+ "Kontraktsrate: %.0f kr/L%s" % [
+				contract["unit_value"],
+				" • bonus %d kr" % contract["completion_bonus"] if int(contract["completion_bonus"]) > 0 else "",
+			]
+		)
 	var rows: Array[String] = []
-	for index in orders.size():
-		var order: Dictionary = orders[index]
-		var state := "KLAR" if order["ready"] else "MANGLER %.0f L" % maxf(0.0, float(order["target_l"]) - float(order["volume_l"]))
-		rows.append("%d %s\n  %.0f / %.0f L • %d kr • %s" % [
-			index + 1, order["order_name"], order["volume_l"], order["target_l"],
-			order["revenue_preview"], state,
+	for index in actions.size():
+		var action: Dictionary = actions[index]
+		var action_name := "LEVER TIL KONTRAKT" if action["mode"] == "contract" else "SPOTSALG"
+		var state := "KLAR" if action["ready"] else String(action["blocked_reason"])
+		rows.append("%d %s — %s\n  %.0f L sendes • %d kr • %s" % [
+			index + 1, action_name, action["product_name"], action["dispatch_volume_l"],
+			action["revenue_preview"], state,
 		])
 	if rows.is_empty():
-		rows.append("Ingen produktlinje er koblet til PD-101.\nKoble tank → salgspumpe → riktig PD-101-inngang.")
+		rows.append("Ingen fylt produktlinje er koblet til PD-201.\nKoble tank → salgspumpe → riktig PD-201-inngang.")
 	product_dispatch_label.text = (
-		"PD-101 — PRODUKTDISPATCH\n\n"
+		"PD-101 — PRODUKTSALG\n\n"
+		+ contract_lines + "\n\n"
 		+ "\n\n".join(rows)
 		+ ("\n\n" + error_text if not error_text.is_empty() else "")
-		+ ("\n\n1–%d — send produkt    Esc — avbryt" % orders.size() if not orders.is_empty() else "\n\nEsc — avbryt")
+		+ ("\n\n1–%d — velg handling    Esc — avbryt" % actions.size() if not actions.is_empty() else "\n\nEsc — avbryt")
 	)
 
 
@@ -1550,13 +1570,18 @@ func _handle_product_dispatch_input(event: InputEventKey) -> void:
 	var index := -1
 	if event.keycode >= KEY_1 and event.keycode <= KEY_9:
 		index = int(event.keycode) - int(KEY_1)
-	var orders: Array[Dictionary] = built_refinery_model.available_physical_dispatch_orders(
+	var actions: Array[Dictionary] = built_refinery_model.available_physical_dispatch_actions(
 		EquipmentCatalogScript.PRODUCT_TIE_IN_ID
 	)
-	if index < 0 or index >= orders.size():
+	if index < 0 or index >= actions.size():
 		return
-	var result: Dictionary = built_refinery_model.dispatch_product_from_terminal(
-		EquipmentCatalogScript.PRODUCT_TIE_IN_ID, String(orders[index]["tank_id"])
+	var action: Dictionary = actions[index]
+	if not action["ready"]:
+		_update_product_dispatch_text(String(action["blocked_reason"]))
+		return
+	var result: Dictionary = built_refinery_model.dispatch_product_action_from_terminal(
+		EquipmentCatalogScript.PRODUCT_TIE_IN_ID,
+		String(action["tank_id"]), String(action["mode"])
 	)
 	if not result["ok"]:
 		_update_product_dispatch_text(result["message"])
@@ -1564,17 +1589,13 @@ func _handle_product_dispatch_input(event: InputEventKey) -> void:
 	process_model.credit(result["revenue"])
 	_sync_built_tank_fill_levels()
 	_close_product_dispatch()
-	if result.has("report"):
-		discard_confirmation_time_left = 0.0
-		discard_confirmation_revision = -1
-		_show_batch_report(result["report"], bool(result.get("contract_completed_now", false)))
-		_schedule_save()
-		return
 	_show_notification(
-		"FØRSTE OMRÅDE 02-LEVERANSE FULLFØRT — +%d kr. Refinery operations established." % result["revenue"]
+		"KONTRAKT FULLFØRT — +%d kr. LS-201 og videre drift er låst opp." % result["revenue"]
+		if result.get("contract_completed_now", false)
+		else "FØRSTE FYSISKE PRODUKTUTSENDING — +%d kr." % result["revenue"]
 		if result.get("first_physical_dispatch_now", false)
 		else result["message"],
-		7.0 if result.get("first_physical_dispatch_now", false) else 6.0
+		7.0 if result.get("contract_completed_now", false) or result.get("first_physical_dispatch_now", false) else 6.0
 	)
 	_schedule_save()
 

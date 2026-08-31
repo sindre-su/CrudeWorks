@@ -19,16 +19,22 @@ The game must be:
 
 ## Current project phase — authoritative
 
-**PROCESS BOUNDARY CONNECTIONS COMPLETE** at version `0.31.5`, pending human
-WASD approval. Playable land is 214 x 264 m and rises continuously
+**CONTRACTS & DISPATCH COHERENCE COMPLETE** at version `0.31.6`, pending human
+commercial-loop and WASD approval. CI-101 raw-material supply is independent
+from the canonical PD-101 product contract. The first Area 02 contract requests
+200 L ON-SPEC Diesel at 8 kr/L; qualifying partial dispatches accumulate across
+batches, overdelivery remains in storage, and explicit spot sales never advance
+the contract. LAB-101 only analyses quality, while PD-101 alone offers separate
+contract-delivery and spot-sale actions through PD-201. Playable land is 214 x
+264 m and rises continuously
 from Harbor at 0 m to Upper Plant at +10.5 m through one primary road. At the
 Pilot-access junction, one `CRUDE INTAKE / CI-101 →` sign directs the first
 post-Pilot objective. At the next Harbor fork, `AREA 02 / PROCESS YARD →`
 derives its branch arrow from the live Operations Hub center. The inland gate
 has no destination sign; its route is later/deeper refinery progression. A
 single non-directional Area 02 gateway marker identifies the yard itself.
-Pilot, the v0.30.3 Area 02 spatial contract, v0.30.4 build menu and all process
-behavior remain proven.
+Pilot, the v0.30.3 Area 02 spatial contract, v0.30.4 build menu, v0.31.5 process
+boundaries and all process physics remain proven.
 Portless CI-101 and PD-101 logistics terminals exist once at their canonical
 Harbor anchors. Local zero-hold-up CI-201 and PD-201 process boundaries sit at
 the Area 02 west/east edges, so player pipes stay local while Harbor remains the
@@ -38,7 +44,7 @@ tanks share one cap-free liquid renderer. Normal progression continues Pilot ->
 Harbor CI -> Area 02, while `pilot_slice` remains an explicit debug profile.
 Broader Utilities, storage, LAB,
 CDU/HT/VDU/FCC and logistics migration remains paused until a real 1280 x 720
-Pilot -> CI -> Area 02 pass approves this slice.
+Pilot -> CI -> Area 02 -> LAB -> PD pass approves this slice.
 
 Use the documents for their distinct roles:
 

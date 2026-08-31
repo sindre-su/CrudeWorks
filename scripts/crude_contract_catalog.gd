@@ -3,56 +3,6 @@ extends RefCounted
 
 const DEFAULT_ID := "standard"
 const ORDER := ["standard", "heavy", "sour"]
-const PRODUCT_ORDER := ["light", "heavy", "vacuum_gas_oil", "vacuum_residue", "gasoline_blendstock", "lpg", "light_cycle_oil"]
-
-
-static func product_order_definition(product_id: String) -> Dictionary:
-	match product_id:
-		"light":
-			return {
-			"product": "light",
-			"product_name": "Naphtha",
-			"order_name": "NAPHTHALEVERANSE",
-			"target_l": 100.0,
-			"price_per_l": 5.0,
-			"description": "lett produkt • 5 kr/L",
-		}
-		"heavy":
-			return {
-				"product": "heavy",
-				"product_name": "Tung rest",
-				"order_name": "TUNGRESTLEVERANSE",
-				"target_l": 100.0,
-				"price_per_l": 2.0,
-				"description": "lav verdi • 2 kr/L",
-			}
-		"vacuum_gas_oil":
-			return {
-				"product": "vacuum_gas_oil",
-				"product_name": "Vacuum Gas Oil",
-				"order_name": "VGO-LEVERANSE",
-				"target_l": 100.0,
-				"price_per_l": 4.0,
-				"description": "sekundærprodukt • 4 kr/L",
-			}
-		"vacuum_residue":
-			return {
-				"product": "vacuum_residue",
-				"product_name": "Vacuum Residue",
-				"order_name": "VAKUUMRESTLEVERANSE",
-				"target_l": 100.0,
-				"price_per_l": 1.0,
-				"description": "sekundærprodukt • 1 kr/L",
-			}
-		"gasoline_blendstock":
-			return {"product": "gasoline_blendstock", "product_name": "Gasoline Blendstock", "order_name": "GASOLINELEVERANSE", "target_l": 100.0, "price_per_l": 7.0, "description": "FCC-produkt • 7 kr/L"}
-		"lpg":
-			return {"product": "lpg", "product_name": "LPG", "order_name": "LPG-LEVERANSE", "target_l": 100.0, "price_per_l": 5.0, "description": "FCC-produkt • 5 kr/L"}
-		"light_cycle_oil":
-			return {"product": "light_cycle_oil", "product_name": "Light Cycle Oil", "order_name": "LCO-LEVERANSE", "target_l": 100.0, "price_per_l": 3.0, "description": "FCC-produkt • 3 kr/L"}
-	return {}
-
-
 static func definition(contract_id: String) -> Dictionary:
 	match contract_id:
 		"standard":
@@ -60,66 +10,55 @@ static func definition(contract_id: String) -> Dictionary:
 				"id": "standard",
 				"display_name": "Standard råolje",
 				"short_name": "STANDARD",
-				"order_name": "DIESELLEVERANSE",
 				"purchase_cost": 300,
 				"ideal_temperature_c": 200.0,
 				"minimum_quality_percent": 90.0,
 				"maximum_sulfur_ppm": 50.0,
 				"diesel_sulfur_ppm": 10.0,
-				"diesel_target_l": 200.0,
-				"delivery_product": "diesel",
-				"delivery_product_name": "Diesel",
-				"delivery_target_l": 200.0,
-				"diesel_price_per_l": 8.0,
-				"delivery_bonus": 0,
 				"quality_penalty_per_degree": 1.15,
-				"description": "mål 200 °C • lever minst 200 L diesel • kvalitet ≥ 90 %",
+				"description": "1 000 L feed • mål 200 °C",
 			}
 		"heavy":
 			return {
 				"id": "heavy",
 				"display_name": "Tung råolje",
 				"short_name": "TUNG",
-				"order_name": "TUNG LEVERANSE",
 				"purchase_cost": 180,
 				"ideal_temperature_c": 230.0,
 				"minimum_quality_percent": 90.0,
 				"maximum_sulfur_ppm": 50.0,
 				"diesel_sulfur_ppm": 10.0,
-				"diesel_target_l": 200.0,
-				"delivery_product": "heavy",
-				"delivery_product_name": "Tung fraksjon",
-				"delivery_target_l": 600.0,
-				"diesel_price_per_l": 8.0,
-				"delivery_bonus": 1000,
 				"quality_penalty_per_degree": 1.2,
-				"description": "mål 230 °C • tungfraksjon ≥ 600 L • diesel ≥ 200 L / 90 %",
+				"description": "1 000 L feed • mål 230 °C",
 			}
 		"sour":
 			return {
 				"id": "sour",
 				"display_name": "Sour råolje",
 				"short_name": "SOUR",
-				"order_name": "SOUR DIESELLEVERANSE",
 				"purchase_cost": 120,
 				"ideal_temperature_c": 200.0,
 				"minimum_quality_percent": 90.0,
 				"maximum_sulfur_ppm": 50.0,
 				"diesel_sulfur_ppm": 500.0,
-				"diesel_target_l": 200.0,
-				"delivery_product": "diesel",
-				"delivery_product_name": "Diesel",
-				"delivery_target_l": 200.0,
-				"diesel_price_per_l": 8.0,
-				"delivery_bonus": 0,
 				"quality_penalty_per_degree": 1.15,
-				"description": "120 kr • mål 200 °C • krever dieselbehandling før utsending",
+				"description": "1 000 L feed • mål 200 °C • svovelrik diesel krever behandling",
 			}
 	return {}
 
 
 static func is_valid(contract_id: String) -> bool:
 	return not definition(contract_id).is_empty()
+
+
+static func expected_yield_description(contract_id: String) -> String:
+	var data := definition(contract_id)
+	if data.is_empty():
+		return ""
+	var fractions := fractions_for_temperature(contract_id, float(data["ideal_temperature_c"]))
+	return "Forventet CDU-utbytte: Naphtha %.0f %% / Diesel %.0f %% / Tung %.0f %%" % [
+		fractions.x * 100.0, fractions.y * 100.0, fractions.z * 100.0,
+	]
 
 
 static func fractions_for_temperature(contract_id: String, temperature_c: float) -> Vector3:

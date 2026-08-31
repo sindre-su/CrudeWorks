@@ -1,6 +1,6 @@
 # CrudeWorks
 
-**Prototypeversjon: 0.31.5 – Process Boundary Connections & Visual Cleanup**
+**Prototypeversjon: 0.31.6 – Contracts & Dispatch Coherence**
 
 CrudeWorks is a first-person refinery-builder prototype. The player starts with
 a manual Pilot process, unlocks Area 02, builds directed refinery routes,
@@ -10,12 +10,13 @@ approved diesel.
 
 ## Current phase
 
-**v0.31.5 — PROCESS BOUNDARY CONNECTIONS & VISUAL CLEANUP.** CI-101 and PD-101
-remain unique Harbor logistics terminals, now without process ports. CI-201 and
-PD-201 provide fixed zero-hold-up process connections at the Area 02 edges, so
-player pipes no longer stretch across the world. Tank liquids use one shared,
-cap-free renderer, and Build Mode keeps its overlay/bounds without spawning a
-physical sign. No process family, economy rule or macro-world geometry changed.
+**v0.31.6 — CONTRACTS & DISPATCH COHERENCE.** CI-101 now describes and sells
+feedstock only. PD-101 owns an independent 200 L ON-SPEC Diesel contract and
+shows delivered/remaining progress beside explicit contract-delivery and spot-
+sale actions. Partial deliveries persist across crude batches, overdelivery
+stays in storage, and legal spot sales or VDU/FCC processing never count as a
+task violation. LAB-101 remains analytical and PD-201 remains the local zero-
+hold-up process boundary. Process physics and world geometry are unchanged.
 
 Quick orientation:
 
@@ -48,30 +49,32 @@ Den første komplette «vertical slice»-en inneholder:
 - operasjonelle bygde tanker, pumper, manuelle ventiler, varmeenheter og kolonner
 - massebalanse, tankkapasitet, backpressure og dieselkvalitet
 - subsidierte oppstartsforsøk fram til godkjenning, deretter betalte batcher
-- varig fullføring av Område 02 og batchrapport med utbytte, kvalitet og økonomi
+- varig fullføring av Område 02 gjennom faktisk kvalifiserende kontraktsdispatch
 - totrinns bekreftelse før produkter sendes til avfallshåndtering
 - diagnostiserbar `LOW FLOW` når en bygd pumpe arbeider mot stengt ventil
 - versjonert autosave av penger, progresjon, bygg, rør og prosessbeholdning
 - ett oppstartsvalg for å fortsette eller bekreftet starte et nytt spill
-- valg mellom Standard og Tung råolje etter oppstartskontrakten
-- råoljespesifikke temperaturmål, fraksjoner, kvalitet og kontraktøkonomi
+- valg mellom Standard, Tung og Sour råolje som uavhengige feedstock-kjøp
+- råoljespesifikke temperaturmål, fraksjoner, kvalitet og innkjøpspris
 - trygg automatisk migrering av eldre 0.6-lagringer til Standard-råolje
 - LS-201 lokalstasjon med live nivå-, temperatur- og flowinstrumenter
 - fjernstyrt pumpe og temperaturmål med temperaturvern ved fjernstart
 - fysisk dieselprøve fra aktiv produkttank før betalte batcher kan sendes
-- LAB-101-analyse med volum, kvalitet, prosessavvik og trygg utsending
+- LAB-101-analyse med volum, kvalitet og prosessavvik; kommersielle valg ligger ved PD-101
 - flere uavhengige prosesslinjer og en fysisk Crude Feed Header for én delt
   råoljetank: velg rute A, B eller ingen rute før drift
-- to tydelige leveringsordrer: Standard prioriterer diesel, mens Tung krever
-  både tungfraksjon og en godkjent dieselprøve
+- uavhengig PD-produktkontrakt med kanonisk levert/restmengde, kvalitet, sats,
+  status og engangsbonusfelt
+- del-levering over flere råoljebatcher og overleveringsvern som lar overskudd
+  stå i produkttanken
 - tre pumpetrinn på 5, 10 og 15 L/s etter godkjent oppstart, med en synlig
   avveiing mellom produksjonstid og temperaturmargin
 - første vedlikeholdshendelse: vedvarende høy flow kan gi en diagnostiserbar
   filterrestriksjon som må undersøkes og repareres i felt
 - Sour råolje med høy svovelstatus og en byggbar dieselbehandler som gjør
   off-spec diesel salgbar uten å endre materialmengden
-- separate produktleveranser: Naphtha gir 5 kr/L, diesel beholder LAB-kravet,
-  og tung rest gir 2 kr/L; hver levering tømmer bare riktig produkttank
+- eksplisitte spotsalg: Naphtha gir 5 kr/L, Diesel 8 kr/L og tung rest 2 kr/L;
+  hvert salg tømmer bare valgt tank og endrer ikke produktkontrakten
 - fysisk Product Routing Header for én produktstrøm: velg lagring A, B eller
   ingen rute før drift; valgt tank fylles alene og fullt lager stopper prosessen
 - TIC-201 temperaturkontroll etter commissioning: velg MANUELL eller AUTO og
@@ -198,7 +201,7 @@ rørvisualer bygges ved Area 02-grensene i stedet for som lange Harbor-rør.
 | Q | Område 02: endre flowmål på pumpen du ser på |
 | F | Område 02: undersøk eller rens en pumpe med driftsavvik |
 | R | Pilot: ny batch. Område 02: trykk to ganger for sikker produkttømming |
-| Enter | Send godkjent labbatch eller lukk batchrapport |
+| Enter | Lukk LAB-resultat eller bekreft valgt modal |
 | 1 / 2 / 3 | Velg Standard, Tung eller Sour råolje når leveransevinduet er åpent |
 | 1 / 2 / 3 | LS-201: start/stopp pumpe, endre temperaturmål eller flowmål |
 | Esc | Frigjør musepekeren |
@@ -281,21 +284,27 @@ direkte i 3D. Pumpens rotor og ventilhåndtak beveger seg når utstyret brukes.
    Ventilen kan stenge eller gjenopprette flow
    uten at væske skapes eller forsvinner. Stopp pumpen, ta dieselprøve ved tanken,
    analyser den ved `LAB-101`, og bruk produkttank → salgspumpe → PD-201 for den
-   fysiske ruten. Harbor PD-101 sender produktbatchen ut og viser en batchrapport med
-   faktisk råolje behandlet, fraksjoner, kvalitet, inntekt, kostnad og resultat.
+   fysiske ruten. Harbor PD-101 viser den aktive Dieselkundekontrakten og lar
+   spilleren velge eksplisitt mellom `LEVER TIL KONTRAKT` og `SPOTSALG`.
 
-Etter godkjent oppstart åpner `E` på en tom kildetank leveransevalget. Valget
-bestemmer både råoljen og leveringsordren:
+Etter godkjent oppstart åpner `E` på en tom kildetank leveransevalget ved
+CI-101. Valget bestemmer bare feedstock:
 
-- **Dieselleveranse / Standard** koster 300 kr, har mål rundt 200 °C og krever
-  minst 200 liter diesel med minst 90 % kvalitet.
-- **Tung leveranse / Tung** koster 180 kr, har mål rundt 230 °C og krever minst
-  600 liter tungfraksjon, minst 200 liter diesel og minst 90 % dieselkvalitet.
-  En godkjent ordre gir en engangsbonus på 1 000 kr.
+- **Standard råolje** koster 300 kr per 1 000 L og har prosessmål rundt 200 °C.
+- **Tung råolje** koster 180 kr per 1 000 L og har prosessmål rundt 230 °C.
+- **Sour råolje** koster 120 kr per 1 000 L og krever dieselbehandling for
+  ON-SPEC Diesel.
 
-Råoljetypen låses til batchen. En ny type kan først velges når alle bygde tanker
-er tomme og pumpen er stoppet. Batchrapporten viser valgt råolje, faktisk
-snittemperatur, temperaturmål, dieselsalg, eventuell bonus, kostnad og resultat.
+Råoljetypen låses til batchen for riktig prosessfysikk og proveniens. Den
+oppretter ingen leveringsplikt. En ny type kan først velges når den aktuelle
+linjens tanker er tomme og pumpen er stoppet.
+
+Den første Area 02-produktkontrakten ved PD-101 er **Industridiesel**: 200 L
+ON-SPEC Diesel til 8 kr/L uten bonus. `Levert` øker bare når spilleren velger
+kontraktslevering. Hvis tanken inneholder mer enn restkravet, blir overskuddet
+stående. Naphtha, tung rest og overskuddsdiesel kan spotselges uten å endre
+kontraktprogresjonen. Tung rest kan i stedet gå til VDU og VGO til FCC uten
+straff eller falsk oppgavefeil.
 
 Alle Område 02-leveranser går fysisk via lokal `PD-201` og selges ved Harbor
 `PD-101`; LAB-101 brukes kun til
@@ -303,10 +312,9 @@ analyse. Spilleren må stoppe pumpen og trykke `E` på dieseltanken i den aktive
 linjen for å ta en prøve. Før analyse vises
 produktkvaliteten som `IKKE ANALYSERT`; en prøve fra en frakoblet tank kan ikke
 brukes. Ved `LAB-101` vises faktisk dieselvolum og kvalitet mot
-kontraktskravet, samt gjennomsnittlig prosesstemperatur og pumpeflow.
-For Tung viser analysen dieselkvaliteten og tungfraksjonsmålet som to separate
-krav. En god dieselprøve kan derfor være godkjent selv om ordren ennå trenger
-mer tungfraksjon; videre produksjon krever deretter en ny prøve.
+prosess-/produktkravet, samt gjennomsnittlig prosesstemperatur og pumpeflow. LAB
+vurderer ikke kontraktmengde eller betaling; PD-101 sammenligner tankens
+kanoniske analysestatus med kontraktens kvalitetskrav.
 
 `Enter` lukker kun analyseresultatet; den godkjente tanken kobles til `PD-201`
 og sendes fra Harbor `PD-101`.
@@ -326,8 +334,8 @@ diagnostiseres og rettes ute i anlegget.
 Etter den første godkjente Område 02-leveransen kan spilleren også se på den
 bygde pumpen og trykke `Q` for å sykle `10 → 15 → 5 → 10 L/s`. Lav flow bruker
 lengre tid, men tåler et større temperaturavvik. Høy flow produserer raskere,
-men krever at temperaturen holdes nærmere råoljens mål. LAB-101 og
-batchrapporten viser volumvektet gjennomsnittsflow, slik at et kvalitetsavvik kan
+men krever at temperaturen holdes nærmere råoljens mål. LAB-101 viser
+volumvektet gjennomsnittsflow, slik at et kvalitetsavvik kan
 knyttes til både temperatur og valgt kapasitet. Første oppstart og pilotanlegget
 beholder fast 10 L/s.
 
@@ -365,6 +373,7 @@ CrudeWorks/
     ├── buildable_unit.gd
     ├── crude_contract_catalog.gd
     ├── equipment_catalog.gd
+    ├── product_contract_catalog.gd
     ├── graybox_sign.gd
     ├── interactive_unit.gd
     ├── lab_analysis_panel.gd

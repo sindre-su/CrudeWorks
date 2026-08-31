@@ -38,20 +38,15 @@ func show_analysis(result: Dictionary) -> void:
 		)
 	result_label.text = (
 		"LAB-101 — DIESELPRØVE\n\n"
-		+ "Prøve        %s — %s\n" % [analysis["sample_id"], String(analysis["contract_name"]).to_upper()]
-		+ "Diesel i tank %6.0f L / minimum %.0f L\n" % [analysis["volume_l"], analysis["required_volume_l"]]
+		+ "Prøve        %s — %s RÅOLJE\n" % [analysis["sample_id"], String(analysis["crude_name"]).to_upper()]
+		+ "Diesel i tank %6.0f L\n" % analysis["volume_l"]
 		+ "Kvalitet     %6.1f %% / krav ≥ %.1f %%\n" % [analysis["quality_percent"], analysis["required_quality_percent"]]
 		+ "Svovel       %6.0f ppm / krav ≤ %.0f ppm\n" % [analysis.get("sulfur_ppm", 0.0), analysis.get("maximum_sulfur_ppm", 50.0)]
 		+ "Prosess snitt %5.0f °C | flow %.1f L/s  (mål %.0f °C)\n\n" % [
 			analysis["average_temperature_c"], analysis.get("average_flow_lps", 10.0),
 			analysis["ideal_temperature_c"],
 		]
-		+ "ORDRE        %s\n" % analysis.get("order_name", analysis["contract_name"])
-		+ "%s  %6.0f L / krav %.0f L\n" % [
-			analysis.get("delivery_product_name", "Diesel"),
-			analysis.get("delivery_volume_l", analysis["volume_l"]),
-			analysis.get("required_delivery_volume_l", analysis["required_volume_l"]),
-		]
+		+ "LAB vurderer produktkvalitet; kontrakt og spotsalg håndteres ved PD-101.\n"
 		+ "STATUS       %s\n" % analysis["status"]
 		+ ("AVVIK        %s\n" % analysis["deviation"] if not approved else "")
 		+ "\n" + footer

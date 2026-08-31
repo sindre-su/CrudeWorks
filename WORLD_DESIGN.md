@@ -6,7 +6,8 @@ This is the authoritative spatial brief for the CrudeWorks V1 Graybox World.
 It translates `CRUDEWORKS_VISION.md` into a compact, traversable refinery
 geography without prescribing final art, final equipment count or vehicles.
 
-**Implementation status: v0.31.5 Process Boundary Connections.** The
+**Implementation status: v0.31.6 Contracts & Dispatch Coherence.** World
+geometry is unchanged from the v0.31.5 Process Boundary Connections pass. The
 world reads Harbor -> Lower Plant -> Main Plant -> Upper Plant, but those names
 now describe progression districts rather than four giant physical shelves.
 One continuous terrain mesh rises inland and contains locally level industrial
@@ -138,7 +139,7 @@ through a running local CI-201 route, while Harbor PD completes sales only from
 a valid route ending at PD-201. The dynamic physical Build Mode sign is removed;
 the overlay and boundary lines remain authoritative.
 
-The following remain intentionally unmigrated in v0.31.5:
+The following remain intentionally unmigrated through v0.31.6:
 
 - fixed Utilities and LS-201;
 - player-built storage, trains and product tanks;

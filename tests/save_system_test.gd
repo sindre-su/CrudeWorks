@@ -28,6 +28,7 @@ func _run_tests() -> void:
 	_test_schema_validation(snapshot, source_main)
 	_test_area02_spatial_migration(snapshot)
 	_test_process_boundary_migration(snapshot)
+	_test_format2_commercial_migration(snapshot)
 	_test_v0304_player_recovery(snapshot)
 	_test_canonical_area02_save_states(snapshot)
 	_test_optional_delivery_report_validation(snapshot)
@@ -314,6 +315,18 @@ func _simulate_pilot(model, duration_seconds: float) -> void:
 		model.tick(timestep)
 
 
+func _test_format2_commercial_migration(snapshot: Dictionary) -> void:
+	var legacy := snapshot.duplicate(true)
+	legacy["game_version"] = "0.31.5"
+	legacy["built_refinery"].erase("product_contract")
+	var money_before: int = int(legacy["pilot"]["money"])
+	var inventory_before: float = float(legacy["built_refinery"]["equipment"]["built_tank_1"]["volume_l"])
+	var migration: Dictionary = SaveSystemScript.migrate_snapshot(legacy)
+	_expect(migration["ok"] and migration["data"]["built_refinery"]["product_contract"]["contract_id"] == "area02_diesel_commissioning", "format-2 v0.31.5 save receives the first independent diesel contract")
+	_expect("commercial_separation_v0316" in migration["data"]["system_migrations"] and SaveSystemScript.validate_snapshot(migration["data"])["ok"], "commercial migration is explicit and produces canonical validated state")
+	_expect(int(migration["data"]["pilot"]["money"]) == money_before and is_equal_approx(float(migration["data"]["built_refinery"]["equipment"]["built_tank_1"]["volume_l"]), inventory_before), "commercial migration changes neither money nor physical inventory")
+
+
 func _create_partial_paid_refinery():
 	var main = MainScene.instantiate()
 	main.persistence_enabled = false
@@ -348,6 +361,12 @@ func _create_partial_paid_refinery():
 
 func _test_schema_validation(snapshot: Dictionary, live_main) -> void:
 	_expect(SaveSystemScript.validate_snapshot(snapshot)["ok"], "current version snapshot passes complete schema and graph validation")
+	var unknown_product_contract := snapshot.duplicate(true)
+	unknown_product_contract["built_refinery"]["product_contract"]["contract_id"] = "mystery_product_contract"
+	_expect(not SaveSystemScript.validate_snapshot(unknown_product_contract)["ok"], "unknown product-contract IDs are rejected before live state mutates")
+	var overdelivered_contract := snapshot.duplicate(true)
+	overdelivered_contract["built_refinery"]["product_contract"]["delivered_l"] = 201.0
+	_expect(not SaveSystemScript.validate_snapshot(overdelivered_contract)["ok"], "saved product-contract progress cannot exceed its required quantity")
 
 	var future := snapshot.duplicate(true)
 	future["format_version"] = SaveSystemScript.FORMAT_VERSION + 1
@@ -566,8 +585,8 @@ func _test_optional_delivery_report_validation(snapshot: Dictionary) -> void:
 	bad_report_flow["built_refinery"]["last_batch_report"]["average_flow_lps"] = 16.0
 	_expect(not SaveSystemScript.validate_snapshot(bad_report_flow)["ok"], "batch reports reject an impossible average flow")
 	var tampered := with_order.duplicate(true)
-	tampered["built_refinery"]["last_batch_report"]["delivery_product"] = "heavy"
-	_expect(not SaveSystemScript.validate_snapshot(tampered)["ok"], "save validation rejects a report whose ordered product was edited")
+	tampered["built_refinery"]["last_batch_report"]["delivery_volume_l"] = 349.0
+	_expect(not SaveSystemScript.validate_snapshot(tampered)["ok"], "save validation rejects internally inconsistent historical delivery metadata")
 	var partial_metadata := with_order.duplicate(true)
 	partial_metadata["built_refinery"]["last_batch_report"].erase("delivery_product")
 	_expect(not SaveSystemScript.validate_snapshot(partial_metadata)["ok"], "save validation rejects a partially removed delivery-order field set")
@@ -675,6 +694,7 @@ func _test_v1_to_v2_contract_migration(snapshot: Dictionary) -> void:
 	legacy["format_version"] = 1
 	legacy["built_refinery"].erase("active_contract_id")
 	legacy["built_refinery"].erase("active_contract_bonus_available")
+	legacy["built_refinery"].erase("product_contract")
 	legacy["built_refinery"].erase("report_flow_total")
 	for equipment_state in legacy["built_refinery"]["equipment"].values():
 		if equipment_state["type"] == "pump":
@@ -693,6 +713,7 @@ func _test_v1_to_v2_contract_migration(snapshot: Dictionary) -> void:
 	_expect(data["format_version"] == 2 and SaveSystemScript.validate_snapshot(data)["ok"], "v1 migration returns a canonical validated v2 snapshot")
 	_expect(data["built_refinery"]["active_contract_id"] == "standard", "legacy material is explicitly assigned to the Standard contract")
 	_expect(not data["built_refinery"]["active_contract_bonus_available"], "legacy save cannot gain a retroactive delivery bonus")
+	_expect(data["built_refinery"]["product_contract"]["contract_id"] == "area02_diesel_commissioning" and "commercial_separation_v0316" in data["system_migrations"], "legacy save receives one deterministic independent product contract")
 	_expect(is_equal_approx(data["built_refinery"]["equipment"]["built_tank_1"]["volume_l"], snapshot["built_refinery"]["equipment"]["built_tank_1"]["volume_l"]), "migration preserves partial source inventory exactly")
 	_expect(is_equal_approx(data["built_refinery"]["report_crude_cost"], snapshot["built_refinery"]["report_crude_cost"]), "migration preserves proportional paid-crude report accounting")
 	var unknown_contract := data.duplicate(true)
@@ -808,13 +829,17 @@ func _test_main_round_trip(snapshot: Dictionary, source_main) -> void:
 	)
 	_expect(continued_balance["conserved"], "continued processing after load remains mass conserving")
 	restored.built_refinery_model.interact(restored_pump.unit_id)
+	var source_state: Dictionary = restored.built_refinery_model.equipment["built_tank_1"]
+	var processed_l := float(source_state["report_crude_processed_l"])
+	var average_flow_lps := float(source_state["report_flow_total"]) / processed_l
+	_expect(processed_l > 760.0 and processed_l < 765.0, "process tracking continues from the pre-save partial batch at the restored 15 L/s target")
+	_expect(int(round(float(source_state["report_crude_cost"]))) == int(round(processed_l * 0.3)), "paid crude cost accumulator survives the round trip")
+	_expect(average_flow_lps > 13.4 and average_flow_lps < 13.5, "flow history preserves legacy 10 L/s operation and weights new 15 L/s production by volume")
+	restored.built_refinery_model.take_diesel_sample("built_tank_7")
+	restored.built_refinery_model.analyze_diesel_sample()
 	var restored_sale: Dictionary = restored.built_refinery_model.sell_diesel()
 	if restored_sale["ok"]:
 		restored.process_model.credit(restored_sale["revenue"])
-	var report: Dictionary = restored.built_refinery_model.last_batch_report
-	_expect(report["crude_processed_l"] > 760.0 and report["crude_processed_l"] < 765.0, "report tracking continues from the pre-save partial batch at the restored 15 L/s target")
-	_expect(report["crude_cost"] == int(round(report["crude_processed_l"] * 0.3)), "paid crude cost accumulator survives the round trip")
-	_expect(report["average_flow_lps"] > 13.4 and report["average_flow_lps"] < 13.5, "report preserves legacy 10 L/s history and weights new 15 L/s operation by processed volume")
 
 	restored.batch_report_visible = false
 	restored.player.set_input_blocked(false)

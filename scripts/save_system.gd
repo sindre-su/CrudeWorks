@@ -4,6 +4,7 @@ extends RefCounted
 const EquipmentCatalogScript = preload("res://scripts/equipment_catalog.gd")
 const ProcessNetworkScript = preload("res://scripts/process_network.gd")
 const CrudeCatalogScript = preload("res://scripts/crude_contract_catalog.gd")
+const ProductContractCatalogScript = preload("res://scripts/product_contract_catalog.gd")
 const BuiltRefineryModelScript = preload("res://scripts/built_refinery_model.gd")
 const ProcessModelScript = preload("res://scripts/process_model.gd")
 const UtilityDistributionScript = preload("res://scripts/utility_distribution.gd")
@@ -167,10 +168,13 @@ static func migrate_snapshot(snapshot) -> Dictionary:
 		var spatially_migrated := _migrate_legacy_area02_construction(current)
 		var player_recovered := _migrate_legacy_world_player_position(current)
 		var boundaries_migrated := _migrate_process_boundary_connections(current)
+		var commercial_migrated := _migrate_commercial_state(current)
 		return {
 			"ok": true,
 			"message": (
-				"Harbor-rør er flyttet til de lokale Area 02-tie-ins."
+				"Råoljetilførsel og produktkontrakt er skilt uten å endre lagret materiale eller penger."
+				if commercial_migrated
+				else "Harbor-rør er flyttet til de lokale Area 02-tie-ins."
 				if boundaries_migrated
 				else (
 					"Area 02-konstruksjon er flyttet til den kanoniske plattformen."
@@ -209,10 +213,11 @@ static func migrate_snapshot(snapshot) -> Dictionary:
 	var report = built.get("last_batch_report", {})
 	if typeof(report) == TYPE_DICTIONARY and not report.is_empty():
 		var standard := CrudeCatalogScript.definition(CrudeCatalogScript.DEFAULT_ID)
+		var product_contract := ProductContractCatalogScript.definition(ProductContractCatalogScript.COMMISSIONING_ID)
 		report["contract_id"] = CrudeCatalogScript.DEFAULT_ID
 		report["contract_name"] = standard["display_name"]
 		report["ideal_temperature_c"] = standard["ideal_temperature_c"]
-		report["diesel_target_l"] = standard["diesel_target_l"]
+		report["diesel_target_l"] = product_contract["required_quantity_l"]
 		report["required_quality_percent"] = standard["minimum_quality_percent"]
 		report["product_revenue"] = report.get("revenue", 0)
 		report["delivery_bonus"] = 0
@@ -220,7 +225,39 @@ static func migrate_snapshot(snapshot) -> Dictionary:
 	_migrate_legacy_area02_construction(migrated)
 	_migrate_legacy_world_player_position(migrated)
 	_migrate_process_boundary_connections(migrated)
+	_migrate_commercial_state(migrated)
 	return {"ok": true, "message": "Lagringen er oppgradert til format 2.", "data": migrated}
+
+
+static func _migrate_commercial_state(snapshot: Dictionary) -> bool:
+	var built = snapshot.get("built_refinery", {})
+	if typeof(built) != TYPE_DICTIONARY or built.has("product_contract"):
+		return false
+	var crude_id := String(built.get("active_contract_id", ""))
+	var commissioning_complete := bool(built.get("commissioning_contract_complete", false))
+	var commercial_state := ProductContractCatalogScript.legacy_state_for_crude(
+		crude_id, commissioning_complete
+	)
+	# A consumed legacy bonus must never become payable again after migration.
+	if (
+		String(commercial_state.get("contract_id", "")) == ProductContractCatalogScript.LEGACY_HEAVY_ID
+		and not bool(built.get("active_contract_bonus_available", false))
+	):
+		commercial_state["bonus_awarded"] = true
+	built["product_contract"] = commercial_state
+	built["active_contract_bonus_available"] = false
+	var equipment = built.get("equipment", {})
+	if typeof(equipment) == TYPE_DICTIONARY:
+		for state in equipment.values():
+			if typeof(state) == TYPE_DICTIONARY and state.get("type") == "tank":
+				state["contract_bonus_available"] = false
+	var stored_migrations = snapshot.get("system_migrations", [])
+	var migrations: Array = stored_migrations.duplicate() if typeof(stored_migrations) == TYPE_ARRAY else []
+	if "commercial_separation_v0316" not in migrations:
+		migrations.append("commercial_separation_v0316")
+	snapshot["system_migrations"] = migrations
+	snapshot["game_version"] = ProjectSettings.get_setting("application/config/version", "0.31.6")
+	return true
 
 
 static func _migrate_process_boundary_connections(snapshot: Dictionary) -> bool:
@@ -521,9 +558,12 @@ static func _validate_built_refinery(state: Dictionary, unit_types: Dictionary, 
 		return _result(false, "Lagringen inneholder en ukjent råoljekontrakt.")
 	if typeof(state.get("active_contract_bonus_available")) != TYPE_BOOL:
 		return _result(false, "Kontraktbonusens status er ugyldig.")
-	if state["active_contract_bonus_available"]:
-		if active_contract_id.is_empty() or int(CrudeCatalogScript.definition(active_contract_id)["delivery_bonus"]) <= 0:
-			return _result(false, "Lagringen inneholder en ugyldig kontraktbonus.")
+	if state.has("product_contract"):
+		var product_contract_result := _validate_product_contract(state["product_contract"])
+		if not product_contract_result["ok"]:
+			return product_contract_result
+		if state["active_contract_bonus_available"]:
+			return _result(false, "Råoljetilførselen kan ikke eie en produktbonus.")
 	for field in ["report_crude_processed_l", "report_temperature_total", "report_crude_cost"]:
 		if not _finite_number(state.get(field)) or float(state[field]) < 0.0:
 			return _result(false, "Ugyldig prosessverdi: %s." % field)
@@ -607,6 +647,32 @@ static func _validate_built_refinery(state: Dictionary, unit_types: Dictionary, 
 	if not active_contract_id.is_empty() and not referenced_contracts.has(active_contract_id):
 		return _result(false, "Aktiv råoljekontrakt peker ikke på en pågående leveranse eller batch.")
 	return _result(true, "Bygd prosesstilstand er gyldig.")
+
+
+static func _validate_product_contract(state) -> Dictionary:
+	if typeof(state) != TYPE_DICTIONARY:
+		return _result(false, "Produktkontrakten har ugyldig format.")
+	if typeof(state.get("contract_id")) != TYPE_STRING:
+		return _result(false, "Produktkontrakten mangler kontrakt-ID.")
+	var contract_id := String(state["contract_id"])
+	var definition := ProductContractCatalogScript.definition(contract_id)
+	if definition.is_empty():
+		return _result(false, "Produktkontrakten har ukjent kontrakt-ID.")
+	if not _finite_number(state.get("delivered_l")):
+		return _result(false, "Produktkontrakten har ugyldig levert mengde.")
+	var delivered_l := float(state["delivered_l"])
+	var required_l := float(definition["required_quantity_l"])
+	if not _in_range(delivered_l, 0.0, required_l):
+		return _result(false, "Produktkontrakten har levert mengde utenfor kontrakten.")
+	if typeof(state.get("status")) != TYPE_STRING or state["status"] not in ProductContractCatalogScript.VALID_STATUSES:
+		return _result(false, "Produktkontrakten har ukjent status.")
+	if typeof(state.get("bonus_awarded")) != TYPE_BOOL:
+		return _result(false, "Produktkontraktens bonusstatus er ugyldig.")
+	if state["status"] == ProductContractCatalogScript.STATUS_ACTIVE and delivered_l + 0.01 >= required_l:
+		return _result(false, "En full produktkontrakt kan ikke stå som aktiv.")
+	if state["status"] == ProductContractCatalogScript.STATUS_COMPLETE and delivered_l + 0.01 < required_l:
+		return _result(false, "En ufullstendig produktkontrakt kan ikke stå som fullført.")
+	return _result(true, "Produktkontrakten er gyldig.")
 
 
 static func _validate_site_logistics(state) -> Dictionary:
@@ -805,8 +871,8 @@ static func _validate_report(report: Dictionary) -> bool:
 	var profile := CrudeCatalogScript.definition(report["contract_id"])
 	if (
 		not is_equal_approx(float(report["ideal_temperature_c"]), float(profile["ideal_temperature_c"]))
-		or not is_equal_approx(float(report["diesel_target_l"]), float(profile["diesel_target_l"]))
 		or not is_equal_approx(float(report["required_quality_percent"]), float(profile["minimum_quality_percent"]))
+		or float(report["diesel_target_l"]) < 0.0
 	):
 		return false
 	var product_total := float(report["light_l"]) + float(report["diesel_l"]) + float(report["heavy_l"])
@@ -839,10 +905,10 @@ static func _validate_report(report: Dictionary) -> bool:
 			return false
 		var delivery_product: String = report["delivery_product"]
 		if (
-			delivery_product != String(profile["delivery_product"])
-			or String(report["order_name"]) != String(profile["order_name"])
-			or String(report["delivery_product_name"]) != String(profile["delivery_product_name"])
-			or not is_equal_approx(float(report["delivery_target_l"]), float(profile["delivery_target_l"]))
+			delivery_product not in ["light", "diesel", "heavy"]
+			or String(report["order_name"]).is_empty()
+			or String(report["delivery_product_name"]).is_empty()
+			or float(report["delivery_target_l"]) < 0.0
 			or not is_equal_approx(float(report["delivery_volume_l"]), float(report[delivery_product + "_l"]))
 			or float(report["delivery_volume_l"]) + 0.01 < float(report["delivery_target_l"])
 		):

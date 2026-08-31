@@ -24,8 +24,9 @@ For long-term design, Graybox direction and scope, see `CRUDEWORKS_VISION.md`,
   fixed board margins and locally mounted, non-billboard text.
 - `scripts/process_model.gd`: fixed Pilot training process, economy and original
   progression loop.
-- `scripts/built_refinery_model.gd`: Area 02 material, operations, contracts,
-  quality, LAB authorization, canonical dispatch, maintenance, alarms, heater
+- `scripts/built_refinery_model.gd`: Area 02 material, operations, raw-material
+  provenance, product-contract progress, quality, canonical dispatch,
+  maintenance, alarms, heater
   control, utilities integration and CDU/VDU/FCC simulation.
 - `scripts/process_network.gd`: sole authority for directed material topology,
   ports, valid order, complete routes and optional crude/product headers.
@@ -38,8 +39,11 @@ For long-term design, Graybox direction and scope, see `CRUDEWORKS_VISION.md`,
   hotbar ordering and visual connection cache; never a second logical topology.
 - `scripts/feed_allocation.gd` / `scripts/product_allocation.gd`: explicit,
   stopped-only ownership selection for shared crude and product headers.
-- `scripts/equipment_catalog.gd` / `scripts/crude_contract_catalog.gd`:
-  equipment, port, utility-demand and contract/order data.
+- `scripts/equipment_catalog.gd`: equipment, port and utility-demand data.
+- `scripts/crude_contract_catalog.gd`: CI raw-material grades, prices and
+  process properties; it owns no finished-product obligation.
+- `scripts/product_contract_catalog.gd`: PD product-contract terms and stable
+  spot prices; it owns no physical product inventory or quality result.
 - `scripts/save_system.gd`: validated versioned local persistence.
 - `scripts/lab_analysis_panel.gd`: transient LAB-101 presentation/input;
   analysis is not a sales path.
@@ -54,8 +58,8 @@ Area 02 -> connect local CI-201 through a pump to storage -> transfer crude -> e
 generator/MCC/IA/CW availability -> heat -> open manual
 valve -> pump -> CDU fractions -> optional HT-201 treatment and selected product
 storage -> sample/analyse at LAB-101 where required -> send physical product
-through a sales pump to local PD-201 -> use Harbor PD-101 -> canonical inventory
-removal and payment.
+through a sales pump to local PD-201 -> choose contract delivery or spot sale at
+Harbor PD-101 -> canonical inventory removal and one deterministic payment.
 
 VDU-301 and FCC-401 are implemented, purchasable typed secondary routes with
 fixed simplified yields, capacity-bounded atomic transfers and dedicated product
@@ -65,9 +69,11 @@ placement and player-facing pacing still need Graybox validation.
 ## Canonical state and conservation
 
 - `ProcessModel` owns Pilot crude/light/diesel/heavy inventory.
-- `BuiltRefineryModel` owns Area 02 tank contents, pending Harbor CI-101 delivery and
-  GF-101 generator fuel. Pipes, headers, pumps, treatment and process units
-  currently have no modeled liquid hold-up.
+- `BuiltRefineryModel` owns Area 02 tank contents, pending Harbor CI-101
+  delivery and GF-101 generator fuel. It also owns the one current product-
+  contract state: stable contract ID, delivered quantity, status and one-shot
+  bonus flag. Pipes, headers, pumps, treatment and process units currently have
+  no modeled liquid hold-up.
 - Tank fills, HUD text, samples, reports, flow visuals, total electrical demand
   and hydraulic diagnostics are derived views. They must not become duplicate
   inventory or saved UI truth.
@@ -119,21 +125,35 @@ on Instrument Air loss, and Cooling Water is a CDU condensation permissive.
 
 ## LAB and product dispatch
 
-LAB-101 samples and analyses product, exposes specification/quality evidence and
-authorizes eligible dispatch. It does not sell material. Product tanks store and
-route canonical inventory but do not create a parallel economy. PD-201 is the
-zero-hold-up Area 02 process boundary; Harbor PD-101 is the only sale
-interaction. Dispatch removes authorized canonical inventory atomically and
-pays once through the established value path.
+LAB-101 samples and analyses product and writes the tank's canonical analysis/
+spec status. It does not own contract terms, decide quantities or sell material.
+Product tanks store and route canonical inventory but do not create a parallel
+economy. PD-201 is the zero-hold-up Area 02 process boundary; Harbor PD-101 is
+the only commercial interaction.
+
+PD-101 exposes separate `contract` and `spot` actions. A contract delivery
+accepts only the requested product and required canonical quality, consumes
+`min(available, remaining)`, increments delivered quantity by exactly that
+physical output and awards its completion bonus only on the ACTIVE -> COMPLETE
+transition. A spot sale consumes its selected tank at the stable product price
+without changing contract progress. VDU/FCC feed consumption is ordinary
+process transfer and has no commercial side effect. The first Area 02 contract
+is 200 L ON-SPEC Diesel at 8 kr/L with no bonus.
 
 ## Persistence and world migration
 
 Save/load persists canonical construction, material, selected operating state,
 utility/trip state and stable identifiers; it rebuilds derived state and restores
 pumps stopped. Existing v0.27/v0.28-compatible saves remain supported through
-validated migration/fallback paths.
+validated migration/fallback paths. Format-2 saves without the independent
+`product_contract` field receive deterministic `commercial_separation_v0316`
+migration: unfinished commissioning gets the first Diesel contract; completed
+legacy Standard/Sour or Heavy batch state maps to a one-product legacy
+delivery. Migration changes no money or physical inventory and cannot re-arm a
+consumed legacy bonus.
 
-v0.31.5 uses 214 x 268 m player bounds and 214 x 264 m visible land. Harbor is
+v0.31.6 retains the v0.31.5 world: 214 x 268 m player bounds and 214 x 264 m
+visible land. Harbor is
 flat through z `-42`; one continuous terrain grade then reaches +10.5 m at z
 `-200`. Lower/Main/Upper are planning districts with local pads at +3.5/+7.0/
 +10.5 m, not map-wide shelves. `IndustrialGround` is one multi-material mesh;
@@ -178,7 +198,7 @@ placing visual duplicate equipment that looks functional but has no model state.
 
 ## Scope boundary
 
-The v0.28.2 process foundation remains frozen through v0.31.5. The existing fixed
+The v0.28.2 process foundation remains frozen through v0.31.6. The existing fixed
 Pilot is now verified as one complete fresh-save world loop without relocating
 its stable IDs or absolute coordinates. CI-101/PD-101 remain at Harbor while
 CI-201/PD-201 keep process connections local to unchanged Area 02 building;
